@@ -1,0 +1,14 @@
+:root {
+  --pico-spacing: 1rem;
+  --pico-font-family: system-ui, sans-serif;
+}
+
+#main > footer,
+#main > header,
+#main > main {
+  padding-block: var(--pico-block-spacing-vertical);
+}
+
+body {
+  /* background-color: #111216; */
+}
