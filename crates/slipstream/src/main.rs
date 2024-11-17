@@ -2,6 +2,8 @@
 use dioxus::prelude::*;
 use dioxus_logger::tracing::{info, Level};
 
+use pipes::Pipe;
+
 /// Foo
 #[derive(Clone, Routable, Debug, PartialEq)]
 enum Route {
@@ -12,9 +14,10 @@ enum Route {
 }
 
 fn main() {
-    dioxus_logger::init(Level::INFO).expect("failed to init logger");
-    info!("starting app");
-    launch(App);
+    let pipe = Pipe::new();
+    // dioxus_logger::init(Level::INFO).expect("failed to init logger");
+    // info!("starting app");
+    // launch(App);
 }
 
 fn App() -> Element {
@@ -31,6 +34,7 @@ fn Blog(id: i32) -> Element {
     }
 }
 
+// I am a comment!
 #[component]
 fn Home() -> Element {
     let mut count = use_signal(|| 0);

@@ -8,7 +8,7 @@ mkShell rec {
   nativeBuildInputs = [
   ];
   buildInputs = [
-    # dioxus-cli
+    dioxus-cli
     just
     rustup
   ];

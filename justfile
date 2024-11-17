@@ -1,16 +1,22 @@
-# Slipstream
+# Slipstream justfile
 
-# List 
+# List directives.
 [private]
 default:
-    just --list
+    @just --list
 
 # Set up dependencies
 setup:
     cargo install dioxus-cli
 
-serve:
+# Debug
+debug:
     dx serve
 
+# Build
 build:
     echo build
+
+# Test the repo.
+test:
+    cargo test

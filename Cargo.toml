@@ -1,12 +1,22 @@
-[package]
-name = "slipstream"
-version = "0.1.0"
-authors = ["hachha <hachha@hachha.dev>"]
-edition = "2021"
+[workspace]
+members = [
+  "crates/pipes",
+  "crates/slipstream",
+]
+resolver = "2"
 
-[dependencies]
-bon = "1.2"
-dioxus = { version = "0.5.6", features = ["web", "router"] }
-dioxus-logger = "0.5.1"
-rusqlite = { version = "0.32.0", features = ["bundled"] }
-regex = "1.10.6"
+[workspace.dependencies]
+bon = "3"
+chrono = "0.4"
+futures = "0.3"
+reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
+syndication = "0.5"
+# crossbeam = "0.8.4"
+# serde = "1.0"
+tokio = { version = "1.38.0", features = ["sync", "rt", "macros"] }
+# tokio-stream = "0.1.15"
+# tokio-util = { version = "0.7.11", features = ["codec", "io", "net"] }
+
+[profile.dev]
+opt-level = 1
+overflow-checks = false
