@@ -1,9 +1,18 @@
 [workspace]
 members = [
-  "crates/pipes",
+  "crates/slipfeed",
+  "crates/slipstore",
   "crates/slipstream",
 ]
 resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["hachha <hachha@hachha.dev>"]
+categories = []
+repository = "https://github.com/harrisonhall/slipstream"
+rust-version = "1.82.0"
 
 [workspace.dependencies]
 bon = "3"

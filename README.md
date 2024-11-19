@@ -10,3 +10,9 @@ Feed aggregator, filterer, and combinator.
   - [ ] Minor features
     - [ ] Async and sync interfaces
     - [ ] Private feeds
+
+## Crates
+
+- `slipfeed` - Feed aggregator, filterer, and combinator.
+- `slipstore` - `slipfeed` persistent storage.
+- `slipstream` - UI for `slipfeed`, backed by `slipstore`.

@@ -1,0 +1,14 @@
+[package]
+name = "slipfeed"
+description = "Feed aggregator, filterer, and combinator."
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-recursion = "1.1"
+bon = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+reqwest = { workspace = true }
+syndication = { workspace = true }
+tokio = { workspace = true }

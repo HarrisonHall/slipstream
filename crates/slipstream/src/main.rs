@@ -2,8 +2,6 @@
 use dioxus::prelude::*;
 use dioxus_logger::tracing::{info, Level};
 
-use pipes::Pipe;
-
 /// Foo
 #[derive(Clone, Routable, Debug, PartialEq)]
 enum Route {
@@ -14,7 +12,8 @@ enum Route {
 }
 
 fn main() {
-    let pipe = Pipe::new();
+    let feed = slipfeed::AggregateFeed::new();
+    // let pipe = Pipe::new();
     // dioxus_logger::init(Level::INFO).expect("failed to init logger");
     // info!("starting app");
     // launch(App);

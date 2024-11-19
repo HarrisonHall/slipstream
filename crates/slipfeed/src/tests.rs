@@ -1,5 +1,7 @@
 use super::*;
 
+use chrono::Duration;
+
 #[tokio::test]
 async fn get_feeds() {
     let mut feed_a = AggregateFeed::new();

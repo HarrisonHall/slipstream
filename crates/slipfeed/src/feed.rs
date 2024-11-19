@@ -1,5 +1,6 @@
-//! Pipes!
+//! Feed management.
 
+// use core::slice::SlicePattern;
 use std::str::FromStr;
 
 use async_recursion::async_recursion;
@@ -9,16 +10,55 @@ use chrono::DateTime;
 use chrono::Duration;
 use chrono::Utc;
 
-#[cfg(test)]
-mod tests;
+use crate::entry::Entry;
+
+/// Any type of feed.
+#[derive(Clone)]
+pub enum AnyFeed {
+    AggregateFeed(AggregateFeed),
+    Feed(Feed),
+}
+
+impl AnyFeed {
+    /// Get tags for a feed.
+    fn get_tags(&self) -> &[Tag] {
+        match self {
+            AnyFeed::AggregateFeed(feed) => feed.tags.as_slice(),
+            AnyFeed::Feed(feed) => feed.tags.as_slice(),
+        }
+    }
+}
+
+/// Tags for feeds.
+#[derive(Clone)]
+pub struct Tag(String);
+
+/// A filter is a function that takes a feed and entry and returns true if it passes, or
+/// false if it fails.
+pub type Filter = fn(&AnyFeed, &Entry) -> bool;
+
+#[derive(Clone)]
+pub struct Feed {
+    pub name: String,
+    pub url: String,
+    pub tags: Vec<Tag>,
+}
+
+impl Into<AnyFeed> for Feed {
+    fn into(self) -> AnyFeed {
+        AnyFeed::Feed(self)
+    }
+}
 
 /// An aggregate feed is a collection of other feeds and filters.
 #[derive(Clone)]
 pub struct AggregateFeed {
     /// Other feeds in aggregate.
-    feeds: Vec<AnyFeed>,
-    /// Filters to apply to pipes.
-    filters: Vec<Filter>,
+    pub feeds: Vec<AnyFeed>,
+    /// Tags for feed.
+    pub tags: Vec<Tag>,
+    /// Filters to apply to entries.
+    pub filters: Vec<Filter>,
 }
 
 #[bon]
@@ -27,28 +67,33 @@ impl AggregateFeed {
     pub fn new() -> Self {
         Self {
             feeds: Vec::new(),
+            tags: Vec::new(),
             filters: Vec::new(),
         }
     }
 
-    /// Add a filter.
-    fn add_filter(&mut self, filter: Filter) {
-        self.filters.push(filter);
-    }
-
-    /// Add a feed.
-    fn add_feed(&mut self, feed: impl Into<AnyFeed>) {
-        self.feeds.push(feed.into());
-    }
-
     #[builder]
-    fn builder(feeds: Vec<AnyFeed>, filters: Vec<Filter>) -> Self {
-        Self { feeds, filters }
+    fn builder(feeds: Vec<AnyFeed>, tags: Vec<Tag>, filters: Vec<Filter>) -> Self {
+        Self {
+            feeds,
+            tags,
+            filters,
+        }
     }
 
     #[builder]
     pub fn updater(&mut self, frequency: Duration) -> FeedUpdater {
         FeedUpdater::new(AnyFeed::AggregateFeed(self.clone()), frequency)
+    }
+
+    /// Add a filter.
+    pub(crate) fn add_filter(&mut self, filter: Filter) {
+        self.filters.push(filter);
+    }
+
+    /// Add a feed.
+    pub(crate) fn add_feed(&mut self, feed: impl Into<AnyFeed>) {
+        self.feeds.push(feed.into());
     }
 }
 
@@ -58,41 +103,7 @@ impl Into<AnyFeed> for AggregateFeed {
     }
 }
 
-#[derive(Clone)]
-pub struct Tag(String);
-
-#[derive(Clone)]
-pub struct Feed {
-    name: String,
-    url: String,
-    tags: Vec<Tag>,
-}
-
-impl Into<AnyFeed> for Feed {
-    fn into(self) -> AnyFeed {
-        AnyFeed::Feed(self)
-    }
-}
-
-#[derive(Clone)]
-enum AnyFeed {
-    AggregateFeed(AggregateFeed),
-    Feed(Feed),
-}
-
-#[derive(Clone, Debug)]
-pub struct Entry {
-    title: String,
-    date: DateTime<Utc>,
-    author: String,
-    content: String,
-    url: String,
-}
-
-/// A filter is a function that takes an entry and returns true if it passes, or
-/// false if it fails.
-pub type Filter = fn(&Entry) -> bool;
-
+/// Updater for a feed.
 pub struct FeedUpdater {
     /// The feed being updated.
     feed: AnyFeed,
@@ -139,7 +150,6 @@ impl FeedUpdater {
         match feed {
             AnyFeed::Feed(feed) => {
                 FeedUpdater::raw_feed_get_entries(feed, sender).await;
-                // TODO - fetch, syndicate, parse
             }
             AnyFeed::AggregateFeed(feed) => {
                 // TODO - Parallelize this!
@@ -151,7 +161,11 @@ impl FeedUpdater {
                     FeedUpdater::feed_get_entries(subfeed, sender).await;
                 }
                 while let Ok(entry) = receiver.try_recv() {
-                    if feed.filters.iter().all(|filter| filter(&entry)) {
+                    if feed
+                        .filters
+                        .iter()
+                        .all(|filter| filter(&AnyFeed::AggregateFeed(feed.clone()), &entry))
+                    {
                         sender.send(entry).ok();
                     }
                 }
@@ -165,7 +179,6 @@ impl FeedUpdater {
     ) -> Result<(), ()> {
         if let Ok(req_result) = reqwest::get(feed.url.as_str()).await {
             if let Ok(body) = req_result.text().await {
-                // println!("Body: {}", body);
                 if let Ok(feed) = syndication::Feed::from_str(body.as_str()) {
                     match feed {
                         syndication::Feed::Atom(atom_feed) => {

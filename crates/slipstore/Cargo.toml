@@ -1,5 +1,6 @@
 [package]
-name = "pipes"
+name = "slipstore"
+description = "`slipfeed` persistent storage."
 version = "0.1.0"
 edition = "2021"
 
@@ -11,3 +12,5 @@ futures = { workspace = true }
 reqwest = { workspace = true }
 syndication = { workspace = true }
 tokio = { workspace = true }
+
+slipfeed = { path = "../slipfeed" }
