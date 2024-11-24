@@ -2,6 +2,7 @@
 
 use chrono::DateTime;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 
 /// An entry from a feed.
 #[derive(Clone, Debug)]
@@ -15,8 +16,8 @@ pub struct Entry {
 }
 
 /// Tags for feeds.
-#[derive(Clone, Debug)]
-pub struct Tag(String);
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Tag(pub String);
 
 impl Into<Tag> for String {
     fn into(self) -> Tag {

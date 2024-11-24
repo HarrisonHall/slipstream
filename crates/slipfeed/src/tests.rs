@@ -1,49 +1,35 @@
 use super::*;
 
-use std::iter::{Chain, Sum};
-
 use chrono::Duration;
 
 #[tokio::test]
 async fn no_panics() {
-    let mut feed = AggregateFeed::new();
+    // let mut feed = AggregateFeed::new();
+    let mut updater = FeedUpdater::new(Duration::seconds(10));
 
     let mut rss_feed = AggregateFeed::new();
-    rss_feed.add_feed(RawFeed {
-        name: "Foo".into(),
+    let hacker_news = updater.add_feed(RawFeed {
         url: "https://news.ycombinator.com/rss".into(),
         tags: vec!["Hacking".into(), "RSS".into()],
     });
-    rss_feed
-        .updater()
-        .frequency(Duration::seconds(1))
-        .call()
-        .update()
-        .await;
+    rss_feed.add_feed(hacker_news);
+    updater.add_feed(rss_feed);
 
     let mut atom_feed = AggregateFeed::new();
-    atom_feed.add_feed(RawFeed {
-        name: "Bar".into(),
+    let newsboat = updater.add_feed(RawFeed {
         // url: "https://xkcd.com/atom.xml".into(),
         url: "https://newsboat.org/news.atom".into(),
         tags: vec!["Reader".into(), "ATOM".into()],
     });
-    atom_feed
-        .updater()
-        .frequency(Duration::seconds(1))
-        .call()
-        .update()
-        .await;
+    atom_feed.add_feed(newsboat);
+    updater.add_feed(atom_feed);
 
-    feed.add_feed(rss_feed.clone());
-    feed.add_feed(atom_feed.clone());
-    let mut updater = feed.updater().frequency(Duration::seconds(1)).call();
     updater.update().await;
     updater.entries.iter().for_each(|entry| {
         println!("Entry: {:?}", entry);
     });
 
-    Feed::from(atom_feed).get_tags().for_each(|tag| {
-        println!("Tag: {:?}", tag);
-    });
+    // Feed::from(atom_feed).get_tags().for_each(|tag| {
+    //     println!("Tag: {:?}", tag);
+    // });
 }
