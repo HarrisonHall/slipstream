@@ -32,16 +32,15 @@ impl Config {
             // Add raw feeds.
             for (name, feed) in feeds {
                 if let Feed::Raw { url, tags, filters } = feed {
-                    let id = updater.updater.add_feed(slipfeed::RawFeed {
-                        url: url.clone(),
-                        tags: tags
-                            .clone()
-                            .unwrap_or_else(|| Vec::new())
-                            .iter()
-                            .map(|tag| slipfeed::Tag(tag.clone()))
-                            .collect(),
-                        filters: filters.get_filters(),
-                    });
+                    let mut feed = slipfeed::Feed::from_raw(&url);
+                    tags.clone().unwrap_or_else(|| Vec::new()).iter().for_each(
+                        |tag| feed.add_tag(slipfeed::Tag(tag.clone())),
+                    );
+                    filters
+                        .get_filters()
+                        .iter()
+                        .for_each(|f| feed.add_filter(f.clone()));
+                    let id = updater.updater.add_feed(feed);
                     updater.feeds.insert(name.clone(), id);
                     println!("Added feed {}", name);
                 }
@@ -69,22 +68,27 @@ impl Config {
                         filters,
                     } = feed
                     {
-                        let mut agg = slipfeed::AggregateFeed::new();
-                        agg.tags = tags
-                            .clone()
-                            .unwrap_or_else(|| Vec::new())
-                            .iter()
-                            .map(|tag| slipfeed::Tag(tag.clone()))
-                            .collect();
-                        agg.filters = filters.get_filters();
-                        for feed in feeds {
-                            if let Some(id) = updater.feeds.get(feed) {
-                                agg.feeds.push(*id);
+                        let mut agg_feeds: Vec<slipfeed::FeedId> = Vec::new();
+                        for subfeed in feeds {
+                            if let Some(id) = updater.feeds.get(subfeed) {
+                                agg_feeds.push(*id);
                             } else {
                                 continue 'feed_loop;
                             }
                         }
-                        let id = updater.updater.add_feed(agg);
+                        let mut feed =
+                            slipfeed::Feed::from_aggregate(agg_feeds);
+                        tags.clone()
+                            .unwrap_or_else(|| Vec::new())
+                            .iter()
+                            .for_each(|tag| {
+                                feed.add_tag(slipfeed::Tag(tag.clone()))
+                            });
+                        filters
+                            .get_filters()
+                            .iter()
+                            .for_each(|f| feed.add_filter(f.clone()));
+                        let id = updater.updater.add_feed(feed);
                         updater.feeds.insert(name.clone(), id);
                         println!("Added feed {}", name);
                     }

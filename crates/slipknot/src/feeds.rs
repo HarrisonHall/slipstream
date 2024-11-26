@@ -61,25 +61,24 @@ impl Updater {
         let mut syn = atom::FeedBuilder::default();
         syn.title(feed)
             .author(atom::PersonBuilder::default().name("slipknot").build());
-        // if let Some(id) = self.feeds.get(feed) {
-        // TODO - actually map entries by feed
-        for entry in &self.updater.entries {
-            syn.entry(
-                atom::EntryBuilder::default()
-                    .title(entry.title.clone())
-                    .summary(Some(entry.content.clone().into()))
-                    .link(
-                        atom::LinkBuilder::default()
-                            .href(entry.url.clone())
-                            .title(entry.title.clone())
-                            .build(),
-                    )
-                    .published(Some(entry.date.clone().into()))
-                    .updated(entry.date.clone())
-                    .build(),
-            );
+        if let Some(id) = self.feeds.get(feed) {
+            for entry in self.updater.from_feed(*id) {
+                syn.entry(
+                    atom::EntryBuilder::default()
+                        .title(entry.title.clone())
+                        .summary(Some(entry.content.clone().into()))
+                        .link(
+                            atom::LinkBuilder::default()
+                                .href(entry.url.clone())
+                                .title(entry.title.clone())
+                                .build(),
+                        )
+                        .published(Some(entry.date.clone().into()))
+                        .updated(entry.date.clone())
+                        .build(),
+                );
+            }
         }
-        // }
         syn.build().to_string()
     }
 }
