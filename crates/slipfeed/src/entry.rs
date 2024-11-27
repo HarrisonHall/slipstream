@@ -17,7 +17,20 @@ pub struct Entry {
     pub content: String,
     pub url: String,
     // pub tags: Vec<Tag>,
+    // pub feeds: Vec<FeedId>,
 }
+
+// impl PartialEq for Entry {
+//     fn eq(&self, other: &Entry) -> bool {
+//         self.title.eq(&other.title)
+//             && self.date.eq(&other.date)
+//             && self.author.eq(&other.author)
+//             && self.content.eq(&other.content)
+//             && self.url.eq(&other.url)
+//     }
+// }
+
+// impl Eq for Entry {}
 
 /// Tags for feeds.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -39,15 +52,7 @@ impl Into<Tag> for &str {
 pub struct EntrySetItem {
     pub entry: Entry,
     pub feeds: HashSet<FeedId>,
-}
-
-impl EntrySetItem {
-    fn new(entry: Entry) -> Self {
-        Self {
-            entry,
-            feeds: HashSet::new(),
-        }
-    }
+    pub tags: HashSet<Tag>,
 }
 
 impl PartialOrd for EntrySetItem {
@@ -77,16 +82,20 @@ impl EntrySet {
         self.entries.clear();
     }
 
-    pub fn add(&mut self, entry: Entry, original_feed: FeedId) {
+    pub fn add(
+        &mut self,
+        entry: Entry,
+        feeds: HashSet<FeedId>,
+        tags: HashSet<Tag>,
+    ) {
         for other in self.entries.iter_mut() {
             if other.entry == entry {
-                other.feeds.insert(original_feed);
+                other.feeds.extend(feeds);
+                other.tags.extend(tags);
                 return;
             }
         }
-        let mut item = EntrySetItem::new(entry);
-        item.feeds.insert(original_feed);
-        self.entries.push(item);
+        self.entries.push(EntrySetItem { entry, feeds, tags });
     }
 
     pub fn sort(&mut self) {
@@ -130,20 +139,18 @@ impl<'a> Iterator for EntrySetIter<'a> {
             } => {
                 for entry in &updater.entries.entries[*next..] {
                     *next += 1;
-                    if updater.entry_in_feed(&entry, *feed) {
-                        // if entry.feeds.contains(feed) {
+                    if entry.feeds.contains(feed) {
                         return Some(entry.entry.clone());
                     }
                 }
             }
             EntrySetIter::Tag { updater, tag, next } => {
-                // TODO
-                // for entry in &updater.entries.entries[*next..] {
-                //     *next += 1;
-                //     if entry.entry.tags.contains(tag) {
-                //         return Some(entry.entry.clone());
-                //     }
-                // }
+                for entry in &updater.entries.entries[*next..] {
+                    *next += 1;
+                    if entry.tags.contains(tag) {
+                        return Some(entry.entry.clone());
+                    }
+                }
                 return None;
             }
         }

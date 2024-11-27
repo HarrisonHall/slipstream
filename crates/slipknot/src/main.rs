@@ -59,6 +59,8 @@ async fn main() -> Result<(), Error> {
 
     // Create server.
     let app = axum::Router::new()
+        .route("/", axum::routing::get(get_all))
+        .route("/all", axum::routing::get(get_all))
         .route("/feed/*feed", axum::routing::get(get_feed))
         .route("/tag/*tag", axum::routing::get(get_tag))
         .with_state(updater);
@@ -74,6 +76,16 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
+async fn get_all(
+    axum::extract::State(updater): axum::extract::State<Arc<Mutex<Updater>>>,
+) -> impl axum::response::IntoResponse {
+    let updater = updater.lock().await;
+    return (
+        [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
+        updater.syndicate_all(),
+    );
+}
+
 async fn get_feed(
     axum::extract::State(updater): axum::extract::State<Arc<Mutex<Updater>>>,
     uri: axum::http::Uri,
@@ -82,11 +94,18 @@ async fn get_feed(
     let updater = updater.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
-        updater.syndicate(feed),
+        updater.syndicate_feed(feed),
     );
 }
 
-async fn get_tag(uri: axum::http::Uri) -> String {
+async fn get_tag(
+    axum::extract::State(updater): axum::extract::State<Arc<Mutex<Updater>>>,
+    uri: axum::http::Uri,
+) -> impl axum::response::IntoResponse {
     let tag = &uri.path()["/tag/".len()..];
-    return format!("Hello tag: {tag}");
+    let updater = updater.lock().await;
+    return (
+        [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
+        updater.syndicate_tag(tag),
+    );
 }

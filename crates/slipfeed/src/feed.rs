@@ -184,7 +184,16 @@ impl FeedUpdater {
         }
         // Gather.
         while let Ok((entry, feed)) = receiver.try_recv() {
-            self.entries.add(entry, feed);
+            let mut feeds: HashSet<FeedId> = HashSet::new();
+            let mut tags: HashSet<Tag> = HashSet::new();
+            feeds.insert(feed);
+            for (other_id, other_feed) in self.feeds.iter() {
+                if self.entry_in_feed(&entry, feed, *other_id, 10) {
+                    feeds.insert(*other_id);
+                    tags.extend(other_feed.tags.clone());
+                }
+            }
+            self.entries.add(entry, feeds, tags);
         }
         self.entries.sort();
     }
@@ -256,6 +265,8 @@ impl FeedUpdater {
                                                 .to_string()
                                         },
                                     ),
+                                    // tags: Vec::new(),
+                                    // feeds: Vec::new(),
                                 };
                                 sender.send((parsed, *id)).ok();
                             }
@@ -288,6 +299,8 @@ impl FeedUpdater {
                                         .unwrap_or("")
                                         .to_string(),
                                     url: entry.link().unwrap_or("").to_string(),
+                                    // tags: Vec::new(),
+                                    // feeds: Vec::new(),
                                 };
                                 sender.send((parsed, *id)).ok();
                             }
@@ -298,35 +311,70 @@ impl FeedUpdater {
         }
     }
 
-    // TODO: Check cycles via max depth!
-    pub fn entry_in_feed(&self, entry: &EntrySetItem, id: FeedId) -> bool {
-        if let Some(feed) = self.feeds.get(&id) {
-            if entry.feeds.contains(&id) {
-                if feed.passes_filters(&entry.entry) {
-                    return true;
-                }
+    pub fn entry_in_feed(
+        &self,
+        entry: &Entry,
+        original: FeedId,
+        other: FeedId,
+        remaining_depth: usize,
+    ) -> bool {
+        if remaining_depth == 0 {
+            return false;
+        }
+        if let Some(original_feed) = self.feeds.get(&original) {
+            if original == other {
+                return original_feed.passes_filters(entry);
             }
-            return match &feed.underlying {
-                UnderlyingFeed::RawFeed(_) => false,
-                UnderlyingFeed::AggregateFeed(agg) => {
-                    agg.feeds.iter().any(|f| self.entry_in_feed(entry, *f))
-                }
-            };
+            if let Some(other_feed) = self.feeds.get(&other) {
+                return match &other_feed.underlying {
+                    UnderlyingFeed::RawFeed(_) => false,
+                    UnderlyingFeed::AggregateFeed(agg) => {
+                        agg.feeds.iter().any(|f| {
+                            let mut in_downfeed = agg.feeds.contains(&original);
+                            in_downfeed |= self.entry_in_feed(
+                                entry,
+                                original,
+                                *f,
+                                remaining_depth - 1,
+                            );
+                            in_downfeed && other_feed.passes_filters(entry)
+                        })
+                    }
+                };
+            }
         }
         false
     }
 
-    pub fn iter<'a>(&'a mut self) -> EntrySetIter {
+    // TODO: Check cycles via max depth!
+    // pub fn entry_in_feed(&self, entry: &EntrySetItem, id: FeedId) -> bool {
+    //     if let Some(feed) = self.feeds.get(&id) {
+    //         if entry.feeds.contains(&id) {
+    //             if feed.passes_filters(&entry.entry) {
+    //                 return true;
+    //             }
+    //         }
+    //         return match &feed.underlying {
+    //             UnderlyingFeed::RawFeed(_) => false,
+    //             UnderlyingFeed::AggregateFeed(agg) => {
+    //                 agg.feeds.iter().any(|f| self.entry_in_feed(entry, *f))
+    //             }
+    //         };
+    //     }
+    //     false
+    // }
+
+    pub fn iter<'a>(&'a self) -> EntrySetIter {
         return EntrySetIter::All {
             updater: self,
             next: 0,
         };
     }
 
-    pub fn with_tags<'a>(&'a mut self, tag: Tag) -> EntrySetIter {
+    pub fn with_tags<'a>(&'a self, tag: impl Into<Tag>) -> EntrySetIter {
         return EntrySetIter::Tag {
             updater: self,
-            tag,
+            tag: tag.into(),
             next: 0,
         };
     }
