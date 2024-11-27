@@ -35,13 +35,9 @@ async fn main() -> Result<(), Error> {
     // Parse cli.
     let cli = Cli::parse();
     // Parse config.
-    let config = cli.parse_config().expect("Unable to parse config.");
+    let config = Arc::new(cli.parse_config().expect("Unable to parse config."));
 
-    let mut with_feed = String::new();
-    config.serialize(toml::Serializer::new(&mut with_feed)).ok();
-    println!("with_feed\n{}", with_feed);
-
-    // Allow updates to run in the background
+    // Allow updates to run in the background.
     let updater = Arc::new(Mutex::new(config.updater()));
     {
         let updater = updater.clone();
@@ -63,7 +59,11 @@ async fn main() -> Result<(), Error> {
         .route("/all", axum::routing::get(get_all))
         .route("/feed/*feed", axum::routing::get(get_feed))
         .route("/tag/*tag", axum::routing::get(get_tag))
-        .with_state(updater);
+        .route("/config", axum::routing::get(get_config))
+        .with_state(Arc::new(SFState {
+            updater,
+            config: config.clone(),
+        }));
     let port = cli.port.unwrap_or(config.port.unwrap_or(DEFAULT_PORT));
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
         .await
@@ -76,10 +76,16 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-async fn get_all(
-    axum::extract::State(updater): axum::extract::State<Arc<Mutex<Updater>>>,
-) -> impl axum::response::IntoResponse {
-    let updater = updater.lock().await;
+use axum::extract::State;
+#[derive(Clone)]
+struct SFState {
+    updater: Arc<Mutex<Updater>>,
+    config: Arc<Config>,
+}
+type StateType = axum::extract::State<Arc<SFState>>;
+
+async fn get_all(State(state): StateType) -> impl axum::response::IntoResponse {
+    let updater = state.updater.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
         updater.syndicate_all(),
@@ -87,11 +93,11 @@ async fn get_all(
 }
 
 async fn get_feed(
-    axum::extract::State(updater): axum::extract::State<Arc<Mutex<Updater>>>,
+    State(state): StateType,
     uri: axum::http::Uri,
 ) -> impl axum::response::IntoResponse {
     let feed = &uri.path()["/feed/".len()..];
-    let updater = updater.lock().await;
+    let updater = state.updater.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
         updater.syndicate_feed(feed),
@@ -99,13 +105,27 @@ async fn get_feed(
 }
 
 async fn get_tag(
-    axum::extract::State(updater): axum::extract::State<Arc<Mutex<Updater>>>,
+    State(state): StateType,
     uri: axum::http::Uri,
 ) -> impl axum::response::IntoResponse {
     let tag = &uri.path()["/tag/".len()..];
-    let updater = updater.lock().await;
+    let updater = state.updater.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
         updater.syndicate_tag(tag),
+    );
+}
+
+async fn get_config(
+    State(state): StateType,
+) -> impl axum::response::IntoResponse {
+    let mut with_feed = String::new();
+    state
+        .config
+        .serialize(toml::Serializer::new(&mut with_feed))
+        .ok();
+    return (
+        [(axum::http::header::CONTENT_TYPE, "application/toml")],
+        with_feed,
     );
 }

@@ -7,6 +7,18 @@ pub struct Config {
     pub update_delta_sec: Option<usize>,
     pub feeds: Option<HashMap<String, Feed>>,
     pub port: Option<u16>,
+    pub global: Option<Global>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Global {
+    filters: Option<Filters>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Filters {
+    #[serde(alias = "exclude-title-words")]
+    exclude_title_words: Option<Vec<String>>,
 }
 
 impl Default for Config {
@@ -15,6 +27,7 @@ impl Default for Config {
             update_delta_sec: None,
             feeds: None,
             port: None,
+            global: None,
         }
     }
 }
@@ -27,6 +40,7 @@ impl Config {
                     as i64,
             )),
             feeds: HashMap::new(),
+            global_filters: Vec::new(),
         };
         if let Some(feeds) = &self.feeds {
             // Add raw feeds.
@@ -94,6 +108,28 @@ impl Config {
                     }
                 }
                 remaining_loops -= 1;
+            }
+        }
+        // TODO: Move filters to filters file!
+        if let Some(global) = &self.global {
+            if let Some(filters) = &global.filters {
+                if let Some(exclusions) = &filters.exclude_title_words {
+                    let exclusions = Arc::new(exclusions.clone());
+                    updater.global_filters.push(Arc::new(
+                        move |_feed, entry| {
+                            for word in entry.title.split(" ") {
+                                let word = word.to_lowercase();
+                                for exclusion in exclusions.iter() {
+                                    let exclusion = exclusion.to_lowercase();
+                                    if word == exclusion {
+                                        return false;
+                                    }
+                                }
+                            }
+                            true
+                        },
+                    ));
+                }
             }
         }
         updater

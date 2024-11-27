@@ -50,6 +50,7 @@ impl Filters {
 pub struct Updater {
     pub updater: slipfeed::FeedUpdater,
     pub feeds: HashMap<String, slipfeed::FeedId>,
+    pub global_filters: Vec<slipfeed::Filter>,
 }
 
 trait EntryExt {
@@ -78,12 +79,19 @@ impl Updater {
         self.updater.update().await;
     }
 
+    pub fn passes_global_filters(&self, entry: &slipfeed::Entry) -> bool {
+        let feed = slipfeed::Feed::from_raw("");
+        self.global_filters.iter().all(|f| f(&feed, entry))
+    }
+
     pub fn syndicate_all(&self) -> String {
         let mut syn = atom::FeedBuilder::default();
         syn.title("All")
             .author(atom::PersonBuilder::default().name("slipknot").build());
         for entry in self.updater.iter() {
-            syn.entry(entry.as_atom());
+            if self.passes_global_filters(&entry) {
+                syn.entry(entry.as_atom());
+            }
         }
         syn.build().to_string()
     }
@@ -94,7 +102,9 @@ impl Updater {
             .author(atom::PersonBuilder::default().name("slipknot").build());
         if let Some(id) = self.feeds.get(feed) {
             for entry in self.updater.from_feed(*id) {
-                syn.entry(entry.as_atom());
+                if self.passes_global_filters(&entry) {
+                    syn.entry(entry.as_atom());
+                }
             }
         }
         syn.build().to_string()
@@ -105,7 +115,9 @@ impl Updater {
         syn.title(tag)
             .author(atom::PersonBuilder::default().name("slipknot").build());
         for entry in self.updater.with_tags(tag) {
-            syn.entry(entry.as_atom());
+            if self.passes_global_filters(&entry) {
+                syn.entry(entry.as_atom());
+            }
         }
         syn.build().to_string()
     }
