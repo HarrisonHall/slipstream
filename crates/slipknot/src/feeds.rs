@@ -19,34 +19,6 @@ pub enum Feed {
     },
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Filters {
-    #[serde(alias = "exclude-title-words")]
-    exclude_title_words: Option<Vec<String>>,
-}
-
-impl Filters {
-    pub fn get_filters(&self) -> Vec<slipfeed::Filter> {
-        let mut filters: Vec<slipfeed::Filter> = Vec::new();
-        if let Some(exclusions) = &self.exclude_title_words {
-            let exclusions = Arc::new(exclusions.clone());
-            filters.push(Arc::new(move |_feed, entry| {
-                for word in entry.title.split(" ") {
-                    let word = word.to_lowercase();
-                    for exclusion in exclusions.iter() {
-                        let exclusion = exclusion.to_lowercase();
-                        if word == exclusion {
-                            return false;
-                        }
-                    }
-                }
-                true
-            }));
-        }
-        filters
-    }
-}
-
 pub struct Updater {
     pub updater: slipfeed::FeedUpdater,
     pub feeds: HashMap<String, slipfeed::FeedId>,

@@ -14,11 +14,13 @@ use tokio::sync::Mutex;
 mod cli;
 mod config;
 mod feeds;
-mod tests;
+mod filters;
+// mod tests;
 
-use cli::Cli;
-use config::Config;
-use feeds::{Feed, Updater};
+use cli::*;
+use config::*;
+use feeds::*;
+use filters::*;
 
 const DEFAULT_CONFIG_DIR: &str = "~/.config/slipknot/slipknot.toml";
 const DEFAULT_PORT: u16 = 3000;

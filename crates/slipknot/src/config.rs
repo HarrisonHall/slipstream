@@ -15,12 +15,6 @@ pub struct Global {
     filters: Option<Filters>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Filters {
-    #[serde(alias = "exclude-title-words")]
-    exclude_title_words: Option<Vec<String>>,
-}
-
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -110,26 +104,10 @@ impl Config {
                 remaining_loops -= 1;
             }
         }
-        // TODO: Move filters to filters file!
+        // Add global filters.
         if let Some(global) = &self.global {
             if let Some(filters) = &global.filters {
-                if let Some(exclusions) = &filters.exclude_title_words {
-                    let exclusions = Arc::new(exclusions.clone());
-                    updater.global_filters.push(Arc::new(
-                        move |_feed, entry| {
-                            for word in entry.title.split(" ") {
-                                let word = word.to_lowercase();
-                                for exclusion in exclusions.iter() {
-                                    let exclusion = exclusion.to_lowercase();
-                                    if word == exclusion {
-                                        return false;
-                                    }
-                                }
-                            }
-                            true
-                        },
-                    ));
-                }
+                updater.global_filters.extend(filters.get_filters());
             }
         }
         updater
