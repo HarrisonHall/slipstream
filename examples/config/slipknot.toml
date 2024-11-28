@@ -1,0 +1,38 @@
+# slipknot example config
+
+# Root settings for the updater.
+update_delta_sec = 7200
+
+# Settings that apply to **everything**.
+[global]
+
+[global.filters]
+exclude-title-words = [
+  "llm",
+]
+exclude-content-words = [
+  "javascript",
+  "node",
+  "nodejs",
+]
+
+# Settings that apply to the all feed.
+[all]
+exclude-title-words = [
+  "foobar",
+]
+
+
+# Feed definitions.
+
+[feeds.hacking]
+feeds = ["hackernews", "ziglang"]
+
+[feeds.hackernews]
+url = "https://news.ycombinator.com/rss"
+tags = ["tech"]
+exclude-title-words = ["llm", "hiring"]
+
+[feeds.ziglang]
+url = "https://ziglang.org/devlog/index.xml"
+tags = ["blog", "zig", "tech"]
