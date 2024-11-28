@@ -13,3 +13,4 @@ reqwest = { workspace = true }
 serde = { workspace = true }
 syndication = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }

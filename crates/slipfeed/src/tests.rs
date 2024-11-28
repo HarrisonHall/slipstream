@@ -1,7 +1,5 @@
 use super::*;
 
-use chrono::Duration;
-
 #[tokio::test]
 async fn no_panics() {
     // let mut feed = AggregateFeed::new();

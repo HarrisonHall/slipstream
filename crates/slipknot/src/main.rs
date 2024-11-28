@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::{path::PathBuf, str::FromStr};
 
-use atom_syndication as atom;
+use atom_syndication::{self as atom, Link};
 use chrono::Duration;
 use clap::Parser;
 use resolve_path::PathResolveExt;
@@ -15,12 +15,14 @@ mod cli;
 mod config;
 mod feeds;
 mod filters;
+mod logging;
 // mod tests;
 
 use cli::*;
 use config::*;
 use feeds::*;
 use filters::*;
+use logging::*;
 
 const DEFAULT_CONFIG_DIR: &str = "~/.config/slipknot/slipknot.toml";
 const DEFAULT_PORT: u16 = 3000;
@@ -34,9 +36,9 @@ enum Error {
 /// Entry point for slipknot.
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Error> {
-    // Parse cli.
+    // Initial setup.
     let cli = Cli::parse();
-    // Parse config.
+    setup_logging(&cli);
     let config = Arc::new(cli.parse_config().expect("Unable to parse config."));
 
     // Allow updates to run in the background.
@@ -47,7 +49,6 @@ async fn main() -> Result<(), Error> {
             loop {
                 {
                     let mut guard = updater.lock().await;
-                    // println!("Updating...");
                     guard.update().await;
                 }
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
@@ -72,7 +73,7 @@ async fn main() -> Result<(), Error> {
         .expect(&format!("Unable to bind to port {}", port));
 
     // Serve.
-    println!("Serving feeds @ 0.0.0.0:{}", port);
+    tracing::info!("Serving feeds @ 0.0.0.0:{}", port);
     axum::serve(listener, app).await.expect("Error serving.");
 
     Ok(())
@@ -87,6 +88,7 @@ struct SFState {
 type StateType = axum::extract::State<Arc<SFState>>;
 
 async fn get_all(State(state): StateType) -> impl axum::response::IntoResponse {
+    tracing::debug!("/all");
     let updater = state.updater.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
@@ -98,6 +100,7 @@ async fn get_feed(
     State(state): StateType,
     uri: axum::http::Uri,
 ) -> impl axum::response::IntoResponse {
+    tracing::debug!("{}", uri.path());
     let feed = &uri.path()["/feed/".len()..];
     let updater = state.updater.lock().await;
     return (
@@ -110,6 +113,7 @@ async fn get_tag(
     State(state): StateType,
     uri: axum::http::Uri,
 ) -> impl axum::response::IntoResponse {
+    tracing::debug!("{}", uri.path());
     let tag = &uri.path()["/tag/".len()..];
     let updater = state.updater.lock().await;
     return (
@@ -121,6 +125,7 @@ async fn get_tag(
 async fn get_config(
     State(state): StateType,
 ) -> impl axum::response::IntoResponse {
+    tracing::debug!("/config");
     let mut with_feed = String::new();
     state
         .config

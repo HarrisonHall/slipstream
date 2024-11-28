@@ -42,6 +42,11 @@ impl EntryExt for slipfeed::Entry {
             )
             .published(Some(self.date.clone().into()))
             .updated(self.date.clone())
+            .author(
+                atom::PersonBuilder::default()
+                    .name(self.author.clone())
+                    .build(),
+            )
             .build()
     }
 }

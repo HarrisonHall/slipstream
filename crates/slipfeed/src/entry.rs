@@ -1,11 +1,5 @@
 //! Feed entry.
 
-use std::collections::HashSet;
-
-use chrono::DateTime;
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
-
 use super::*;
 
 /// An entry from a feed.
@@ -16,38 +10,9 @@ pub struct Entry {
     pub author: String,
     pub content: String,
     pub url: String,
-    // pub tags: Vec<Tag>,
-    // pub feeds: Vec<FeedId>,
 }
 
-// impl PartialEq for Entry {
-//     fn eq(&self, other: &Entry) -> bool {
-//         self.title.eq(&other.title)
-//             && self.date.eq(&other.date)
-//             && self.author.eq(&other.author)
-//             && self.content.eq(&other.content)
-//             && self.url.eq(&other.url)
-//     }
-// }
-
-// impl Eq for Entry {}
-
-/// Tags for feeds.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Tag(pub String);
-
-impl Into<Tag> for String {
-    fn into(self) -> Tag {
-        Tag(self)
-    }
-}
-
-impl Into<Tag> for &str {
-    fn into(self) -> Tag {
-        Tag(self.to_string())
-    }
-}
-
+/// Entry storage.
 #[derive(PartialEq, Eq)]
 pub struct EntrySetItem {
     pub entry: Entry,
@@ -67,21 +32,31 @@ impl Ord for EntrySetItem {
     }
 }
 
+/// Set of entries.
+/// Entries are ordered chronologically and can be iterated
+/// on based on tag/feed.
 pub struct EntrySet {
     entries: Vec<EntrySetItem>,
 }
 
 impl EntrySet {
+    /// Create new entry set.
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Clear all entries in the set.
     pub fn clear(&mut self) {
         self.entries.clear();
     }
 
+    /// Add/update an entry in the set.
     pub fn add(
         &mut self,
         entry: Entry,
@@ -98,12 +73,14 @@ impl EntrySet {
         self.entries.push(EntrySetItem { entry, feeds, tags });
     }
 
+    /// Sort entries in the set.
     pub fn sort(&mut self) {
         self.entries.sort();
         self.entries.reverse();
     }
 }
 
+/// Iterator type for pulling entries from the set.
 pub enum EntrySetIter<'a> {
     All {
         updater: &'a FeedUpdater,

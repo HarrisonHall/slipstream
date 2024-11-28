@@ -1,13 +1,9 @@
 //! Feed update handling.
 
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::str::FromStr;
 
 use async_recursion::async_recursion;
-use chrono::DateTime;
-use chrono::Duration;
-use chrono::Utc;
 
 use super::*;
 
@@ -47,6 +43,8 @@ impl FeedUpdater {
 
     /// Update a feed. Returns early if the frequency has not elapsed.
     pub async fn update(&mut self) {
+        let span = tracing::trace_span!("slipfeed::update");
+        let _enter = span.enter();
         let now = Utc::now();
         let last_check = self
             .last_update_check
@@ -54,18 +52,40 @@ impl FeedUpdater {
             .to_utc();
         // Return if too early for update.
         if now - last_check < self.freq {
+            tracing::trace!("Not time to update, skipping.");
             return;
         }
-        // Perform check.
+        // Perform updates.
         self.last_update_check = Some(now);
         self.entries.clear();
         let (sender, mut receiver) =
             tokio::sync::mpsc::unbounded_channel::<(Entry, FeedId)>();
-        // TODO: Parallelize.
-        for (id, feed) in &self.feeds {
-            self.feed_get_entries(&now, &feed, id, sender.clone()).await
+        {
+            tracing::info!("Updating all feeds.");
+            let mut set = tokio::task::JoinSet::new();
+            for (id, feed) in &self.feeds {
+                let sender = sender.clone();
+                let id = id.clone();
+                let feed = feed.clone();
+                set.spawn(async move {
+                    if let Err(_) = tokio::time::timeout(
+                        // TODO: Make duration customizable per-feed.
+                        tokio::time::Duration::from_secs(15),
+                        FeedUpdater::feed_get_entries(&now, &feed, &id, sender),
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            "Update timed out for {:?}",
+                            feed.underlying
+                        );
+                    }
+                });
+            }
+            set.join_all().await;
         }
-        // Gather.
+        // Gather entries.
+        tracing::info!("Gathering entries.");
         while let Ok((entry, feed)) = receiver.try_recv() {
             let mut feeds: HashSet<FeedId> = HashSet::new();
             let mut tags: HashSet<Tag> = HashSet::new();
@@ -79,12 +99,11 @@ impl FeedUpdater {
             self.entries.add(entry, feeds, tags);
         }
         self.entries.sort();
+        tracing::info!("{} entries gathered", self.entries.len());
     }
 
     /// Get entries from a specific feed.
-    #[async_recursion]
     async fn feed_get_entries(
-        &self,
         parse_time: &DateTime<Utc>,
         feed: &Feed,
         id: &FeedId,

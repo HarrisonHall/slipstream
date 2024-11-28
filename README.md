@@ -12,19 +12,24 @@ Feed aggregator, filterer, and combinator.
 ## Getting Started
 
 `slipknot` is a command-line application for serving feeds from existing feeds a
-la Yahoo Pipes.
+la Yahoo Pipes. A simple configuration file (e.g.
+[slipknot.toml](examples/slipknot.toml)) is used to define feeds, relationships,
+and filters.
 
-## TODO
+## Roadmap
 
 - `slipfeed`
+  - [ ] Improve generic `Entry` model and parsing
   - [ ] Improve update scheduler
-  - [ ] Check cycles and use loops instead of recursion
+  - [ ] Check cycles and use loops instead of recursion for feed relationships
   - [ ] Cache feeds and keep available during updates
   - [ ] Move update durations to be feed-specific
+  - [ ] Add synchronous interfaces
 - `slipknot`
   - [ ] Add more filters (regex/pomsky)
-  - [ ] Add terminal interface for viewing feeds
-  - [ ] Add terminal interface for viewing stream/ticker
+  - [ ] Add terminal interface for viewing feeds and a stream/ticker
+  - [ ] Add caching and make updates nonblocking
+  - [ ] Add feed import/export to/from opml
 - `slipstore`
   - [ ] Allow storing to sqlite database
   - [ ] Track reads

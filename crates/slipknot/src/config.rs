@@ -41,16 +41,17 @@ impl Config {
             for (name, feed) in feeds {
                 if let Feed::Raw { url, tags, filters } = feed {
                     let mut feed = slipfeed::Feed::from_raw(&url);
-                    tags.clone().unwrap_or_else(|| Vec::new()).iter().for_each(
-                        |tag| feed.add_tag(slipfeed::Tag(tag.clone())),
-                    );
+                    tags.clone()
+                        .unwrap_or_else(|| Vec::new())
+                        .iter()
+                        .for_each(|tag| feed.add_tag(tag.clone().into()));
                     filters
                         .get_filters()
                         .iter()
                         .for_each(|f| feed.add_filter(f.clone()));
                     let id = updater.updater.add_feed(feed);
                     updater.feeds.insert(name.clone(), id);
-                    println!("Added feed {}", name);
+                    tracing::debug!("Added feed {}", name);
                 }
             }
             // Add aggregate feeds.
@@ -59,11 +60,11 @@ impl Config {
                 if updater.feeds.len()
                     == self.feeds.iter().fold(0, |p, f| p + f.len())
                 {
-                    println!("Added all.");
+                    tracing::trace!("Added all.");
                     break 'add_loop;
                 }
                 if remaining_loops == 0 {
-                    println!("Feed cycles exist or a feed does not exist. Dropping remaining feeds.");
+                    tracing::warn!("Feed cycles exist or a feed does not exist. Dropping remaining feeds.");
                     break 'add_loop;
                 }
                 'feed_loop: for (name, feed) in feeds {
@@ -89,16 +90,14 @@ impl Config {
                         tags.clone()
                             .unwrap_or_else(|| Vec::new())
                             .iter()
-                            .for_each(|tag| {
-                                feed.add_tag(slipfeed::Tag(tag.clone()))
-                            });
+                            .for_each(|tag| feed.add_tag(tag.clone().into()));
                         filters
                             .get_filters()
                             .iter()
                             .for_each(|f| feed.add_filter(f.clone()));
                         let id = updater.updater.add_feed(feed);
                         updater.feeds.insert(name.clone(), id);
-                        println!("Added feed {}", name);
+                        tracing::debug!("Added feed {}", name);
                     }
                 }
                 remaining_loops -= 1;

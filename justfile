@@ -1,4 +1,4 @@
-# Slipstream justfile
+# Slipstream justfile.
 
 # List directives.
 [private]
@@ -13,13 +13,13 @@ setup:
 
 # Run debug slipknot.
 debug-slipknot:
-    cargo run --bin slipknot
+    cargo run --bin slipknot -- --debug
 
 # Run debug slipstream.
 debug-slipstream:
     dx serve
 
-# Build for many versions of linux via musl.
+# Build static release for many versions of linux via musl.
 build-many:
     # Req: rustup component add rust-std-x86_64-unknown-linux-musl
     cargo build --target x86_64-unknown-linux-musl --release

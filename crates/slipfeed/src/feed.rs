@@ -1,24 +1,13 @@
 //! Feed management.
 
-use std::collections::HashSet;
-use std::sync::Arc;
-
-use bon::bon;
-use chrono::DateTime;
-use chrono::Duration;
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
-
 use super::*;
 
-/// A filter is a function that takes a feed and entry and returns true if it passes, or
-/// false if it fails.
-// pub type Filter = fn(&Feed, &Entry) -> bool;
-pub type Filter = Arc<dyn Fn(&Feed, &Entry) -> bool + Send + Sync>;
-
+/// Id that represents a feed.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeedId(pub(crate) usize);
 
+/// Feed.
+#[derive(Clone)]
 pub struct Feed {
     pub(crate) underlying: UnderlyingFeed,
     pub(crate) tags: HashSet<Tag>,
@@ -27,7 +16,7 @@ pub struct Feed {
 
 // TODO: Should this be a trait?
 /// Any type of feed.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum UnderlyingFeed {
     AggregateFeed(AggregateFeed),
     RawFeed(RawFeed),
@@ -102,13 +91,13 @@ impl From<AggregateFeed> for UnderlyingFeed {
 }
 
 /// A raw feed is a direct feed from a url.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RawFeed {
     pub url: String,
 }
 
 /// An aggregate feed is a collection of other feeds and filters.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AggregateFeed {
     /// Other feeds in aggregate.
     pub feeds: Vec<FeedId>,
