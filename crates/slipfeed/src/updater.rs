@@ -248,24 +248,6 @@ impl FeedUpdater {
         false
     }
 
-    // TODO: Check cycles via max depth!
-    // pub fn entry_in_feed(&self, entry: &EntrySetItem, id: FeedId) -> bool {
-    //     if let Some(feed) = self.feeds.get(&id) {
-    //         if entry.feeds.contains(&id) {
-    //             if feed.passes_filters(&entry.entry) {
-    //                 return true;
-    //             }
-    //         }
-    //         return match &feed.underlying {
-    //             UnderlyingFeed::RawFeed(_) => false,
-    //             UnderlyingFeed::AggregateFeed(agg) => {
-    //                 agg.feeds.iter().any(|f| self.entry_in_feed(entry, *f))
-    //             }
-    //         };
-    //     }
-    //     false
-    // }
-
     pub fn iter<'a>(&'a self) -> EntrySetIter {
         return EntrySetIter::All {
             updater: self,

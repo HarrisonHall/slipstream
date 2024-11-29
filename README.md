@@ -1,22 +1,31 @@
 # Slipstream
 
-Feed aggregator, filterer, and combinator.
+Feed fetcher, filterer, and aggregator.
 
 ## Crates
 
-- `slipfeed` - Feed aggregator, filterer, and combinator.
+- `slipfeed` - Feed fetcher, filterer, and aggregator.
 - `slipknot` - Simple CLI `slipfeed` server.
 - `slipstore` - `slipfeed` persistent storage.
 - `slipstream` - UI for `slipfeed`, backed by `slipstore`.
 
 ## Getting Started
 
-`slipknot` is a command-line application for serving feeds from existing feeds a
-la Yahoo Pipes. A simple configuration file (e.g.
-[slipknot.toml](examples/slipknot.toml)) is used to define feeds, relationships,
-and filters.
+`slipknot` is a command-line application for serving filtered/aggregated feeds
+from existing feeds a la Yahoo Pipes. A simple configuration file (e.g.
+[slipknot.toml](examples/config/slipknot.toml)) is used to define feeds,
+relationships, and filters. While still a work-in-progress, running something
+like `slipknot --config <your-config.toml> --port <your-port>` will start a web
+server that exposes the following endpoints:
+
+- `/config` for viewing the config.
+- `/all` for viewing all entries.
+- `/feed/<feed_name>` for viewing a specific feed.
+- `/tag/<tag_name>` for viewing a feed for entries with a specific tag.
 
 ## Roadmap
+
+While `slipknot` is usable, these crates are far from complete.
 
 - `slipfeed`
   - [ ] Improve generic `Entry` model and parsing
@@ -24,14 +33,15 @@ and filters.
   - [ ] Check cycles and use loops instead of recursion for feed relationships
   - [ ] Cache feeds and keep available during updates
   - [ ] Move update durations to be feed-specific
-  - [ ] Add synchronous interfaces
+  - [ ] Add synchronous interfaces and move behind features
 - `slipknot`
-  - [ ] Add more filters (regex/pomsky)
+  - [ ] Add more filters (regex/pomsky, allowlists, etc.)
   - [ ] Add terminal interface for viewing feeds and a stream/ticker
   - [ ] Add caching and make updates nonblocking
   - [ ] Add feed import/export to/from opml
+  - [ ] Add optional log file
 - `slipstore`
-  - [ ] Allow storing to sqlite database
+  - [ ] Allow storing entries in a sqlite database
   - [ ] Track reads
 - `slipstream`
   - [ ] Design web interface

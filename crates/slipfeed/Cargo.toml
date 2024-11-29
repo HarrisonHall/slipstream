@@ -1,6 +1,6 @@
 [package]
 name = "slipfeed"
-description = "Feed aggregator, filterer, and combinator."
+description = "Feed fetcher, filterer, and aggregator."
 version = "0.1.0"
 edition = "2021"
 

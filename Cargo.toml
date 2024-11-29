@@ -14,7 +14,7 @@ authors = ["hachha <hachha@hachha.dev>"]
 keywords = []
 categories = []
 repository = "https://github.com/harrisonhall/slipstream"
-description = "Feed aggregator, filterer, and combinator."
+description = "Feed fetching, filtering, and combining utilities."
 readme = "README.md"
 rust-version = "1.82.0"
 
