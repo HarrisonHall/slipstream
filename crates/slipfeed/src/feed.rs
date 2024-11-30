@@ -22,7 +22,6 @@ pub(crate) enum UnderlyingFeed {
     RawFeed(RawFeed),
 }
 
-#[bon]
 impl Feed {
     /// Construct from raw feed.
     pub fn from_raw(url: impl AsRef<str>) -> Self {
@@ -42,19 +41,6 @@ impl Feed {
             underlying: AggregateFeed { feeds }.into(),
             tags: HashSet::new(),
             filters: Vec::new(),
-        }
-    }
-
-    #[builder]
-    fn builder(
-        underlying: impl Into<UnderlyingFeed>,
-        tags: HashSet<Tag>,
-        filters: Vec<Filter>,
-    ) -> Self {
-        Self {
-            underlying: underlying.into(),
-            tags,
-            filters,
         }
     }
 

@@ -3,8 +3,6 @@
 use std::collections::HashSet;
 use std::str::FromStr;
 
-use async_recursion::async_recursion;
-
 use super::*;
 
 /// Updater for feeds.
@@ -134,23 +132,20 @@ impl FeedUpdater {
                     match syn {
                         syndication::Feed::Atom(atom_feed) => {
                             for entry in atom_feed.entries() {
-                                let date = match DateTime::<chrono::FixedOffset>::parse_from_rfc3339(
-                                    entry.updated(),
-                                ) {
-                                    Ok(dt) => dt.to_utc(),
-                                    Err(_) => parse_time.clone(),
-                                };
-                                let parsed = Entry {
-                                    title: entry.title().to_string(),
-                                    date,
-                                    author: entry.authors().iter().fold(
+                                let parsed = EntryBuilder::new()
+                                    .title(entry.title().to_string())
+                                    .date(FeedUpdater::parse_time(
+                                        entry.updated(),
+                                        Some(parse_time),
+                                    ))
+                                    .author(entry.authors().iter().fold(
                                         "".to_string(),
                                         |acc, author| {
                                             format!("{} {}", acc, author.name())
                                                 .to_string()
                                         },
-                                    ),
-                                    content: entry.content().iter().fold(
+                                    ))
+                                    .content(entry.content().iter().fold(
                                         "".to_string(),
                                         |_, cont| {
                                             format!(
@@ -159,51 +154,42 @@ impl FeedUpdater {
                                             )
                                             .to_string()
                                         },
-                                    ),
-                                    url: entry.links().iter().fold(
+                                    ))
+                                    .url(entry.links().iter().fold(
                                         "".to_string(),
                                         |_, url| {
                                             format!("{}", url.href())
                                                 .to_string()
                                         },
-                                    ),
-                                    // tags: Vec::new(),
-                                    // feeds: Vec::new(),
-                                };
+                                    ))
+                                    .build();
                                 sender.send((parsed, *id)).ok();
                             }
                         }
                         syndication::Feed::RSS(rss_feed) => {
                             for entry in rss_feed.items {
-                                let date = match entry.pub_date() {
-                                    Some(dt) => {
-                                        match DateTime::<chrono::FixedOffset>::parse_from_rfc2822(
-                                            dt,
-                                        ) {
-                                            Ok(dt) => dt.to_utc(),
-                                            Err(_) => parse_time.clone(),
-                                        }
-                                    }
-                                    None => parse_time.clone(),
-                                };
-                                let parsed = Entry {
-                                    title: entry
-                                        .title()
-                                        .unwrap_or("")
-                                        .to_string(),
-                                    date,
-                                    author: entry
-                                        .author()
-                                        .unwrap_or("")
-                                        .to_string(),
-                                    content: entry
-                                        .content()
-                                        .unwrap_or("")
-                                        .to_string(),
-                                    url: entry.link().unwrap_or("").to_string(),
-                                    // tags: Vec::new(),
-                                    // feeds: Vec::new(),
-                                };
+                                let parsed = EntryBuilder::new()
+                                    .title(
+                                        entry.title().unwrap_or("").to_string(),
+                                    )
+                                    .date(FeedUpdater::parse_time(
+                                        entry.pub_date().unwrap_or(""),
+                                        Some(parse_time),
+                                    ))
+                                    .author(
+                                        entry
+                                            .author()
+                                            .unwrap_or("")
+                                            .to_string(),
+                                    )
+                                    .content(
+                                        entry
+                                            .content()
+                                            .unwrap_or("")
+                                            .to_string(),
+                                    )
+                                    .url(entry.link().unwrap_or("").to_string())
+                                    .build();
                                 sender.send((parsed, *id)).ok();
                             }
                         }
@@ -248,6 +234,7 @@ impl FeedUpdater {
         false
     }
 
+    /// Iterate all entries.
     pub fn iter<'a>(&'a self) -> EntrySetIter {
         return EntrySetIter::All {
             updater: self,
@@ -255,6 +242,7 @@ impl FeedUpdater {
         };
     }
 
+    /// Iterate all entries with a tag.
     pub fn with_tags<'a>(&'a self, tag: impl Into<Tag>) -> EntrySetIter {
         return EntrySetIter::Tag {
             updater: self,
@@ -263,11 +251,59 @@ impl FeedUpdater {
         };
     }
 
+    /// Iterate all entries from a feed.
     pub fn from_feed<'a>(&'a self, feed: FeedId) -> EntrySetIter {
         return EntrySetIter::Feed {
             updater: self,
             feed,
             next: 0,
         };
+    }
+
+    /// Attempt to parse time, defaulting to now or the current time.
+    fn parse_time(
+        date: impl AsRef<str>,
+        now: Option<&DateTime<Utc>>,
+    ) -> DateTime<Utc> {
+        // rfc3339
+        if let Ok(parsed) =
+            DateTime::<chrono::FixedOffset>::parse_from_rfc3339(date.as_ref())
+        {
+            return parsed.to_utc();
+        }
+        // rfc2822
+        if let Ok(parsed) =
+            DateTime::<chrono::FixedOffset>::parse_from_rfc2822(date.as_ref())
+        {
+            return parsed.to_utc();
+        }
+        // iso8601 (at least, try)
+        if let Ok(parsed) = chrono::NaiveDateTime::parse_from_str(
+            date.as_ref(),
+            "%Y-%m-%dT%H:%M:%SZ",
+        ) {
+            return DateTime::from_naive_utc_and_offset(parsed, Utc);
+        }
+        if let Ok(parsed) = chrono::NaiveDateTime::parse_from_str(
+            date.as_ref(),
+            "%Y-%m-%dT%H:%MZ",
+        ) {
+            return DateTime::from_naive_utc_and_offset(parsed, Utc);
+        }
+        if let Ok(parsed) =
+            chrono::NaiveDate::parse_from_str(date.as_ref(), "%Y-%m-%d")
+        {
+            if let Some(parsed) = parsed.and_hms_opt(0, 0, 0) {
+                return DateTime::from_naive_utc_and_offset(parsed, Utc);
+            }
+        }
+        // Otherwise, warn and use current time.
+        if !date.as_ref().is_empty() {
+            tracing::warn!("Invalid timestamp: `{}`", date.as_ref());
+        }
+        match now {
+            Some(now) => now.clone(),
+            None => Utc::now(),
+        }
     }
 }

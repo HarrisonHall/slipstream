@@ -32,19 +32,19 @@ trait EntryExt {
 impl EntryExt for slipfeed::Entry {
     fn as_atom(&self) -> atom::Entry {
         atom::EntryBuilder::default()
-            .title(self.title.clone())
-            .summary(Some(self.content.clone().into()))
+            .title(self.title().clone())
+            .summary(Some(self.content().clone().into()))
             .link(
                 atom::LinkBuilder::default()
-                    .href(self.url.clone())
-                    .title(self.title.clone())
+                    .href(self.url().clone())
+                    .title(self.title().clone())
                     .build(),
             )
-            .published(Some(self.date.clone().into()))
-            .updated(self.date.clone())
+            .published(Some(self.date().clone().into()))
+            .updated(self.date().clone())
             .author(
                 atom::PersonBuilder::default()
-                    .name(self.author.clone())
+                    .name(self.author().clone())
                     .build(),
             )
             .build()

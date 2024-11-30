@@ -20,7 +20,6 @@ rust-version = "1.82.0"
 
 [workspace.dependencies]
 atom_syndication = "0.12"
-bon = "3"
 chrono = { version = "0.4", features = ["serde"] }
 clap = {version = "4.5", features = ["derive"] }
 futures = "0.3"

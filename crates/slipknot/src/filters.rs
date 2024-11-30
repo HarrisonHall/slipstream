@@ -30,7 +30,7 @@ fn exclude_title_words(
     if let Some(exclusions) = &exclusions {
         let exclusions = Arc::new(exclusions.clone());
         return Some(Arc::new(move |_feed, entry| {
-            for word in entry.title.split(" ") {
+            for word in entry.title().split(" ") {
                 let word = word.to_lowercase();
                 for exclusion in exclusions.iter() {
                     let exclusion = exclusion.to_lowercase();
@@ -51,7 +51,7 @@ fn exclude_content_words(
     if let Some(exclusions) = &exclusions {
         let exclusions = Arc::new(exclusions.clone());
         return Some(Arc::new(move |_feed, entry| {
-            for word in entry.content.split(" ") {
+            for word in entry.content().split(" ") {
                 let word = word.to_lowercase();
                 for exclusion in exclusions.iter() {
                     let exclusion = exclusion.to_lowercase();

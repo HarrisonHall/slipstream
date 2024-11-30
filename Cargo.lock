@@ -127,17 +127,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-recursion"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b43422f69d8ff38f95f1b2bb76517c91589a924d1559a0e935d7c8ce0274c11"
-dependencies = [
- "proc-macro2",
- "quote 1.0.36",
- "syn 2.0.87",
-]
-
-[[package]]
 name = "async-task"
 version = "4.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -337,31 +326,6 @@ dependencies = [
  "futures-io",
  "futures-lite",
  "piper",
-]
-
-[[package]]
-name = "bon"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65b4408cb90c75f462c2428254f2a687c399d1feb22ebdc7511889d07be6cab0"
-dependencies = [
- "bon-macros",
- "rustversion",
-]
-
-[[package]]
-name = "bon-macros"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfc5494814aa273050386f95a7d1fa36dcc677fc796bffe54f34659678335bc0"
-dependencies = [
- "darling 0.20.10",
- "ident_case",
- "prettyplease",
- "proc-macro2",
- "quote 1.0.36",
- "rustversion",
- "syn 2.0.87",
 ]
 
 [[package]]
@@ -3081,8 +3045,6 @@ dependencies = [
 name = "slipfeed"
 version = "0.1.0"
 dependencies = [
- "async-recursion",
- "bon",
  "chrono",
  "futures",
  "reqwest",
@@ -3123,7 +3085,6 @@ dependencies = [
 name = "slipstream"
 version = "0.1.0"
 dependencies = [
- "bon",
  "dioxus",
  "dioxus-logger",
  "regex",
