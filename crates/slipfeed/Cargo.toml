@@ -9,6 +9,8 @@ chrono = { workspace = true }
 futures = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
-syndication = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+
+atom_syndication = { workspace = true }
+rss = "2.0"

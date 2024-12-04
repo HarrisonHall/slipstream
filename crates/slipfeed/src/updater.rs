@@ -1,7 +1,6 @@
 //! Feed update handling.
 
 use std::collections::HashSet;
-use std::str::FromStr;
 
 use super::*;
 
@@ -119,7 +118,6 @@ impl FeedUpdater {
     }
 
     /// Get entries from a raw feed.
-    /// TODO: Replace syndication with just checking RSS, ATOM, etc in order.
     async fn raw_feed_get_entries(
         parse_time: &DateTime<Utc>,
         feed: &RawFeed,
@@ -128,73 +126,59 @@ impl FeedUpdater {
     ) {
         if let Ok(req_result) = reqwest::get(feed.url.as_str()).await {
             if let Ok(body) = req_result.text().await {
-                if let Ok(syn) = syndication::Feed::from_str(body.as_str()) {
-                    match syn {
-                        syndication::Feed::Atom(atom_feed) => {
-                            for entry in atom_feed.entries() {
-                                let parsed = EntryBuilder::new()
-                                    .title(entry.title().to_string())
-                                    .date(FeedUpdater::parse_time(
-                                        entry.updated(),
-                                        Some(parse_time),
-                                    ))
-                                    .author(entry.authors().iter().fold(
-                                        "".to_string(),
-                                        |acc, author| {
-                                            format!("{} {}", acc, author.name())
-                                                .to_string()
-                                        },
-                                    ))
-                                    .content(entry.content().iter().fold(
-                                        "".to_string(),
-                                        |_, cont| {
-                                            format!(
-                                                "{}",
-                                                cont.value().unwrap_or("")
-                                            )
-                                            .to_string()
-                                        },
-                                    ))
-                                    .url(entry.links().iter().fold(
-                                        "".to_string(),
-                                        |_, url| {
-                                            format!("{}", url.href())
-                                                .to_string()
-                                        },
-                                    ))
-                                    .build();
-                                sender.send((parsed, *id)).ok();
-                            }
-                        }
-                        syndication::Feed::RSS(rss_feed) => {
-                            for entry in rss_feed.items {
-                                let parsed = EntryBuilder::new()
-                                    .title(
-                                        entry.title().unwrap_or("").to_string(),
-                                    )
-                                    .date(FeedUpdater::parse_time(
-                                        entry.pub_date().unwrap_or(""),
-                                        Some(parse_time),
-                                    ))
-                                    .author(
-                                        entry
-                                            .author()
-                                            .unwrap_or("")
-                                            .to_string(),
-                                    )
-                                    .content(
-                                        entry
-                                            .content()
-                                            .unwrap_or("")
-                                            .to_string(),
-                                    )
-                                    .url(entry.link().unwrap_or("").to_string())
-                                    .build();
-                                sender.send((parsed, *id)).ok();
-                            }
-                        }
+                let body = body.as_str();
+                if let Ok(atom_feed) = body.parse::<atom_syndication::Feed>() {
+                    for entry in atom_feed.entries() {
+                        let parsed = EntryBuilder::new()
+                            .title(entry.title().to_string())
+                            .date(entry.updated().to_utc())
+                            .author(entry.authors().iter().fold(
+                                "".to_string(),
+                                |acc, author| {
+                                    format!("{} {}", acc, author.name())
+                                        .to_string()
+                                },
+                            ))
+                            .content(entry.content().iter().fold(
+                                "".to_string(),
+                                |_, cont| {
+                                    format!("{}", cont.value().unwrap_or(""))
+                                        .to_string()
+                                },
+                            ))
+                            .url(
+                                entry.links().iter().fold(
+                                    "".to_string(),
+                                    |_, url| {
+                                        format!("{}", url.href()).to_string()
+                                    },
+                                ),
+                            )
+                            .build();
+                        sender.send((parsed, *id)).ok();
                     }
+                    return;
                 }
+                if let Ok(rss_feed) = body.parse::<rss::Channel>() {
+                    for entry in rss_feed.items {
+                        let parsed = EntryBuilder::new()
+                            .title(entry.title().unwrap_or("").to_string())
+                            .date(FeedUpdater::parse_time(
+                                entry.pub_date().unwrap_or(""),
+                                Some(parse_time),
+                            ))
+                            .author(entry.author().unwrap_or("").to_string())
+                            .content(entry.content().unwrap_or("").to_string())
+                            .url(entry.link().unwrap_or("").to_string())
+                            .build();
+                        sender.send((parsed, *id)).ok();
+                    }
+                    return;
+                }
+                tracing::warn!(
+                    "Unable to parse feed {:?} as atom or rss",
+                    feed
+                );
             }
         }
     }
