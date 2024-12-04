@@ -36,7 +36,6 @@ While `slipknot` is usable, these crates are far from complete.
   - [ ] Add synchronous interfaces and move behind features
 - `slipknot`
   - [ ] Add more filters (regex/pomsky, allowlists, etc.)
-  - [ ] Add terminal interface for viewing feeds and a stream/ticker
   - [ ] Add caching and make updates nonblocking
   - [ ] Add feed import/export to/from opml
   - [ ] Add optional log file

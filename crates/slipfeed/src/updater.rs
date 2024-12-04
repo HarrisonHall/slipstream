@@ -14,7 +14,7 @@ pub struct FeedUpdater {
     /// Update frequency.
     freq: Duration,
     /// Current entries.
-    pub entries: EntrySet,
+    entries: EntrySet,
     /// Next feed id.
     next_feed_id: usize,
 }
@@ -237,7 +237,7 @@ impl FeedUpdater {
     /// Iterate all entries.
     pub fn iter<'a>(&'a self) -> EntrySetIter {
         return EntrySetIter::All {
-            updater: self,
+            set: &self.entries,
             next: 0,
         };
     }
@@ -245,7 +245,7 @@ impl FeedUpdater {
     /// Iterate all entries with a tag.
     pub fn with_tags<'a>(&'a self, tag: impl Into<Tag>) -> EntrySetIter {
         return EntrySetIter::Tag {
-            updater: self,
+            set: &self.entries,
             tag: tag.into(),
             next: 0,
         };
@@ -254,7 +254,7 @@ impl FeedUpdater {
     /// Iterate all entries from a feed.
     pub fn from_feed<'a>(&'a self, feed: FeedId) -> EntrySetIter {
         return EntrySetIter::Feed {
-            updater: self,
+            set: &self.entries,
             feed,
             next: 0,
         };
