@@ -127,6 +127,7 @@ impl FeedUpdater {
         if let Ok(req_result) = reqwest::get(feed.url.as_str()).await {
             if let Ok(body) = req_result.text().await {
                 let body = body.as_str();
+                // TODO: summary vs content, images
                 if let Ok(atom_feed) = body.parse::<atom_syndication::Feed>() {
                     for entry in atom_feed.entries() {
                         let parsed = EntryBuilder::new()
@@ -161,6 +162,7 @@ impl FeedUpdater {
                 }
                 if let Ok(rss_feed) = body.parse::<rss::Channel>() {
                     for entry in rss_feed.items {
+                        // entry.enclosure.unwrap().url;  // potentially, image-- check mime type?
                         let parsed = EntryBuilder::new()
                             .title(entry.title().unwrap_or("").to_string())
                             .date(FeedUpdater::parse_time(
