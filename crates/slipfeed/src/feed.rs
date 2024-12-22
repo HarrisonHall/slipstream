@@ -55,7 +55,7 @@ impl Feed {
     }
 
     /// Get tags for a feed.
-    pub fn get_tags<'a>(&'a self) -> Box<dyn Iterator<Item = &Tag> + 'a> {
+    pub fn get_tags<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Tag> + 'a> {
         return Box::new(self.tags.iter());
     }
 
@@ -96,6 +96,7 @@ impl AggregateFeed {
     }
 
     /// Add a feed.
+    #[allow(dead_code)]
     pub(crate) fn add_feed(&mut self, feed: FeedId) {
         self.feeds.push(feed);
     }

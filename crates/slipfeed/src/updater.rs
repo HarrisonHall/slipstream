@@ -219,7 +219,7 @@ impl FeedUpdater {
     }
 
     /// Iterate all entries.
-    pub fn iter<'a>(&'a self) -> EntrySetIter {
+    pub fn iter<'a>(&'a self) -> EntrySetIter<'a> {
         return EntrySetIter::All {
             set: &self.entries,
             next: 0,
@@ -227,7 +227,7 @@ impl FeedUpdater {
     }
 
     /// Iterate all entries with a tag.
-    pub fn with_tags<'a>(&'a self, tag: impl Into<Tag>) -> EntrySetIter {
+    pub fn with_tags<'a>(&'a self, tag: impl Into<Tag>) -> EntrySetIter<'a> {
         return EntrySetIter::Tag {
             set: &self.entries,
             tag: tag.into(),
@@ -236,7 +236,7 @@ impl FeedUpdater {
     }
 
     /// Iterate all entries from a feed.
-    pub fn from_feed<'a>(&'a self, feed: FeedId) -> EntrySetIter {
+    pub fn from_feed<'a>(&'a self, feed: FeedId) -> EntrySetIter<'a> {
         return EntrySetIter::Feed {
             set: &self.entries,
             feed,

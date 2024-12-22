@@ -2,30 +2,27 @@ use super::*;
 
 #[tokio::test]
 async fn no_panics() {
-    // let mut feed = AggregateFeed::new();
     let mut updater = FeedUpdater::new(Duration::seconds(10));
 
-    // let mut rss_feed = AggregateFeed::new();
-    // let hacker_news = updater.add_feed(RawFeed {
-    //     url: "https://news.ycombinator.com/rss".into(),
-    //     // tags: vec!["Hacking".into(), "RSS".into()],
-    // });
-    // rss_feed.add_feed(hacker_news);
-    // updater.add_feed(rss_feed);
+    let mut rss_feeds = AggregateFeed::new();
+    let hn = Feed::from_raw("https://news.ycombinator.com/rss");
+    let hn_id = updater.add_feed(hn);
+    rss_feeds.add_feed(hn_id);
+    updater.add_feed(Feed::from_aggregate(rss_feeds.feeds));
 
-    // let mut atom_feed = AggregateFeed::new();
-    // let newsboat = updater.add_feed(RawFeed {
-    //     // url: "https://xkcd.com/atom.xml".into(),
-    //     url: "https://newsboat.org/news.atom".into(),
-    //     // tags: vec!["Reader".into(), "ATOM".into()],
-    // });
-    // atom_feed.add_feed(newsboat);
-    // updater.add_feed(atom_feed);
+    let mut atom_feeds = AggregateFeed::new();
+    let newsboat = Feed::from_raw(
+        // url: "https://xkcd.com/atom.xml".into(),
+        "https://newsboat.org/news.atom",
+    );
+    let newsboat_id = updater.add_feed(newsboat);
+    atom_feeds.add_feed(newsboat_id);
+    updater.add_feed(Feed::from_aggregate(atom_feeds.feeds));
 
-    // updater.update().await;
-    // updater.entries.iter().for_each(|entry| {
-    //     println!("Entry: {:?}", entry);
-    // });
+    updater.update().await;
+    updater.iter().for_each(|entry| {
+        println!("Entry: {:?}", entry);
+    });
 
     // Feed::from(atom_feed).get_tags().for_each(|tag| {
     //     println!("Tag: {:?}", tag);
