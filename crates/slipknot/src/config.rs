@@ -8,6 +8,7 @@ pub struct Config {
     pub feeds: Option<HashMap<String, Feed>>,
     pub port: Option<u16>,
     pub global: Option<Global>,
+    pub log: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -22,6 +23,7 @@ impl Default for Config {
             feeds: None,
             port: None,
             global: None,
+            log: None,
         }
     }
 }

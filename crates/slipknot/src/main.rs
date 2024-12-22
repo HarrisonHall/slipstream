@@ -38,8 +38,8 @@ enum Error {
 async fn main() -> Result<(), Error> {
     // Initial setup.
     let cli = Cli::parse();
-    setup_logging(&cli);
     let config = Arc::new(cli.parse_config().expect("Unable to parse config."));
+    setup_logging(&cli, &config);
 
     // Allow updates to run in the background.
     let updater = Arc::new(Mutex::new(config.updater()));

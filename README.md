@@ -30,11 +30,13 @@ While `slipknot` is usable, these crates are far from complete.
 - `slipfeed`
   - [ ] Improve generic `Entry` model and parsing
   - [ ] Move update durations to be feed-specific
+  - [ ] Add entry count limit
+  - [ ] Send If-Modified-Since and don't delete previous
+  - [ ] Minimum date delta (e.g. only past 30 days)
 - `slipknot`
   - [ ] Add more filters (regex/pomsky, allowlists, etc.)
   - [ ] Add caching and make updates nonblocking
   - [ ] Add feed import/export to/from opml
-  - [ ] Add optional log file
 - `slipstore`
   - [ ] Allow storing entries in a sqlite database
   - [ ] Track reads
