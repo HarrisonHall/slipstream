@@ -29,11 +29,7 @@ While `slipknot` is usable, these crates are far from complete.
 
 - `slipfeed`
   - [ ] Improve generic `Entry` model and parsing
-  - [ ] Improve update scheduler
-  - [ ] Check cycles and use loops instead of recursion for feed relationships
-  - [ ] Cache feeds and keep available during updates
   - [ ] Move update durations to be feed-specific
-  - [ ] Add synchronous interfaces and move behind features
 - `slipknot`
   - [ ] Add more filters (regex/pomsky, allowlists, etc.)
   - [ ] Add caching and make updates nonblocking

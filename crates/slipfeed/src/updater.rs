@@ -1,6 +1,6 @@
 //! Feed update handling.
 
-use std::collections::HashSet;
+use std::{borrow::Borrow, collections::HashSet};
 
 use super::*;
 
@@ -60,24 +60,40 @@ impl FeedUpdater {
         {
             tracing::info!("Updating all feeds.");
             let mut set = tokio::task::JoinSet::new();
+            let mut url_specs = std::collections::HashSet::<String>::new();
             for (id, feed) in &self.feeds {
                 let sender = sender.clone();
                 let id = id.clone();
                 let feed = feed.clone();
-                set.spawn(async move {
-                    if let Err(_) = tokio::time::timeout(
-                        // TODO: Make duration customizable per-feed.
-                        tokio::time::Duration::from_secs(15),
-                        FeedUpdater::feed_get_entries(&now, &feed, &id, sender),
-                    )
-                    .await
-                    {
-                        tracing::warn!(
-                            "Update timed out for {:?}",
-                            feed.underlying
-                        );
+                match feed.underlying.borrow() {
+                    UnderlyingFeed::RawFeed(raw) => {
+                        if url_specs.contains(&raw.url) {
+                            tracing::debug!("Skipping update of {:?}, underyling url already updated.", feed.underlying);
+                            continue;
+                        }
+                        url_specs.insert(raw.url.clone());
+                        set.spawn(async move {
+                            if let Err(_) = tokio::time::timeout(
+                                // TODO: Make duration customizable per-feed.
+                                tokio::time::Duration::from_secs(15),
+                                FeedUpdater::feed_get_entries(
+                                    &now, &feed, &id, sender,
+                                ),
+                            )
+                            .await
+                            {
+                                tracing::warn!(
+                                    "Update timed out for {:?}",
+                                    feed.underlying
+                                );
+                            }
+                        });
                     }
-                });
+                    _ => tracing::debug!(
+                        "Skipping update of {:?}, as it's not a raw feed",
+                        feed.underlying
+                    ),
+                }
             }
             set.join_all().await;
         }
