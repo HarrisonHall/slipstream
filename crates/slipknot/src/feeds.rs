@@ -10,13 +10,53 @@ pub enum Feed {
         tags: Option<Vec<String>>,
         #[serde(flatten)]
         filters: Filters,
+        #[serde(flatten)]
+        limits: Limits,
     },
     Aggregate {
         feeds: Vec<String>,
         tags: Option<Vec<String>>,
         #[serde(flatten)]
         filters: Filters,
+        #[serde(flatten)]
+        limits: Limits,
     },
+}
+
+impl Feed {
+    pub fn filters(&self) -> &Filters {
+        match self {
+            Feed::Raw {
+                url: _,
+                tags: _,
+                filters,
+                limits: _,
+            } => &filters,
+            Feed::Aggregate {
+                feeds: _,
+                tags: _,
+                filters,
+                limits: _,
+            } => &filters,
+        }
+    }
+
+    pub fn limits(&self) -> &Limits {
+        match self {
+            Feed::Raw {
+                url: _,
+                tags: _,
+                filters: _,
+                limits,
+            } => &limits,
+            Feed::Aggregate {
+                feeds: _,
+                tags: _,
+                filters: _,
+                limits,
+            } => &limits,
+        }
+    }
 }
 
 pub struct Updater {
@@ -61,40 +101,77 @@ impl Updater {
         self.global_filters.iter().all(|f| f(&feed, entry))
     }
 
-    pub fn syndicate_all(&self) -> String {
+    pub fn syndicate_all(&self, config: &Config) -> String {
         let mut syn = atom::FeedBuilder::default();
         syn.title("All")
             .author(atom::PersonBuilder::default().name("slipknot").build());
+        let mut count = 0;
         for entry in self.updater.iter() {
-            if self.passes_global_filters(&entry) {
-                syn.entry(entry.as_atom());
+            if count > config.global.limits.max() {
+                break;
             }
+            if *entry.date() < config.global.limits.oldest() {
+                continue;
+            }
+            if !self.passes_global_filters(&entry) {
+                continue;
+            }
+            syn.entry(entry.as_atom());
+            count += 1;
         }
         syn.build().to_string()
     }
 
-    pub fn syndicate_feed(&self, feed: &str) -> String {
+    pub fn syndicate_feed(&self, feed: &str, config: &Config) -> String {
         let mut syn = atom::FeedBuilder::default();
         syn.title(feed)
             .author(atom::PersonBuilder::default().name("slipknot").build());
-        if let Some(id) = self.feeds.get(feed) {
+        if let (Some(id), Some(feed)) =
+            (self.feeds.get(feed), config.feed(feed))
+        {
+            let mut count = 0;
             for entry in self.updater.from_feed(*id) {
-                if self.passes_global_filters(&entry) {
-                    syn.entry(entry.as_atom());
+                if count >= config.global.limits.max() {
+                    break;
                 }
+                if count >= feed.limits().max() {
+                    break;
+                }
+                if *entry.date() < config.global.limits.oldest() {
+                    continue;
+                }
+                if *entry.date() < feed.limits().oldest() {
+                    continue;
+                }
+                if !self.passes_global_filters(&entry) {
+                    continue;
+                }
+                // NOTE: Individual feed filters are already checked by the underlying
+                // slipfeed updater.
+                syn.entry(entry.as_atom());
+                count += 1;
             }
         }
         syn.build().to_string()
     }
 
-    pub fn syndicate_tag(&self, tag: &str) -> String {
+    pub fn syndicate_tag(&self, tag: &str, config: &Config) -> String {
         let mut syn = atom::FeedBuilder::default();
         syn.title(tag)
             .author(atom::PersonBuilder::default().name("slipknot").build());
+        let mut count = 0;
         for entry in self.updater.with_tags(tag) {
-            if self.passes_global_filters(&entry) {
-                syn.entry(entry.as_atom());
+            if count >= config.global.limits.max() {
+                break;
             }
+            if *entry.date() < config.global.limits.oldest() {
+                continue;
+            }
+            if !self.passes_global_filters(&entry) {
+                continue;
+            }
+            syn.entry(entry.as_atom());
+            count += 1;
         }
         syn.build().to_string()
     }

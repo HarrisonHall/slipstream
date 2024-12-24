@@ -24,6 +24,15 @@ impl Filters {
     }
 }
 
+impl Default for Filters {
+    fn default() -> Self {
+        Self {
+            exclude_title_words: None,
+            exclude_content_words: None,
+        }
+    }
+}
+
 fn exclude_title_words(
     exclusions: &Option<Vec<String>>,
 ) -> Option<slipfeed::Filter> {

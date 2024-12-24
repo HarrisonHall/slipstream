@@ -7,13 +7,9 @@ pub struct Config {
     pub update_delta_sec: Option<usize>,
     pub feeds: Option<HashMap<String, Feed>>,
     pub port: Option<u16>,
-    pub global: Option<Global>,
+    #[serde(default)]
+    pub global: Global,
     pub log: Option<String>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Global {
-    filters: Option<Filters>,
 }
 
 impl Default for Config {
@@ -22,7 +18,7 @@ impl Default for Config {
             update_delta_sec: None,
             feeds: None,
             port: None,
-            global: None,
+            global: Global::default(),
             log: None,
         }
     }
@@ -41,7 +37,13 @@ impl Config {
         if let Some(feeds) = &self.feeds {
             // Add raw feeds.
             for (name, feed) in feeds {
-                if let Feed::Raw { url, tags, filters } = feed {
+                if let Feed::Raw {
+                    url,
+                    tags,
+                    filters,
+                    limits: _,
+                } = feed
+                {
                     let mut feed = slipfeed::Feed::from_raw(&url);
                     tags.clone()
                         .unwrap_or_else(|| Vec::new())
@@ -77,6 +79,7 @@ impl Config {
                         feeds,
                         tags,
                         filters,
+                        limits: _,
                     } = feed
                     {
                         let mut agg_feeds: Vec<slipfeed::FeedId> = Vec::new();
@@ -106,11 +109,25 @@ impl Config {
             }
         }
         // Add global filters.
-        if let Some(global) = &self.global {
-            if let Some(filters) = &global.filters {
-                updater.global_filters.extend(filters.get_filters());
-            }
-        }
+        updater
+            .global_filters
+            .extend(self.global.filters.get_filters());
         updater
     }
+
+    pub fn feed(&self, feed: &str) -> Option<&Feed> {
+        if let Some(feeds) = self.feeds.as_ref() {
+            return feeds.get(feed);
+        }
+        None
+    }
+}
+
+/// Global configuration.
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct Global {
+    #[serde(default)]
+    pub filters: Filters,
+    #[serde(default)]
+    pub limits: Limits,
 }

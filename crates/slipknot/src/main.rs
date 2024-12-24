@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::{path::PathBuf, str::FromStr};
 
-use atom_syndication::{self as atom, Link};
+use atom_syndication::{self as atom};
 use chrono::Duration;
 use clap::Parser;
 use resolve_path::PathResolveExt;
@@ -15,6 +15,7 @@ mod cli;
 mod config;
 mod feeds;
 mod filters;
+mod limits;
 mod logging;
 // mod tests;
 
@@ -22,6 +23,7 @@ use cli::*;
 use config::*;
 use feeds::*;
 use filters::*;
+use limits::*;
 use logging::*;
 
 const DEFAULT_CONFIG_DIR: &str = "~/.config/slipknot/slipknot.toml";
@@ -92,7 +94,7 @@ async fn get_all(State(state): StateType) -> impl axum::response::IntoResponse {
     let updater = state.updater.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
-        updater.syndicate_all(),
+        updater.syndicate_all(&state.config),
     );
 }
 
@@ -105,7 +107,7 @@ async fn get_feed(
     let updater = state.updater.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
-        updater.syndicate_feed(feed),
+        updater.syndicate_feed(feed, &state.config),
     );
 }
 
@@ -118,7 +120,7 @@ async fn get_tag(
     let updater = state.updater.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
-        updater.syndicate_tag(tag),
+        updater.syndicate_tag(tag, &state.config),
     );
 }
 
