@@ -20,32 +20,30 @@ impl FeedOptions {
         self.max.unwrap_or(1024)
     }
 
-    fn freq(&self) -> chrono::Duration {
-        chrono::Duration::from_std(match self.freq {
-            Some(freq) => freq,
+    pub fn freq(&self) -> slipfeed::Duration {
+        match self.freq {
+            Some(freq) => slipfeed::Duration::from_std(freq),
             None => FeedOptions::default_freq(),
-        })
-        .unwrap_or_else(|_| {
-            chrono::Duration::new(7200, 0).expect("7200 is a valid timedelta.")
-        })
-    }
-
-    pub fn oldest(&self) -> chrono::DateTime<chrono::Utc> {
-        match self.oldest {
-            Some(oldest) => chrono::offset::Utc::now() - oldest,
-            None => chrono::DateTime::UNIX_EPOCH,
         }
     }
 
-    pub fn should_update(
-        &self,
-        last_update: &chrono::DateTime<chrono::Utc>,
-    ) -> bool {
-        chrono::offset::Utc::now() >= (*last_update + self.freq())
+    pub fn oldest(&self) -> slipfeed::Duration {
+        match self.oldest {
+            Some(oldest) => slipfeed::Duration::from_std(oldest),
+            None => FeedOptions::default_oldest(),
+        }
     }
 
-    fn default_freq() -> std::time::Duration {
-        std::time::Duration::from_secs(7200)
+    pub fn too_old(&self, dt: &slipfeed::DateTime) -> bool {
+        slipfeed::DateTime::now() > dt.clone() + self.oldest()
+    }
+
+    fn default_freq() -> slipfeed::Duration {
+        slipfeed::Duration::from_seconds(7200)
+    }
+
+    fn default_oldest() -> slipfeed::Duration {
+        slipfeed::Duration::from_seconds(5040000)
     }
 }
 

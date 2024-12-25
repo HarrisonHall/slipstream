@@ -5,6 +5,7 @@ use super::*;
 /// An entry from a feed.
 #[derive(Clone, Debug)]
 pub struct Entry {
+    // Entry fields.
     title: String,
     date: EntryDate,
     author: String,
@@ -12,7 +13,10 @@ pub struct Entry {
     source: Link,
     comments: Link,
     other_links: Vec<Link>,
+    // Meta information.
     id: Option<String>,
+    feeds: HashSet<FeedId>,
+    tags: HashSet<Tag>,
 }
 
 impl Entry {
@@ -22,7 +26,7 @@ impl Entry {
     }
 
     /// Get entry date.
-    pub fn date(&self) -> &DateTime<Utc> {
+    pub fn date(&self) -> &DateTime {
         match &self.date {
             EntryDate::Published(date) => date,
             EntryDate::Parsed(date) => date,
@@ -52,6 +56,26 @@ impl Entry {
     /// Get other links.
     pub fn other_links(&self) -> &Vec<Link> {
         &self.other_links
+    }
+
+    pub fn feeds(&self) -> &HashSet<FeedId> {
+        &self.feeds
+    }
+
+    pub fn add_feed(&mut self, feed: FeedId) {
+        self.feeds.insert(feed);
+    }
+
+    pub fn from_feed(&self, feed: FeedId) -> bool {
+        self.feeds.contains(&feed)
+    }
+
+    pub fn tags(&self) -> &HashSet<Tag> {
+        &self.tags
+    }
+
+    pub fn add_tag(&mut self, tag: &Tag) {
+        self.tags.insert(tag.clone());
     }
 }
 
@@ -83,9 +107,9 @@ impl PartialEq for Entry {
                 return false;
             }
         }
-        if let EntryDate::Parsed(dt1) = self.date {
-            if let EntryDate::Parsed(dt2) = other.date {
-                if dt1 != dt2 {
+        if let EntryDate::Parsed(dt1) = &self.date {
+            if let EntryDate::Parsed(dt2) = &other.date {
+                if *dt1 != *dt2 {
                     return false;
                 }
             }
@@ -96,10 +120,22 @@ impl PartialEq for Entry {
 
 impl Eq for Entry {}
 
+impl PartialOrd for Entry {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.date().partial_cmp(&other.date())
+    }
+}
+
+impl Ord for Entry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.date().cmp(&other.date())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum EntryDate {
-    Published(DateTime<Utc>),
-    Parsed(DateTime<Utc>),
+    Published(DateTime),
+    Parsed(DateTime),
 }
 
 impl PartialOrd for EntryDate {
@@ -158,7 +194,7 @@ impl EntryBuilder {
         self
     }
 
-    pub fn date(&mut self, date: DateTime<Utc>) -> &mut Self {
+    pub fn date(&mut self, date: DateTime) -> &mut Self {
         self.date = Some(EntryDate::Published(date));
         self
     }
@@ -202,7 +238,7 @@ impl EntryBuilder {
             date: self
                 .date
                 .clone()
-                .unwrap_or_else(|| EntryDate::Parsed(Utc::now())),
+                .unwrap_or_else(|| EntryDate::Parsed(DateTime::now())),
             author: self.author.clone().unwrap_or_else(|| "".to_string()),
             content: self.content.clone().unwrap_or_else(|| "".to_string()),
 
@@ -217,6 +253,8 @@ impl EntryBuilder {
             other_links: self.other_links.clone(),
 
             id: self.id.clone(),
+            tags: HashSet::new(),
+            feeds: HashSet::new(),
         }
     }
 }

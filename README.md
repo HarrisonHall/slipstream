@@ -4,10 +4,11 @@ Feed fetcher, filterer, and aggregator.
 
 ## Crates
 
-- `slipfeed` - Feed fetcher, filterer, and aggregator.
-- `slipknot` - Simple CLI `slipfeed` server.
-- `slipstore` - `slipfeed` persistent storage.
-- `slipstream` - UI for `slipfeed`, backed by `slipstore`.
+- `slipfeed` - Feed fetcher, filterer, and aggregator library.
+- `slipknot` - Simple CLI `slipfeed` server utilizing a simple
+  [config](examples/config/slipknot.toml).
+- `slipstream` - Web UI for `slipfeed`, backed by persistent storage for
+  entries.
 
 ## Getting Started
 
@@ -25,23 +26,23 @@ server that exposes the following endpoints:
 
 ## Roadmap
 
-While `slipknot` is usable, these crates are far from complete.
+While the `slipfeed` and `slipknot` APIs may not be stable, they are essentially
+complete as-is. `slipstream` development has not yet started. While `slipstream`
+features overlap greatly with `slipknot`, the implementation will likely be
+completely independent.
 
 - `slipfeed`
-  - [ ] Improve generic `Entry` model and parsing
-  - [ ] Move update durations to be feed-specific
-  - [ ] Send If-Modified-Since and store previous requests
+  - [ ] Add other built-in feed implementations (e.g. activitypub)
 - `slipknot`
   - [ ] Add more filters (regex/pomsky, allowlists, etc.)
-  - [ ] Add caching and make updates nonblocking
-  - [ ] Add feed import/export to/from opml
-- `slipstore`
-  - [ ] Allow storing entries in a sqlite database
-  - [ ] Track reads
+  - [ ] OPML conversion support
 - `slipstream`
   - [ ] Design web interface
+  - [ ] Use sqlite for storing entries and feed definitions
+  - [ ] Track reads
   - [ ] Add authentication/private feeds
-  - [ ] Allow filter definitions via lua
+  - [ ] Allow filter definitions via gleam/lua
+  - [ ] Support atom exports
 
 ## Contributing
 

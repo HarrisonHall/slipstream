@@ -5,12 +5,12 @@ use std::sync::Arc;
 use std::{path::PathBuf, str::FromStr};
 
 use atom_syndication::{self as atom};
-use chrono::Duration;
 use clap::Parser;
 use resolve_path::PathResolveExt;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
+mod cache;
 mod cli;
 mod config;
 mod feed_options;
@@ -19,6 +19,7 @@ mod filters;
 mod logging;
 // mod tests;
 
+use cache::*;
 use cli::*;
 use config::*;
 use feed_options::*;
@@ -36,7 +37,7 @@ enum Error {
 }
 
 /// Entry point for slipknot.
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<(), Error> {
     // Initial setup.
     let cli = Cli::parse();
@@ -44,7 +45,7 @@ async fn main() -> Result<(), Error> {
     setup_logging(&cli, &config);
 
     // Allow updates to run in the background.
-    let updater = Arc::new(Mutex::new(config.updater()));
+    let updater = Arc::new(Mutex::new(config.updater().await));
     {
         let updater = updater.clone();
         tokio::task::spawn(async move {
@@ -58,6 +59,14 @@ async fn main() -> Result<(), Error> {
         });
     }
 
+    // Create request cache.
+    let cache = Arc::new(Mutex::new(Cache::new(
+        slipfeed::Duration::from_seconds(match config.cache {
+            Some(freq) => freq.as_secs(),
+            None => 120,
+        }),
+    )));
+
     // Create server.
     let app = axum::Router::new()
         .route("/", axum::routing::get(get_all))
@@ -68,6 +77,7 @@ async fn main() -> Result<(), Error> {
         .with_state(Arc::new(SFState {
             updater,
             config: config.clone(),
+            cache,
         }));
     let port = cli.port.unwrap_or(config.port.unwrap_or(DEFAULT_PORT));
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
@@ -86,15 +96,20 @@ use axum::extract::State;
 struct SFState {
     updater: Arc<Mutex<Updater>>,
     config: Arc<Config>,
+    cache: Arc<Mutex<cache::Cache>>,
 }
 type StateType = axum::extract::State<Arc<SFState>>;
 
 async fn get_all(State(state): StateType) -> impl axum::response::IntoResponse {
     tracing::debug!("/all");
+    let config = &state.config;
     let updater = state.updater.lock().await;
+    let mut cache = state.cache.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
-        updater.syndicate_all(&state.config),
+        cache
+            .get("/all", async move { updater.syndicate_all(config) })
+            .await,
     );
 }
 
@@ -104,10 +119,17 @@ async fn get_feed(
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("{}", uri.path());
     let feed = &uri.path()["/feed/".len()..];
+    let config = &state.config;
     let updater = state.updater.lock().await;
+    let mut cache = state.cache.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
-        updater.syndicate_feed(feed, &state.config),
+        cache
+            .get(
+                uri.path(),
+                async move { updater.syndicate_feed(feed, config) },
+            )
+            .await,
     );
 }
 
@@ -117,10 +139,17 @@ async fn get_tag(
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("{}", uri.path());
     let tag = &uri.path()["/tag/".len()..];
+    let config = &state.config;
     let updater = state.updater.lock().await;
+    let mut cache = state.cache.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
-        updater.syndicate_tag(tag, &state.config),
+        cache
+            .get(
+                uri.path(),
+                async move { updater.syndicate_tag(tag, config) },
+            )
+            .await,
     );
 }
 

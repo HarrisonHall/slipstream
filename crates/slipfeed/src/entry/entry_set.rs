@@ -2,41 +2,24 @@
 
 use super::*;
 
-/// Entry storage.
-#[derive(PartialEq, Eq)]
-pub struct EntrySetItem {
-    pub entry: Entry,
-    pub feeds: HashSet<FeedId>,
-    pub tags: HashSet<Tag>,
-}
-
-impl PartialOrd for EntrySetItem {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.entry.date().partial_cmp(&other.entry.date())
-    }
-}
-
-impl Ord for EntrySetItem {
-    fn cmp(&self, other: &EntrySetItem) -> std::cmp::Ordering {
-        self.entry.date().cmp(&other.entry.date())
-    }
-}
-
 /// Set of entries.
 /// Entries are ordered chronologically and can be iterated
 /// on based on tag/feed.
 pub struct EntrySet {
-    entries: Vec<EntrySetItem>,
+    entries: Vec<Entry>,
+    max_length: usize,
 }
 
 impl EntrySet {
     /// Create new entry set.
-    pub fn new() -> Self {
+    pub fn new(max_length: usize) -> Self {
         Self {
             entries: Vec::new(),
+            max_length,
         }
     }
 
+    /// Number of entries.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -47,26 +30,30 @@ impl EntrySet {
     }
 
     /// Add/update an entry in the set.
-    pub fn add(
-        &mut self,
-        entry: Entry,
-        feeds: HashSet<FeedId>,
-        tags: HashSet<Tag>,
-    ) {
+    pub fn add(&mut self, entry: Entry) {
         for other in self.entries.iter_mut() {
-            if other.entry == entry {
-                other.feeds.extend(feeds);
-                other.tags.extend(tags);
+            if *other == entry {
+                for feed in entry.feeds().iter() {
+                    other.add_feed(*feed);
+                }
+                for tag in entry.tags().iter() {
+                    other.add_tag(tag);
+                }
                 return;
             }
         }
-        self.entries.push(EntrySetItem { entry, feeds, tags });
+        self.entries.push(entry);
     }
 
     /// Sort entries in the set.
     pub fn sort(&mut self) {
         self.entries.sort();
         self.entries.reverse();
+        self.entries.truncate(self.max_length);
+    }
+
+    pub fn as_slice(&mut self) -> &mut [Entry] {
+        &mut self.entries
     }
 }
 
@@ -89,29 +76,29 @@ pub enum EntrySetIter<'a> {
 }
 
 impl<'a> Iterator for EntrySetIter<'a> {
-    type Item = Entry;
+    type Item = &'a Entry;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             EntrySetIter::All { set, next } => {
                 for entry in &set.entries[*next..] {
                     *next += 1;
-                    return Some(entry.entry.clone());
+                    return Some(entry);
                 }
             }
             EntrySetIter::Feed { set, feed, next } => {
                 for entry in &set.entries[*next..] {
                     *next += 1;
-                    if entry.feeds.contains(feed) {
-                        return Some(entry.entry.clone());
+                    if entry.feeds().contains(feed) {
+                        return Some(entry);
                     }
                 }
             }
             EntrySetIter::Tag { set, tag, next } => {
                 for entry in &set.entries[*next..] {
                     *next += 1;
-                    if entry.tags.contains(tag) {
-                        return Some(entry.entry.clone());
+                    if entry.tags().contains(tag) {
+                        return Some(entry);
                     }
                 }
                 return None;

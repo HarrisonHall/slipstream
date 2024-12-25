@@ -3,12 +3,12 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
-use chrono::DateTime;
-use chrono::Duration;
-use chrono::Utc;
+pub use async_trait::async_trait as feed_trait;
 use serde::{Deserialize, Serialize};
 
+mod datetime;
 mod entry;
 mod feed;
 mod filter;
@@ -18,6 +18,7 @@ mod updater;
 #[cfg(test)]
 mod tests;
 
+pub use datetime::*;
 pub use entry::*;
 pub use feed::*;
 pub use filter::*;

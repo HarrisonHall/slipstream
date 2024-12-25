@@ -1,15 +1,28 @@
 //! Config.
 
+use slipfeed::FeedAttributes;
+
 use super::*;
 
+/// Configuration for slipknot.
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    #[serde(with = "humantime_serde")]
+    /// Update frequency.
+    #[serde(default, with = "humantime_serde::option")]
     pub freq: Option<std::time::Duration>,
+    /// Log file.
     pub log: Option<String>,
+    /// Port.
     pub port: Option<u16>,
+    /// Maximum entry storage size.
+    pub storage: Option<u16>,
+    /// Cache duration.
+    #[serde(default, with = "humantime_serde::option")]
+    pub cache: Option<std::time::Duration>,
+    /// Global configuration.
     #[serde(default)]
     pub global: Global,
+    /// Feed configuration.
     pub feeds: Option<HashMap<String, FeedDefinition>>,
 }
 
@@ -19,6 +32,8 @@ impl Default for Config {
             freq: None,
             feeds: None,
             port: None,
+            storage: None,
+            cache: None,
             global: Global::default(),
             log: None,
         }
@@ -26,89 +41,67 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn updater(&self) -> Updater {
+    pub async fn updater(&self) -> Updater {
         let mut updater = Updater {
-            updater: slipfeed::FeedUpdater::new(Duration::seconds(match self
-                .freq
-            {
-                Some(freq) => freq.as_secs() as i64,
-                None => DEFAULT_UPDATE_SEC as i64,
-            })),
+            updater: slipfeed::Updater::new(
+                slipfeed::Duration::from_seconds(match self.freq {
+                    Some(freq) => freq.as_secs(),
+                    None => DEFAULT_UPDATE_SEC as u64,
+                }),
+                self.storage.unwrap_or(1024) as usize,
+            ),
             feeds: HashMap::new(),
             global_filters: Vec::new(),
         };
+
         if let Some(feeds) = &self.feeds {
+            let world = AggregateWorld::new();
+
             // Add raw feeds.
             for (name, feed_def) in feeds {
-                if let RawFeed::Raw { url } = feed_def.feed() {
-                    let mut feed = slipfeed::Feed::from_raw(&url);
-                    feed_def
-                        .tags()
-                        .clone()
-                        .unwrap_or_else(|| Vec::new())
-                        .iter()
-                        .for_each(|tag| feed.add_tag(tag.clone().into()));
-                    feed_def
-                        .filters()
-                        .get_filters()
-                        .iter()
-                        .for_each(|f| feed.add_filter(f.clone()));
-                    let id = updater.updater.add_feed(feed);
-                    updater.feeds.insert(name.clone(), id);
-                    tracing::debug!("Added feed {}", name);
-                }
-            }
-            // Add aggregate feeds.
-            let mut remaining_loops: u8 = 10;
-            'add_loop: loop {
-                if updater.feeds.len()
-                    == self.feeds.iter().fold(0, |p, f| p + f.len())
-                {
-                    tracing::trace!("Added all.");
-                    break 'add_loop;
-                }
-                if remaining_loops == 0 {
-                    tracing::warn!("Feed cycles exist or a feed does not exist. Dropping remaining feeds.");
-                    break 'add_loop;
-                }
-                'feed_loop: for (name, feed_def) in feeds {
-                    if updater.feeds.contains_key(name) {
-                        continue 'feed_loop;
-                    }
-                    if let RawFeed::Aggregate { feeds } = feed_def.feed() {
-                        let mut agg_feeds: Vec<slipfeed::FeedId> = Vec::new();
-                        for subfeed in feeds {
-                            if let Some(id) = updater.feeds.get(subfeed) {
-                                agg_feeds.push(*id);
-                            } else {
-                                continue 'feed_loop;
-                            }
-                        }
-                        let mut feed =
-                            slipfeed::Feed::from_aggregate(agg_feeds);
-                        feed_def
-                            .tags()
-                            .clone()
-                            .unwrap_or_else(|| Vec::new())
-                            .iter()
-                            .for_each(|tag| feed.add_tag(tag.clone().into()));
-                        feed_def
-                            .filters()
-                            .get_filters()
-                            .iter()
-                            .for_each(|f| feed.add_filter(f.clone()));
-                        let id = updater.updater.add_feed(feed);
+                let mut attr = FeedAttributes::new();
+                attr.freq = Some(feed_def.options().freq());
+                attr.timeout = feed_def.options().oldest();
+                feed_def
+                    .tags()
+                    .clone()
+                    .unwrap_or_else(|| Vec::new())
+                    .iter()
+                    .for_each(|tag| attr.add_tag(tag.clone().into()));
+                feed_def
+                    .filters()
+                    .get_filters()
+                    .iter()
+                    .for_each(|f| attr.add_filter(f.clone()));
+                // let feed: Box<dyn slipfeed::Feed> =
+                match feed_def.feed() {
+                    RawFeed::Raw { url } => {
+                        let feed = StandardFeed::new(url);
+                        let id = updater.updater.add_feed(feed, attr);
                         updater.feeds.insert(name.clone(), id);
-                        tracing::debug!("Added feed {}", name);
+                        tracing::debug!("Added standard feed {}", name);
+                        world.write().await.insert(name.clone(), id, None);
                     }
-                }
-                remaining_loops -= 1;
+                    RawFeed::Aggregate { feeds } => {
+                        let feed = AggregateFeed::new(world.clone());
+                        let id = updater.updater.add_feed(feed, attr);
+                        updater.feeds.insert(name.clone(), id);
+                        tracing::debug!("Added aggregate feed {}", name);
+                        world.write().await.insert(
+                            name.clone(),
+                            id,
+                            Some(feeds.clone()),
+                        );
+                    }
+                };
             }
         }
+
         // Add global filters.
         updater
             .global_filters
             .extend(self.global.filters.get_filters());
+
         updater
     }
 

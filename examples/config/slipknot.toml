@@ -1,7 +1,8 @@
 # slipknot example config
 
 # Root settings for the updater.
-freq = "2hr"
+freq = "5min"
+cache = "2min"
 
 # Settings that apply to **everything**.
 [global]
@@ -16,23 +17,36 @@ exclude-content-words = [
   "nodejs",
 ]
 
+[global.options]
+# Maximum feeds returned, something sane.
+max = 512
+# Oldest entry stored.
+oldest = "1month"
+
 # Settings that apply to the all feed.
 [all]
 exclude-title-words = [
-  "foobar",
+  "release",
 ]
 
 # Feed definitions.
 [feeds]
 
 [feeds.hacking]
-feeds = ["hackernews", "ziglang"]
+feeds = ["hackernews", "ziglang-compilation"]
 
 [feeds.hackernews]
 url = "https://news.ycombinator.com/rss"
-tags = ["tech"]
+tags = ["tech", "news"]
 exclude-title-words = ["llm", "hiring"]
+freq = "1hr"
 
-[feeds.ziglang]
+[feeds.ziglang-compilation]
 url = "https://ziglang.org/devlog/index.xml"
 tags = ["blog", "zig", "tech"]
+include-substrings = ["llvm", "compilation", "binary", "optimization"]
+
+[feeds.nhk]
+url = "https://www3.nhk.or.jp/rss/news/cat0.xml"
+tags = ["news", "japanese"]
+max = 5

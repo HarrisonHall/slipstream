@@ -6,41 +6,21 @@ use super::*;
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeedId(pub(crate) usize);
 
-// TODO - trait!
-
-/// Feed.
+/// Attributes all feeds must have.
 #[derive(Clone)]
-pub struct Feed {
-    pub(crate) underlying: UnderlyingFeed,
-    pub(crate) tags: HashSet<Tag>,
-    pub(crate) filters: Vec<Filter>,
+pub struct FeedAttributes {
+    pub timeout: Duration,
+    pub freq: Option<Duration>,
+    pub tags: HashSet<Tag>,
+    pub filters: Vec<Filter>,
 }
 
-// TODO: Should this be a trait?
-/// Any type of feed.
-#[derive(Clone, Debug)]
-pub(crate) enum UnderlyingFeed {
-    AggregateFeed(AggregateFeed),
-    RawFeed(RawFeed),
-}
-
-impl Feed {
-    /// Construct from raw feed.
-    pub fn from_raw(url: impl AsRef<str>) -> Self {
+impl FeedAttributes {
+    /// Generate empty feed info.
+    pub fn new() -> Self {
         Self {
-            underlying: RawFeed {
-                url: url.as_ref().to_string(),
-            }
-            .into(),
-            tags: HashSet::new(),
-            filters: Vec::new(),
-        }
-    }
-
-    /// Construct from aggregate feed.
-    pub fn from_aggregate(feeds: Vec<FeedId>) -> Self {
-        Self {
-            underlying: AggregateFeed { feeds }.into(),
+            timeout: Duration::from_seconds(15),
+            freq: None,
             tags: HashSet::new(),
             filters: Vec::new(),
         }
@@ -61,45 +41,179 @@ impl Feed {
         return Box::new(self.tags.iter());
     }
 
-    pub fn passes_filters(&self, entry: &Entry) -> bool {
-        self.filters.iter().all(|filter| filter(self, entry))
+    /// Check if entry passes filters.
+    pub fn passes_filters(&self, feed: &dyn Feed, entry: &Entry) -> bool {
+        self.filters.iter().all(|filter| filter(feed, entry))
     }
 }
 
-impl From<RawFeed> for UnderlyingFeed {
-    fn from(feed: RawFeed) -> Self {
-        UnderlyingFeed::RawFeed(feed)
+impl std::fmt::Debug for FeedAttributes {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        f.debug_struct("FeedInfo")
+            .field("tags", &self.tags)
+            .finish()
     }
 }
 
-impl From<AggregateFeed> for UnderlyingFeed {
-    fn from(feed: AggregateFeed) -> Self {
-        UnderlyingFeed::AggregateFeed(feed)
+/// What defines a feed.
+#[feed_trait]
+pub trait Feed: std::fmt::Debug + Send + Sync + 'static {
+    /// Fetch items from the feed.
+    #[allow(unused_variables)]
+    async fn update(&mut self, ctx: &UpdaterContext, attr: &FeedAttributes) {}
+
+    /// Tag fetched entry. This serves as a method for other feeds to edit and claim
+    /// ownership of other entries.
+    async fn tag(
+        &mut self,
+        entry: &mut Entry,
+        feed_id: FeedId,
+        attr: &FeedAttributes,
+    ) {
+        // By default, we only tag our own entries.
+        if entry.from_feed(feed_id) {
+            for tag in attr.get_tags() {
+                entry.add_tag(&tag);
+            }
+        }
     }
 }
 
-/// A raw feed is a direct feed from a url.
+/// A reference to an RSS/Atom feed.
 #[derive(Clone, Debug)]
-pub struct RawFeed {
-    pub url: String,
+pub struct StandardSyndication {
+    url: String,
 }
 
-/// An aggregate feed is a collection of other feeds and filters.
-#[derive(Clone, Debug)]
-pub struct AggregateFeed {
-    /// Other feeds in aggregate.
-    pub feeds: Vec<FeedId>,
-}
-
-impl AggregateFeed {
-    /// Create a new aggregate feed.
-    pub fn new() -> Self {
-        Self { feeds: Vec::new() }
+impl StandardSyndication {
+    pub fn new(url: impl Into<String>) -> Box<Self> {
+        Box::new(Self { url: url.into() })
     }
+}
 
-    /// Add a feed.
-    #[allow(dead_code)]
-    pub(crate) fn add_feed(&mut self, feed: FeedId) {
-        self.feeds.push(feed);
+#[feed_trait]
+impl Feed for StandardSyndication {
+    async fn update(&mut self, ctx: &UpdaterContext, attr: &FeedAttributes) {
+        // Generate request.
+        let client_builder = reqwest::ClientBuilder::new();
+        let client = match client_builder.build() {
+            Ok(client) => client,
+            Err(e) => {
+                tracing::warn!("Unable to build client: {e}");
+                return;
+            }
+        };
+        let mut request_builder = client.get(&self.url);
+        if let Some(last_update) = ctx.last_update.as_ref() {
+            request_builder = request_builder.header(
+                reqwest::header::IF_MODIFIED_SINCE,
+                last_update.if_modified_since_time(),
+            );
+        };
+        let request = match request_builder.build() {
+            Ok(request) => request,
+            Err(e) => {
+                tracing::warn!("Unable to build request: {e}");
+                return;
+            }
+        };
+
+        // Execute request and parse.
+        if let Ok(req_result) = client.execute(request).await {
+            if let Ok(body) = req_result.text().await {
+                let body = body.as_str();
+                let mut parsed = EntryBuilder::new();
+                if let Ok(atom_feed) = body.parse::<atom_syndication::Feed>() {
+                    for entry in atom_feed.entries() {
+                        parsed
+                            .title(entry.title().to_string())
+                            .date(DateTime::from_chrono(
+                                entry.updated().to_utc(),
+                            ))
+                            .author(entry.authors().iter().fold(
+                                "".to_string(),
+                                |acc, author| {
+                                    format!("{} {}", acc, author.name())
+                                        .to_string()
+                                },
+                            ))
+                            .content(entry.content().iter().fold(
+                                "".to_string(),
+                                |_, cont| {
+                                    format!("{}", cont.value().unwrap_or(""))
+                                        .to_string()
+                                },
+                            ));
+                        for (i, link) in entry.links().iter().enumerate() {
+                            if i == 0 {
+                                parsed.source(&link.href);
+                            } else {
+                                parsed.other_link(Link::new_with_mime(
+                                    &link.href,
+                                    link.title().unwrap_or(""),
+                                    link.mime_type().unwrap_or(""),
+                                ));
+                            }
+                        }
+                        let entry = parsed.build();
+                        let too_old = *entry.date()
+                            < match ctx.last_update.as_ref() {
+                                Some(dt) => dt.clone(),
+                                None => DateTime::epoch(),
+                            } + attr.timeout.clone();
+                        if !too_old && attr.passes_filters(self, &entry) {
+                            ctx.sender.send((parsed.build(), ctx.feed_id)).ok();
+                        }
+                        if too_old {
+                            tracing::debug!("Too old!");
+                        }
+                    }
+                    return;
+                }
+                if let Ok(rss_feed) = body.parse::<rss::Channel>() {
+                    for entry in rss_feed.items {
+                        parsed
+                            .title(entry.title().unwrap_or("").to_string())
+                            .date(
+                                DateTime::try_from(
+                                    entry.pub_date().unwrap_or(""),
+                                )
+                                .unwrap_or(ctx.parse_time.clone()),
+                            )
+                            .author(entry.author().unwrap_or("").to_string())
+                            .content(entry.content().unwrap_or("").to_string());
+                        if let Some(link) = entry.link() {
+                            parsed.source(link);
+                        }
+                        if let Some(comments) = entry.comments() {
+                            parsed.comments(comments);
+                        }
+                        let entry = parsed.build();
+                        let too_old = *entry.date()
+                            < match ctx.last_update.as_ref() {
+                                Some(dt) => dt.clone(),
+                                None => DateTime::epoch(),
+                            } + attr.timeout.clone();
+                        if !too_old && attr.passes_filters(self, &entry) {
+                            ctx.sender.send((parsed.build(), ctx.feed_id)).ok();
+                        }
+                        if too_old {
+                            tracing::debug!("Too old!");
+                        }
+                    }
+                    return;
+                }
+                tracing::warn!(
+                    "Unable to parse feed {:?} as atom or rss",
+                    self
+                );
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for StandardSyndication {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<StandardSyndication url={}>", &self.url)
     }
 }
