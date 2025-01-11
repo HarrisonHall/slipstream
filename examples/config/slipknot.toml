@@ -1,7 +1,7 @@
 # slipknot example config
 
 # Root settings for the updater.
-update_delta_sec = 7200
+freq = "2hr"
 
 # Settings that apply to **everything**.
 [global]
@@ -22,8 +22,8 @@ exclude-title-words = [
   "foobar",
 ]
 
-
 # Feed definitions.
+[feeds]
 
 [feeds.hacking]
 feeds = ["hackernews", "ziglang"]

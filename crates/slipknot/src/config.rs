@@ -4,18 +4,19 @@ use super::*;
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    pub update_delta_sec: Option<usize>,
-    pub feeds: Option<HashMap<String, Feed>>,
+    #[serde(with = "humantime_serde")]
+    pub freq: Option<std::time::Duration>,
+    pub log: Option<String>,
     pub port: Option<u16>,
     #[serde(default)]
     pub global: Global,
-    pub log: Option<String>,
+    pub feeds: Option<HashMap<String, FeedDefinition>>,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            update_delta_sec: None,
+            freq: None,
             feeds: None,
             port: None,
             global: Global::default(),
@@ -27,29 +28,28 @@ impl Default for Config {
 impl Config {
     pub fn updater(&self) -> Updater {
         let mut updater = Updater {
-            updater: slipfeed::FeedUpdater::new(Duration::seconds(
-                self.update_delta_sec.unwrap_or(DEFAULT_UPDATE_SEC as usize)
-                    as i64,
-            )),
+            updater: slipfeed::FeedUpdater::new(Duration::seconds(match self
+                .freq
+            {
+                Some(freq) => freq.as_secs() as i64,
+                None => DEFAULT_UPDATE_SEC as i64,
+            })),
             feeds: HashMap::new(),
             global_filters: Vec::new(),
         };
         if let Some(feeds) = &self.feeds {
             // Add raw feeds.
-            for (name, feed) in feeds {
-                if let Feed::Raw {
-                    url,
-                    tags,
-                    filters,
-                    limits: _,
-                } = feed
-                {
+            for (name, feed_def) in feeds {
+                if let RawFeed::Raw { url } = feed_def.feed() {
                     let mut feed = slipfeed::Feed::from_raw(&url);
-                    tags.clone()
+                    feed_def
+                        .tags()
+                        .clone()
                         .unwrap_or_else(|| Vec::new())
                         .iter()
                         .for_each(|tag| feed.add_tag(tag.clone().into()));
-                    filters
+                    feed_def
+                        .filters()
                         .get_filters()
                         .iter()
                         .for_each(|f| feed.add_filter(f.clone()));
@@ -71,17 +71,11 @@ impl Config {
                     tracing::warn!("Feed cycles exist or a feed does not exist. Dropping remaining feeds.");
                     break 'add_loop;
                 }
-                'feed_loop: for (name, feed) in feeds {
+                'feed_loop: for (name, feed_def) in feeds {
                     if updater.feeds.contains_key(name) {
                         continue 'feed_loop;
                     }
-                    if let Feed::Aggregate {
-                        feeds,
-                        tags,
-                        filters,
-                        limits: _,
-                    } = feed
-                    {
+                    if let RawFeed::Aggregate { feeds } = feed_def.feed() {
                         let mut agg_feeds: Vec<slipfeed::FeedId> = Vec::new();
                         for subfeed in feeds {
                             if let Some(id) = updater.feeds.get(subfeed) {
@@ -92,11 +86,14 @@ impl Config {
                         }
                         let mut feed =
                             slipfeed::Feed::from_aggregate(agg_feeds);
-                        tags.clone()
+                        feed_def
+                            .tags()
+                            .clone()
                             .unwrap_or_else(|| Vec::new())
                             .iter()
                             .for_each(|tag| feed.add_tag(tag.clone().into()));
-                        filters
+                        feed_def
+                            .filters()
                             .get_filters()
                             .iter()
                             .for_each(|f| feed.add_filter(f.clone()));
@@ -115,7 +112,7 @@ impl Config {
         updater
     }
 
-    pub fn feed(&self, feed: &str) -> Option<&Feed> {
+    pub fn feed(&self, feed: &str) -> Option<&FeedDefinition> {
         if let Some(feeds) = self.feeds.as_ref() {
             return feeds.get(feed);
         }
@@ -129,5 +126,5 @@ pub struct Global {
     #[serde(default)]
     pub filters: Filters,
     #[serde(default)]
-    pub limits: Limits,
+    pub limits: FeedOptions,
 }

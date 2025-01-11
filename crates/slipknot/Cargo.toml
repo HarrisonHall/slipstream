@@ -13,6 +13,8 @@ axum = "0.7"
 chrono = { workspace = true }
 colored = "2.1"
 clap = { workspace = true }
+humantime = "2.1"
+humantime-serde = "1.1"
 resolve-path = "0.1.0"
 serde = { workspace = true }
 shellexpand = "3.1"

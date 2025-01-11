@@ -9,7 +9,10 @@ pub struct Entry {
     date: EntryDate,
     author: String,
     content: String,
-    url: String,
+    source: Link,
+    comments: Link,
+    other_links: Vec<Link>,
+    id: Option<String>,
 }
 
 impl Entry {
@@ -36,14 +39,27 @@ impl Entry {
         &self.content
     }
 
-    /// Get entry url.
-    pub fn url(&self) -> &String {
-        &self.url
+    /// Get source link.
+    pub fn source(&self) -> &Link {
+        &self.source
+    }
+
+    /// Get comments link.
+    pub fn comments(&self) -> &Link {
+        &self.comments
+    }
+
+    /// Get other links.
+    pub fn other_links(&self) -> &Vec<Link> {
+        &self.other_links
     }
 }
 
 impl PartialEq for Entry {
     fn eq(&self, other: &Entry) -> bool {
+        if let (Some(id1), Some(id2)) = (&self.id, &other.id) {
+            return id1 == id2;
+        }
         if self.title != other.title {
             return false;
         }
@@ -53,8 +69,19 @@ impl PartialEq for Entry {
         if self.content != other.content {
             return false;
         }
-        if self.url != other.url {
+        if self.source != other.source {
             return false;
+        }
+        if self.comments != other.comments {
+            return false;
+        }
+        if self.other_links.len() != other.other_links.len() {
+            return false;
+        }
+        for i in 0..self.other_links.len() {
+            if self.other_links[i] != other.other_links[i] {
+                return false;
+            }
         }
         if let EntryDate::Parsed(dt1) = self.date {
             if let EntryDate::Parsed(dt2) = other.date {
@@ -106,7 +133,10 @@ pub struct EntryBuilder {
     date: Option<EntryDate>,
     author: Option<String>,
     content: Option<String>,
-    url: Option<String>,
+    source: Option<Link>,
+    comments: Option<Link>,
+    other_links: Vec<Link>,
+    id: Option<String>,
 }
 
 impl EntryBuilder {
@@ -116,7 +146,10 @@ impl EntryBuilder {
             date: None,
             author: None,
             content: None,
-            url: None,
+            source: None,
+            comments: None,
+            other_links: Vec::new(),
+            id: None,
         }
     }
 
@@ -140,8 +173,26 @@ impl EntryBuilder {
         self
     }
 
-    pub fn url(&mut self, url: impl Into<String>) -> &mut Self {
-        self.url = Some(url.into());
+    pub fn source(&mut self, url: impl Into<String>) -> &mut Self {
+        self.source = Some(Link {
+            url: url.into(),
+            title: "Source".into(),
+            mime_type: None,
+        });
+        self
+    }
+
+    pub fn comments(&mut self, url: impl Into<String>) -> &mut Self {
+        self.source = Some(Link {
+            url: url.into(),
+            title: "Comments".into(),
+            mime_type: None,
+        });
+        self
+    }
+
+    pub fn other_link(&mut self, link: Link) -> &mut Self {
+        self.other_links.push(link);
         self
     }
 
@@ -154,7 +205,18 @@ impl EntryBuilder {
                 .unwrap_or_else(|| EntryDate::Parsed(Utc::now())),
             author: self.author.clone().unwrap_or_else(|| "".to_string()),
             content: self.content.clone().unwrap_or_else(|| "".to_string()),
-            url: self.url.clone().unwrap_or_else(|| "".to_string()),
+
+            source: self
+                .source
+                .clone()
+                .unwrap_or_else(|| Link::new("", "Source")),
+            comments: self
+                .comments
+                .clone()
+                .unwrap_or_else(|| Link::new("", "Comments")),
+            other_links: self.other_links.clone(),
+
+            id: self.id.clone(),
         }
     }
 }
@@ -162,5 +224,34 @@ impl EntryBuilder {
 impl From<EntryBuilder> for Entry {
     fn from(value: EntryBuilder) -> Self {
         value.build()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Link {
+    pub url: String,
+    pub title: String,
+    pub mime_type: Option<String>,
+}
+
+impl Link {
+    pub fn new(url: impl Into<String>, title: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            title: title.into(),
+            mime_type: None,
+        }
+    }
+
+    pub fn new_with_mime(
+        url: impl Into<String>,
+        title: impl Into<String>,
+        mime_type: impl Into<String>,
+    ) -> Self {
+        Self {
+            url: url.into(),
+            title: title.into(),
+            mime_type: Some(mime_type.into()),
+        }
     }
 }

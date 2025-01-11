@@ -22,10 +22,9 @@ impl Cli {
             None => match PathBuf::from_str(DEFAULT_CONFIG_DIR) {
                 Ok(p) => p,
                 Err(e) => {
-                    tracing::error!(
+                    eprintln!(
                         "Invalid default config {}: {}",
-                        DEFAULT_CONFIG_DIR,
-                        e
+                        DEFAULT_CONFIG_DIR, e
                     );
                     return Err(Error::InvalidConfig);
                 }
@@ -43,10 +42,9 @@ impl Cli {
         if !config_path.exists() {
             tracing::debug!("Created config file @ {:?}", config_path);
             if let Err(e) = std::fs::File::create(config_path.as_path()) {
-                tracing::error!(
+                eprintln!(
                     "Unable to create config file at {:?}: {}",
-                    config_path,
-                    e
+                    config_path, e
                 );
                 return Err(Error::InvalidConfig);
             }
@@ -55,10 +53,9 @@ impl Cli {
         let config_data = match std::fs::read_to_string(&config_path) {
             Ok(data) => data,
             Err(e) => {
-                tracing::error!(
+                eprintln!(
                     "Unable to read data from config file {:?}: {}",
-                    config_path,
-                    e
+                    config_path, e
                 );
                 return Err(Error::InvalidConfig);
             }
@@ -67,7 +64,7 @@ impl Cli {
         match Config::deserialize(toml::Deserializer::new(&config_data)) {
             Ok(config) => Ok(config),
             Err(e) => {
-                tracing::error!("Configuration file is not valid: {}", e);
+                eprintln!("Configuration file is not valid: {}", e);
                 Err(Error::InvalidConfig)
             }
         }

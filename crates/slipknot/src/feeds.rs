@@ -3,60 +3,39 @@
 use super::*;
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Feed {
-    Raw {
-        url: String,
-        tags: Option<Vec<String>>,
-        #[serde(flatten)]
-        filters: Filters,
-        #[serde(flatten)]
-        limits: Limits,
-    },
-    Aggregate {
-        feeds: Vec<String>,
-        tags: Option<Vec<String>>,
-        #[serde(flatten)]
-        filters: Filters,
-        #[serde(flatten)]
-        limits: Limits,
-    },
+pub struct FeedDefinition {
+    #[serde(flatten)]
+    feed: RawFeed,
+    tags: Option<Vec<String>>,
+    #[serde(flatten)]
+    filters: Filters,
+    #[serde(flatten)]
+    options: FeedOptions,
 }
 
-impl Feed {
-    pub fn filters(&self) -> &Filters {
-        match self {
-            Feed::Raw {
-                url: _,
-                tags: _,
-                filters,
-                limits: _,
-            } => &filters,
-            Feed::Aggregate {
-                feeds: _,
-                tags: _,
-                filters,
-                limits: _,
-            } => &filters,
-        }
+impl FeedDefinition {
+    pub fn feed(&self) -> &RawFeed {
+        &self.feed
     }
 
-    pub fn limits(&self) -> &Limits {
-        match self {
-            Feed::Raw {
-                url: _,
-                tags: _,
-                filters: _,
-                limits,
-            } => &limits,
-            Feed::Aggregate {
-                feeds: _,
-                tags: _,
-                filters: _,
-                limits,
-            } => &limits,
-        }
+    pub fn tags(&self) -> &Option<Vec<String>> {
+        &self.tags
     }
+
+    pub fn filters(&self) -> &Filters {
+        &self.filters
+    }
+
+    pub fn options(&self) -> &FeedOptions {
+        &self.options
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RawFeed {
+    Raw { url: String },
+    Aggregate { feeds: Vec<String> },
 }
 
 pub struct Updater {
@@ -71,23 +50,45 @@ trait EntryExt {
 
 impl EntryExt for slipfeed::Entry {
     fn as_atom(&self) -> atom::Entry {
-        atom::EntryBuilder::default()
+        let mut entry = atom::EntryBuilder::default();
+        entry
             .title(self.title().clone())
             .summary(Some(self.content().clone().into()))
-            .link(
-                atom::LinkBuilder::default()
-                    .href(self.url().clone())
-                    .title(self.title().clone())
-                    .build(),
-            )
             .published(Some(self.date().clone().into()))
             .updated(self.date().clone())
             .author(
                 atom::PersonBuilder::default()
                     .name(self.author().clone())
                     .build(),
-            )
-            .build()
+            );
+        if self.source().url != "" {
+            entry.link(
+                atom::LinkBuilder::default()
+                    .href(&self.source().url)
+                    .title(Some(self.source().title.clone()))
+                    .mime_type(self.source().mime_type.clone())
+                    .build(),
+            );
+        }
+        if self.comments().url != "" {
+            entry.link(
+                atom::LinkBuilder::default()
+                    .href(&self.comments().url)
+                    .title(Some(self.comments().title.clone()))
+                    .mime_type(self.comments().mime_type.clone())
+                    .build(),
+            );
+        }
+        for link in self.other_links() {
+            entry.link(
+                atom::LinkBuilder::default()
+                    .href(&link.url)
+                    .title(Some(link.title.clone()))
+                    .mime_type(link.mime_type.clone())
+                    .build(),
+            );
+        }
+        entry.build()
     }
 }
 
@@ -134,13 +135,13 @@ impl Updater {
                 if count >= config.global.limits.max() {
                     break;
                 }
-                if count >= feed.limits().max() {
+                if count >= feed.options().max() {
                     break;
                 }
                 if *entry.date() < config.global.limits.oldest() {
                     continue;
                 }
-                if *entry.date() < feed.limits().oldest() {
+                if *entry.date() < feed.options().oldest() {
                     continue;
                 }
                 if !self.passes_global_filters(&entry) {

@@ -2,6 +2,9 @@
 
 use std::{borrow::Borrow, collections::HashSet};
 
+use chrono::{Datelike, Timelike};
+use tracing::warn;
+
 use super::*;
 
 /// Updater for feeds.
@@ -72,12 +75,17 @@ impl FeedUpdater {
                             continue;
                         }
                         url_specs.insert(raw.url.clone());
+                        let last_parse_time = self.last_update_check.clone();
                         set.spawn(async move {
                             if let Err(_) = tokio::time::timeout(
                                 // TODO: Make duration customizable per-feed.
                                 tokio::time::Duration::from_secs(15),
                                 FeedUpdater::feed_get_entries(
-                                    &now, &feed, &id, sender,
+                                    &now,
+                                    &feed,
+                                    &id,
+                                    sender,
+                                    last_parse_time,
                                 ),
                             )
                             .await
@@ -121,11 +129,18 @@ impl FeedUpdater {
         feed: &Feed,
         id: &FeedId,
         sender: tokio::sync::mpsc::UnboundedSender<(Entry, FeedId)>,
+        last_parse_time: Option<DateTime<Utc>>,
     ) {
         match &feed.underlying {
             UnderlyingFeed::RawFeed(feed) => {
-                FeedUpdater::raw_feed_get_entries(parse_time, feed, id, sender)
-                    .await;
+                FeedUpdater::raw_feed_get_entries(
+                    parse_time,
+                    feed,
+                    id,
+                    sender,
+                    last_parse_time,
+                )
+                .await;
             }
             UnderlyingFeed::AggregateFeed(_) => {
                 return;
@@ -139,13 +154,40 @@ impl FeedUpdater {
         feed: &RawFeed,
         id: &FeedId,
         sender: tokio::sync::mpsc::UnboundedSender<(Entry, FeedId)>,
+        last_parse_time: Option<DateTime<Utc>>,
     ) {
-        if let Ok(req_result) = reqwest::get(feed.url.as_str()).await {
+        // Generate request.
+        let client_builder = reqwest::ClientBuilder::new();
+        let client = match client_builder.build() {
+            Ok(client) => client,
+            Err(e) => {
+                tracing::warn!("Unable to build client: {e}");
+                return;
+            }
+        };
+        let mut request_builder = client.get(&feed.url);
+        if let Some(last_update) = last_parse_time {
+            request_builder = request_builder.header(
+                reqwest::header::IF_MODIFIED_SINCE,
+                last_update.if_modified_since_time(),
+            );
+        };
+        let request = match request_builder.build() {
+            Ok(request) => request,
+            Err(e) => {
+                tracing::warn!("Unable to build request: {e}");
+                return;
+            }
+        };
+
+        // Execute request and parse.
+        if let Ok(req_result) = client.execute(request).await {
             if let Ok(body) = req_result.text().await {
                 let body = body.as_str();
+                let mut parsed = EntryBuilder::new();
                 if let Ok(atom_feed) = body.parse::<atom_syndication::Feed>() {
                     for entry in atom_feed.entries() {
-                        let parsed = EntryBuilder::new()
+                        parsed
                             .title(entry.title().to_string())
                             .date(entry.updated().to_utc())
                             .author(entry.authors().iter().fold(
@@ -161,33 +203,39 @@ impl FeedUpdater {
                                     format!("{}", cont.value().unwrap_or(""))
                                         .to_string()
                                 },
-                            ))
-                            .url(
-                                entry.links().iter().fold(
-                                    "".to_string(),
-                                    |_, url| {
-                                        format!("{}", url.href()).to_string()
-                                    },
-                                ),
-                            )
-                            .build();
-                        sender.send((parsed, *id)).ok();
+                            ));
+                        for (i, link) in entry.links().iter().enumerate() {
+                            if i == 0 {
+                                parsed.source(&link.href);
+                            } else {
+                                parsed.other_link(Link::new_with_mime(
+                                    &link.href,
+                                    link.title().unwrap_or(""),
+                                    link.mime_type().unwrap_or(""),
+                                ));
+                            }
+                        }
+                        sender.send((parsed.build(), *id)).ok();
                     }
                     return;
                 }
                 if let Ok(rss_feed) = body.parse::<rss::Channel>() {
                     for entry in rss_feed.items {
-                        let parsed = EntryBuilder::new()
+                        parsed
                             .title(entry.title().unwrap_or("").to_string())
                             .date(FeedUpdater::parse_time(
                                 entry.pub_date().unwrap_or(""),
                                 Some(parse_time),
                             ))
                             .author(entry.author().unwrap_or("").to_string())
-                            .content(entry.content().unwrap_or("").to_string())
-                            .url(entry.link().unwrap_or("").to_string())
-                            .build();
-                        sender.send((parsed, *id)).ok();
+                            .content(entry.content().unwrap_or("").to_string());
+                        if let Some(link) = entry.link() {
+                            parsed.source(link);
+                        }
+                        if let Some(comments) = entry.comments() {
+                            parsed.comments(comments);
+                        }
+                        sender.send((parsed.build(), *id)).ok();
                     }
                     return;
                 }
@@ -305,5 +353,41 @@ impl FeedUpdater {
             Some(now) => now.clone(),
             None => Utc::now(),
         }
+    }
+}
+
+/// Trait for formatting time as the
+trait IfModifiedSinceHeader {
+    fn if_modified_since_time(&self) -> String;
+}
+
+impl IfModifiedSinceHeader for DateTime<Utc> {
+    fn if_modified_since_time(&self) -> String {
+        let weekday = self.weekday().to_string();
+        let day = format!("{:0>2}", self.day());
+        let month = match self.month() {
+            1 => "Jan",
+            2 => "Feb",
+            3 => "Mar",
+            4 => "Apr",
+            5 => "May",
+            6 => "Jun",
+            7 => "Jul",
+            8 => "Aug",
+            9 => "Sep",
+            10 => "Oct",
+            11 => "Nov",
+            _ => "Dec",
+        };
+        let year = self.year();
+        let hour = format!("{:0>2}", self.hour());
+        let minute = format!("{:0>2}", self.minute());
+        let second = format!("{:0>2}", self.second());
+        let since = format!(
+            "{}, {} {} {} {}:{}:{} GMT",
+            weekday, day, month, year, hour, minute, second
+        );
+        tracing::info!("Since: {}", since);
+        since
     }
 }

@@ -13,17 +13,17 @@ use tokio::sync::Mutex;
 
 mod cli;
 mod config;
+mod feed_options;
 mod feeds;
 mod filters;
-mod limits;
 mod logging;
 // mod tests;
 
 use cli::*;
 use config::*;
+use feed_options::*;
 use feeds::*;
 use filters::*;
-use limits::*;
 use logging::*;
 
 const DEFAULT_CONFIG_DIR: &str = "~/.config/slipknot/slipknot.toml";

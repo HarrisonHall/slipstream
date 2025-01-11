@@ -6,6 +6,8 @@ use super::*;
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeedId(pub(crate) usize);
 
+// TODO - trait!
+
 /// Feed.
 #[derive(Clone)]
 pub struct Feed {

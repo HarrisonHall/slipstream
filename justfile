@@ -13,7 +13,9 @@ setup:
 
 # Run debug slipknot.
 debug-slipknot:
-    cargo run --bin slipknot -- --debug
+    #!/usr/bin/env sh
+    cd $(jj workspace root)
+    cargo run --bin slipknot -- --debug -c ./examples/config/slipknot.toml
 
 # Run debug slipstream.
 debug-slipstream:
