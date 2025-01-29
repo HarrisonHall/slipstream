@@ -9,9 +9,13 @@ pub struct FeedId(pub(crate) usize);
 /// Attributes all feeds must have.
 #[derive(Clone)]
 pub struct FeedAttributes {
+    /// How old entries must be, to be ignored.
     pub timeout: Duration,
+    /// How often the feed should update.
     pub freq: Option<Duration>,
+    /// Tags associated with the feed.
     pub tags: HashSet<Tag>,
+    /// Filters for the feed.
     pub filters: Vec<Filter>,
 }
 
@@ -157,15 +161,21 @@ impl Feed for StandardSyndication {
                         }
                         let entry = parsed.build();
                         let too_old = *entry.date()
-                            < match ctx.last_update.as_ref() {
-                                Some(dt) => dt.clone(),
-                                None => DateTime::epoch(),
-                            } + attr.timeout.clone();
+                            < ctx.parse_time.clone() - attr.timeout.clone();
                         if !too_old && attr.passes_filters(self, &entry) {
                             ctx.sender.send((parsed.build(), ctx.feed_id)).ok();
                         }
                         if too_old {
-                            tracing::debug!("Too old!");
+                            tracing::trace!(
+                                "Too old! dt={:?} parse={:?} to={:?} cutoff={:?}",
+                                entry.date(),
+                                ctx.parse_time,
+                                attr.timeout,
+                                ctx.last_update
+                                    .clone()
+                                    .unwrap_or(DateTime::now())
+                                    + attr.timeout.clone()
+                            );
                         }
                     }
                     return;
@@ -190,22 +200,29 @@ impl Feed for StandardSyndication {
                         }
                         let entry = parsed.build();
                         let too_old = *entry.date()
-                            < match ctx.last_update.as_ref() {
-                                Some(dt) => dt.clone(),
-                                None => DateTime::epoch(),
-                            } + attr.timeout.clone();
+                            < ctx.parse_time.clone() - attr.timeout.clone();
                         if !too_old && attr.passes_filters(self, &entry) {
                             ctx.sender.send((parsed.build(), ctx.feed_id)).ok();
                         }
                         if too_old {
-                            tracing::debug!("Too old!");
+                            tracing::trace!(
+                                "Too old! dt={:?} parse={:?} to={:?} cutoff={:?}",
+                                entry.date(),
+                                ctx.parse_time,
+                                attr.timeout,
+                                ctx.last_update
+                                    .clone()
+                                    .unwrap_or(DateTime::now())
+                                    + attr.timeout.clone()
+                            );
                         }
                     }
                     return;
                 }
                 tracing::warn!(
-                    "Unable to parse feed {:?} as atom or rss",
-                    self
+                    "Unable to parse feed {:?} as atom or rss:\n\t{}",
+                    self,
+                    body
                 );
             }
         }

@@ -122,25 +122,27 @@ impl Updater {
             }
         }
 
-        // Gather entries.
+        // Gather entries and tag.
         tracing::info!("Gathering entries.");
         while let Ok((mut entry, feed)) = receiver.try_recv() {
             entry.add_feed(feed);
+            for feed_info in self.feeds.values_mut() {
+                let mut feed = feed_info.feed.write().await;
+                feed.tag(&mut entry, feed_info.id, &feed_info.attr).await;
+            }
             self.entries.add(entry);
         }
 
-        // Tag entries. TODO: Parallelize.
-        for entry in self.entries.as_slice() {
-            for feed_info in self.feeds.values_mut() {
-                let mut feed = feed_info.feed.write().await;
-                feed.tag(entry, feed_info.id, &feed_info.attr).await;
-            }
-        }
+        tracing::info!("{} (total) entries gathered", self.entries.len());
 
         // Sort entries.
         self.entries.sort();
 
-        tracing::info!("{} entries gathered", self.entries.len());
+        tracing::info!(
+            "{} entries sorted from {} feeds",
+            self.entries.len(),
+            self.feeds.len(),
+        );
     }
 
     /// Iterate all entries.

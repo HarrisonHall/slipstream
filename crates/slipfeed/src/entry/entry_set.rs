@@ -47,8 +47,11 @@ impl EntrySet {
 
     /// Sort entries in the set.
     pub fn sort(&mut self) {
+        // Sort oldest to newest.
         self.entries.sort();
+        // Reverse from newest to oldest.
         self.entries.reverse();
+        // Truncate for specific length.
         self.entries.truncate(self.max_length);
     }
 
