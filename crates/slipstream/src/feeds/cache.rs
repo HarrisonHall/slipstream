@@ -1,7 +1,5 @@
 //! Cache.
 
-use std::future::Future;
-
 use super::*;
 
 /// Cache for requests.
@@ -21,7 +19,6 @@ impl Cache {
     pub async fn get(
         &mut self,
         uri: impl AsRef<str>,
-        // create: impl FnOnce() -> String,
         create: impl Future<Output = String>,
     ) -> String {
         let now = slipfeed::DateTime::now();
@@ -29,13 +26,13 @@ impl Cache {
         // Check and use cache.
         if let Some(entry) = self.cache.get(uri.as_ref()) {
             if entry.creation.clone() + self.duration.clone() > now {
-                tracing::debug!("Using entry from cache");
+                tracing::debug!("Using entry from cache.");
                 return entry.entry.clone();
             }
         }
 
         // Create entry.
-        tracing::debug!("Creating new entry for cache");
+        tracing::debug!("Creating new entry for cache.");
         let entry = CacheEntry {
             creation: now,
             entry: create.await,

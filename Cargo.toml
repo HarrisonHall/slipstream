@@ -1,13 +1,12 @@
 [workspace]
 members = [
   "crates/slipfeed",
-  "crates/slipknot",
-  # "crates/slipstream",
+  "crates/slipstream",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 authors = ["hachha <hachha@hachha.dev>"]
 keywords = []
@@ -30,4 +29,11 @@ tracing-subscriber = "0.3"
 
 [profile.dev]
 opt-level = 1
-overflow-checks = false
+overflow-checks = true
+
+[profile.release]
+opt-level = 3
+overflow-checks = true
+strip = true
+lto = true
+codegen-units = 1

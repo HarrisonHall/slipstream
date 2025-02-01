@@ -3,7 +3,7 @@
 use super::*;
 
 /// Limits for feeds.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FeedOptions {
     /// Maximum iterable feeds from feed.
     max: Option<usize>,

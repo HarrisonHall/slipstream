@@ -8,8 +8,7 @@ pub struct Tag(String);
 
 impl Tag {
     /// Generate a new tag.
-    #[allow(dead_code)]
-    fn new(from: impl Into<String>) -> Self {
+    pub fn new(from: impl Into<String>) -> Self {
         Self(from.into())
     }
 }

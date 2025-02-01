@@ -2,7 +2,7 @@
 
 use super::*;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Filters {
     #[serde(alias = "exclude-title-words")]
     pub exclude_title_words: Option<Vec<String>>,
@@ -14,6 +14,10 @@ pub struct Filters {
     pub must_include_substrings: Option<Vec<String>>,
     #[serde(alias = "must-include-all-substrings")]
     pub must_include_all_substrings: Option<Vec<String>>,
+    #[serde(alias = "exclude-tags")]
+    pub exclude_tags: Option<Vec<String>>,
+    #[serde(alias = "include-tags")]
+    pub include_tags: Option<Vec<String>>,
 }
 
 impl Filters {
@@ -39,6 +43,12 @@ impl Filters {
         {
             filters.push(filter);
         }
+        if let Some(filter) = exclude_tags(&self.exclude_tags) {
+            filters.push(filter);
+        }
+        if let Some(filter) = include_tags(&self.include_tags) {
+            filters.push(filter);
+        }
         filters
     }
 }
@@ -51,6 +61,8 @@ impl Default for Filters {
             exclude_substrings: None,
             must_include_substrings: None,
             must_include_all_substrings: None,
+            exclude_tags: None,
+            include_tags: None,
         }
     }
 }
@@ -157,6 +169,42 @@ fn must_include_all_substrings(
                     return true;
                 }
                 if content.contains(exclusion) {
+                    return true;
+                }
+                false
+            })
+        }));
+    }
+    None
+}
+
+fn exclude_tags(exclusions: &Option<Vec<String>>) -> Option<slipfeed::Filter> {
+    if let Some(exclusions) = exclusions {
+        let exclusions: Vec<slipfeed::Tag> = exclusions
+            .iter()
+            .map(|exc| slipfeed::Tag::new(exc.to_lowercase()))
+            .collect();
+        return Some(Arc::new(move |_feed, entry| {
+            exclusions.iter().all(|exclusion| {
+                if entry.tags().contains(exclusion) {
+                    return false;
+                }
+                true
+            })
+        }));
+    }
+    None
+}
+
+fn include_tags(inclusions: &Option<Vec<String>>) -> Option<slipfeed::Filter> {
+    if let Some(inclusions) = &inclusions {
+        let inclusions: Vec<slipfeed::Tag> = inclusions
+            .iter()
+            .map(|exc| slipfeed::Tag::new(exc.to_lowercase()))
+            .collect();
+        return Some(Arc::new(move |_feed, entry| {
+            inclusions.iter().any(|inclusion| {
+                if entry.tags().contains(inclusion) {
                     return true;
                 }
                 false

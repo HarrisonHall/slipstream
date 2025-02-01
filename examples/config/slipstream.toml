@@ -25,9 +25,12 @@ oldest = "1month"
 
 # Settings that apply to the all feed.
 [all]
+
+[all.filters]
 exclude-title-words = [
   "release",
 ]
+exclude-tags = ["satire"]
 
 # Feed definitions.
 [feeds]

@@ -1,14 +1,30 @@
 [package]
 name = "slipstream"
-description = "UI for `slipstream`, backed by `slipstore`."
-version = "0.1.0"
-# authors = ["hachha <hachha@hachha.dev>"]
+description = "Simple CLI `slipfeed` server, with web support."
+version = "0.4.0"
 edition = "2021"
 
+[[bin]]
+name = "slipstream"
+
 [dependencies]
-dioxus = { version = "0.5.6", features = ["web", "router"] }
-dioxus-logger = "0.5.1"
-rusqlite = { version = "0.32.0", features = ["bundled"] }
-regex = "1.10.6"
+anyhow = "1.0"
+axum = "0.7"
+toml = { version = "0.8" }
+colored = "2.1"
+handlebars = "6.3"
+humantime = "2.1"
+humantime-serde = "1.1"
+resolve-path = "0.1"
+rust-embed = { version="8.4", features=["debug-embed", "include-exclude"] }
+shellexpand = "3.1"
+
+atom_syndication = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 slipfeed = { path = "../slipfeed" }

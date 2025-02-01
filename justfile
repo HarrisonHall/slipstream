@@ -9,17 +9,12 @@ default:
 setup:
     rustup default stable
     rustup component add rust-std-x86_64-unknown-linux-musl
-    cargo install dioxus-cli
-
-# Run debug slipknot.
-debug-slipknot:
-    #!/usr/bin/env sh
-    cd $(jj workspace root)
-    cargo run --bin slipknot -- --debug -c ./examples/config/slipknot.toml
 
 # Run debug slipstream.
 debug-slipstream:
-    dx serve
+    #!/usr/bin/env sh
+    cd $(jj workspace root)
+    cargo run --bin slipstream -- --debug -c ./examples/config/slipstream.toml
 
 # Build static release for many versions of linux via musl.
 build-many:

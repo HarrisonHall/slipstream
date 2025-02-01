@@ -35,6 +35,10 @@ impl DateTime {
     pub fn from_chrono(dt: chrono::DateTime<chrono::Utc>) -> Self {
         Self(dt)
     }
+
+    pub fn pretty_string(&self) -> String {
+        self.0.format("%Y-%m-%d %H:%M UTC").to_string()
+    }
 }
 
 impl TryFrom<&str> for DateTime {

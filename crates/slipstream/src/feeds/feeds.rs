@@ -42,6 +42,7 @@ pub struct Updater {
     pub updater: slipfeed::Updater,
     pub feeds: HashMap<String, slipfeed::FeedId>,
     pub global_filters: Vec<slipfeed::Filter>,
+    pub all_filters: Vec<slipfeed::Filter>,
 }
 
 trait EntryExt {
@@ -102,10 +103,15 @@ impl Updater {
         self.global_filters.iter().all(|f| f(&feed, entry))
     }
 
+    pub fn passes_all_filters(&self, entry: &slipfeed::Entry) -> bool {
+        let feed = NoopFeed;
+        self.all_filters.iter().all(|f| f(&feed, entry))
+    }
+
     pub fn syndicate_all(&self, config: &Config) -> String {
         let mut syn = atom::FeedBuilder::default();
         syn.title("All")
-            .author(atom::PersonBuilder::default().name("slipknot").build());
+            .author(atom::PersonBuilder::default().name("slipstream").build());
         let mut count = 0;
         for entry in self.updater.iter() {
             if count > config.global.limits.max() {
@@ -117,16 +123,41 @@ impl Updater {
             if !self.passes_global_filters(&entry) {
                 continue;
             }
+            if !self.passes_all_filters(&entry) {
+                continue;
+            }
             syn.entry(entry.to_atom());
             count += 1;
         }
         syn.build().to_string()
     }
 
+    pub fn collect_all(&self, config: &Config) -> Vec<slipfeed::Entry> {
+        let mut entries = Vec::with_capacity(config.global.limits.max());
+        let mut count = 0;
+        for entry in self.updater.iter() {
+            if count > config.global.limits.max() {
+                break;
+            }
+            if config.global.limits.too_old(entry.date()) {
+                continue;
+            }
+            if !self.passes_global_filters(&entry) {
+                continue;
+            }
+            if !self.passes_all_filters(&entry) {
+                continue;
+            }
+            entries.push(entry.clone());
+            count += 1;
+        }
+        entries
+    }
+
     pub fn syndicate_feed(&self, feed: &str, config: &Config) -> String {
         let mut syn = atom::FeedBuilder::default();
         syn.title(feed)
-            .author(atom::PersonBuilder::default().name("slipknot").build());
+            .author(atom::PersonBuilder::default().name("slipstream").build());
         if let (Some(id), Some(feed)) =
             (self.feeds.get(feed), config.feed(feed))
         {
@@ -156,10 +187,45 @@ impl Updater {
         syn.build().to_string()
     }
 
+    pub fn collect_feed(
+        &self,
+        feed: &str,
+        config: &Config,
+    ) -> Vec<slipfeed::Entry> {
+        let mut entries = Vec::with_capacity(config.global.limits.max());
+        if let (Some(id), Some(feed)) =
+            (self.feeds.get(feed), config.feed(feed))
+        {
+            let mut count = 0;
+            for entry in self.updater.from_feed(*id) {
+                if count >= config.global.limits.max() {
+                    break;
+                }
+                if count >= feed.options().max() {
+                    break;
+                }
+                if config.global.limits.too_old(entry.date()) {
+                    continue;
+                }
+                if feed.options().too_old(entry.date()) {
+                    continue;
+                }
+                if !self.passes_global_filters(&entry) {
+                    continue;
+                }
+                // NOTE: Individual feed filters are already checked by the underlying
+                // slipfeed updater.
+                entries.push(entry.clone());
+                count += 1;
+            }
+        }
+        entries
+    }
+
     pub fn syndicate_tag(&self, tag: &str, config: &Config) -> String {
         let mut syn = atom::FeedBuilder::default();
         syn.title(tag)
-            .author(atom::PersonBuilder::default().name("slipknot").build());
+            .author(atom::PersonBuilder::default().name("slipstream").build());
         let mut count = 0;
         for entry in self.updater.with_tags(tag) {
             if count >= config.global.limits.max() {
@@ -175,6 +241,29 @@ impl Updater {
             count += 1;
         }
         syn.build().to_string()
+    }
+
+    pub fn collect_tag(
+        &self,
+        tag: &str,
+        config: &Config,
+    ) -> Vec<slipfeed::Entry> {
+        let mut entries = Vec::with_capacity(config.global.limits.max());
+        let mut count = 0;
+        for entry in self.updater.with_tags(tag) {
+            if count >= config.global.limits.max() {
+                break;
+            }
+            if config.global.limits.too_old(entry.date()) {
+                continue;
+            }
+            if !self.passes_global_filters(&entry) {
+                continue;
+            }
+            entries.push(entry.clone());
+            count += 1;
+        }
+        entries
     }
 }
 
@@ -242,7 +331,7 @@ impl AggregateWorld {
         let feeds = match self.feed_feeds.get(&feed) {
             Some(feeds) => feeds,
             None => {
-                tracing::warn!("AggregateWorld lacks feed {:?}", feed);
+                tracing::warn!("AggregateWorld lacks feed {:?}.", feed);
                 return false;
             }
         };
@@ -250,7 +339,7 @@ impl AggregateWorld {
             if let Some(feed_id) = self.feed_ids.get(feed_name) {
                 self.feed_owns_entry_lim(*feed_id, entry, limit - 1)
             } else {
-                tracing::warn!("AggregateWorld lacks feed {}", feed_name);
+                tracing::warn!("AggregateWorld lacks feed {}.", feed_name);
                 false
             }
         })

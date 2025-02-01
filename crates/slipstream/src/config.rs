@@ -4,7 +4,7 @@ use slipfeed::FeedAttributes;
 
 use super::*;
 
-/// Configuration for slipknot.
+/// Configuration for slipstream.
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     /// Update frequency.
@@ -22,6 +22,8 @@ pub struct Config {
     /// Global configuration.
     #[serde(default)]
     pub global: Global,
+    /// All configuration.
+    pub all: Option<Global>,
     /// Feed configuration.
     pub feeds: Option<HashMap<String, FeedDefinition>>,
 }
@@ -35,6 +37,7 @@ impl Default for Config {
             storage: None,
             cache: None,
             global: Global::default(),
+            all: None,
             log: None,
         }
     }
@@ -52,6 +55,7 @@ impl Config {
             ),
             feeds: HashMap::new(),
             global_filters: Vec::new(),
+            all_filters: Vec::new(),
         };
 
         if let Some(feeds) = &self.feeds {
@@ -79,14 +83,14 @@ impl Config {
                         let feed = StandardFeed::new(url);
                         let id = updater.updater.add_feed(feed, attr);
                         updater.feeds.insert(name.clone(), id);
-                        tracing::debug!("Added standard feed {}", name);
+                        tracing::debug!("Added standard feed {}.", name);
                         world.write().await.insert(name.clone(), id, None);
                     }
                     RawFeed::Aggregate { feeds } => {
                         let feed = AggregateFeed::new(world.clone());
                         let id = updater.updater.add_feed(feed, attr);
                         updater.feeds.insert(name.clone(), id);
-                        tracing::debug!("Added aggregate feed {}", name);
+                        tracing::debug!("Added aggregate feed {}.", name);
                         world.write().await.insert(
                             name.clone(),
                             id,
@@ -102,6 +106,11 @@ impl Config {
             .global_filters
             .extend(self.global.filters.get_filters());
 
+        // Add all filters.
+        if let Some(all_config) = self.all.as_ref() {
+            updater.all_filters.extend(all_config.filters.get_filters());
+        }
+
         updater
     }
 
@@ -114,7 +123,7 @@ impl Config {
 }
 
 /// Global configuration.
-#[derive(Clone, Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct Global {
     #[serde(default)]
     pub filters: Filters,

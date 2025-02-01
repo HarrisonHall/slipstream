@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+  <head>
+    <title>slipstream {{feed}}</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="stylesheet" type="text/css" href="/styles.css" />
+    <link rel="alternate" type="application/atom+xml" title="slipfeed{{feed}}/feed" href="{{feed}}/feed">
+    <style type="text/css" media="screen">
+      :root {
+        --pico-font-family-sans-serif: Inter, system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, Helvetica, Arial, "Helvetica Neue", sans-serif, var(--pico-font-family-emoji);
+        --pico-font-size: 87.5%; /* Original: 100% */
+        --pico-line-height: 1.25;
+        --pico-form-element-spacing-vertical: 0.5rem;
+        --pico-form-element-spacing-horizontal: 1.0rem;
+        --pico-typography-spacing-vertical: 0.5rem;
+      }
+      article {
+        border: 1px solid var(--pico-muted-border-color);
+      }
+      .container {
+        max-width: 840px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <section>
+        <h1>slipstream {{feed}}</h1>
+        <a href="{{feed}}/feed">atom</a>
+      </section>
+      <section>
+        {{#each entries}}
+        <article>
+          <p><strong>{{title}}</strong></p>
+          {{#if author}}
+          <p>{{author}}</p>
+          {{/if}}
+          <p>{{date}}</p>
+          <footer>
+            <div class="grid">
+              <div>
+                <a href="{{source.url}}" class="primary">Source</a>
+              </div>
+              {{#if comments.url}}
+              <div>
+                <a href="{{comments.url}}" class="secondary">Comments</a>
+              </div>
+              {{/if}}
+              </>
+              {{#each links}}
+              <div>
+                <a href="{{url}}" class="contrast">{{title}}</a>
+              </div>
+              {{/each}}
+            </div>
+          </footer>
+        </article>
+        {{/each}}
+      </section>
+    </main>
+  </body>
+</html>

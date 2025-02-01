@@ -137,6 +137,7 @@ pub fn setup_logging(cli: &Cli, config: &Config) {
     };
     let filter = tracing_subscriber::filter::Targets::new()
         .with_default(LevelFilter::OFF)
+        .with_target("slipstream", level)
         .with_target("slipknot", level)
         .with_target("slipfeed", level);
     // CLI layer

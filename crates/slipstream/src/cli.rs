@@ -15,18 +15,18 @@ pub struct Cli {
 
 impl Cli {
     /// Parse configuration.
-    pub fn parse_config(&self) -> Result<Config, Error> {
+    pub fn parse_config(&self) -> Result<Config> {
         // Get specified config path.
         let config_path: PathBuf = match &self.config {
             Some(path) => path.clone(),
             None => match PathBuf::from_str(DEFAULT_CONFIG_DIR) {
                 Ok(p) => p,
                 Err(e) => {
-                    eprintln!(
-                        "Invalid default config {}: {}",
-                        DEFAULT_CONFIG_DIR, e
+                    bail!(
+                        "Invalid default config {}: {}.",
+                        DEFAULT_CONFIG_DIR,
+                        e
                     );
-                    return Err(Error::InvalidConfig);
                 }
             },
         }
@@ -40,32 +40,31 @@ impl Cli {
         }
         // Make file if it doesn't exist.
         if !config_path.exists() {
-            tracing::debug!("Created config file @ {:?}", config_path);
+            tracing::debug!("Created config file @ {:?}.", config_path);
             if let Err(e) = std::fs::File::create(config_path.as_path()) {
-                eprintln!(
-                    "Unable to create config file at {:?}: {}",
-                    config_path, e
+                bail!(
+                    "Unable to create config file at {:?}: {}.",
+                    config_path,
+                    e
                 );
-                return Err(Error::InvalidConfig);
             }
         }
         // Read file.
         let config_data = match std::fs::read_to_string(&config_path) {
             Ok(data) => data,
             Err(e) => {
-                eprintln!(
-                    "Unable to read data from config file {:?}: {}",
-                    config_path, e
+                bail!(
+                    "Unable to read data from config file {:?}: {}.",
+                    config_path,
+                    e
                 );
-                return Err(Error::InvalidConfig);
             }
         };
         // Parse.
         match Config::deserialize(toml::Deserializer::new(&config_data)) {
             Ok(config) => Ok(config),
             Err(e) => {
-                eprintln!("Configuration file is not valid: {}", e);
-                Err(Error::InvalidConfig)
+                bail!("Configuration file is not valid: {}.", e);
             }
         }
     }

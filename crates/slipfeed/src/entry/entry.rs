@@ -3,7 +3,7 @@
 use super::*;
 
 /// An entry from a feed.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Entry {
     // Entry fields.
     title: String,
@@ -132,7 +132,7 @@ impl Ord for Entry {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 enum EntryDate {
     Published(DateTime),
     Parsed(DateTime),
@@ -265,7 +265,7 @@ impl From<EntryBuilder> for Entry {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Link {
     pub url: String,
     pub title: String,
