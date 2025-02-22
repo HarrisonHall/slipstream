@@ -19,7 +19,7 @@ debug-slipstream:
 # Build static release for many versions of linux via musl.
 build-many:
     # Req: rustup component add rust-std-x86_64-unknown-linux-musl
-    cargo build --target x86_64-unknown-linux-musl --release
+    cargo build --package slipstream --target x86_64-unknown-linux-musl --release
 
 # Test the repo.
 test:

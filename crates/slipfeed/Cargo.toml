@@ -1,8 +1,14 @@
 [package]
 name = "slipfeed"
-description = "Feed fetcher, filterer, and aggregator."
-version = "0.2.1"
-edition = "2021"
+description = "Feed fetching, filtering, and aggregating utilities."
+version = "0.2.2"
+edition = "2024"
+authors = ["hachha <hachha@hachha.dev>"]
+keywords = ["rss", "atom", "feed"]
+categories = []
+repository = "https://github.com/harrisonhall/slipstream"
+readme = "README.md"
+rust-version = "1.85.0"
 
 [dependencies]
 chrono = { workspace = true }

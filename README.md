@@ -1,4 +1,9 @@
-# Slipstream
+<p align="center">
+  <a href="https://github.com/harrisonhall/slipstream" align="center">
+    <img alt="slipstream" src="./crates/slipstream/src/web/content/favicon.png" width="100" />
+  </a>
+</p>
+<h1 align="center">slipstream</h1>
 
 Feed fetcher, filterer, and aggregator.
 
@@ -13,18 +18,23 @@ Feed fetcher, filterer, and aggregator.
 `slipstream` is a command-line application for serving filtered/aggregated feeds
 from existing feeds a la Yahoo Pipes. A simple configuration file (e.g.
 [slipstream.toml](examples/config/slipstream.toml)) is used to define feeds,
-relationships, and filters. While still a work-in-progress, running something
-like `slipstream --config <your-config.toml> --port <your-port>` will start a
-web server that exposes the following endpoints:
+relationships, and filters. Running
+`slipstream --config <your-config.toml> --port <your-port>` will start a web
+server that exposes the following endpoints:
 
 - `/config` for viewing the config (toml).
-- `/all` for viewing all entries (html).
+- `/all` (or `/`) for viewing all entries (html).
 - `/feed/<feed_name>` for viewing a specific feed (html).
 - `/tag/<tag_name>` for viewing a feed for entries with a specific tag (html).
 - `/all/feed` for viewing all entries (atom).
 - `/feed/<feed_name>/feed` for viewing a specific feed (atom).
 - `/tag/<tag_name>/feed` for viewing a feed for entries with a specific tag
   (atom).
+
+An example can be found at my personal website
+[feeds.hachha.dev](https://feeds.hachha.dev/).
+
+![slipstream screenshot](./crates/slipstream/src/web/content/example.png)
 
 ## Roadmap
 

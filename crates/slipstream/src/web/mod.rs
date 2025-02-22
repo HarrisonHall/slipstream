@@ -9,6 +9,7 @@ use super::*;
 #[derive(rust_embed::Embed)]
 #[folder = "src/web/content"]
 #[exclude = "*.asesprite"]
+#[exclude = "*.png"]
 struct Content;
 
 pub struct HtmlServer {
