@@ -2,19 +2,30 @@
 
 use super::*;
 
+use std::collections::VecDeque;
 use std::fmt;
+use std::io::Write;
+use std::sync::LazyLock;
+use std::sync::RwLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use colored::{ColoredString, Colorize};
-use tracing::{level_filters::LevelFilter, Event, Level, Subscriber};
-use tracing_subscriber::registry::LookupSpan;
+use tracing::{Event, Level, Subscriber, level_filters::LevelFilter};
 use tracing_subscriber::Layer;
+use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::{
     fmt::{
-        format::{self, FormatEvent, FormatFields},
         FmtContext,
+        format::{self, FormatEvent, FormatFields},
     },
     layer::SubscriberExt,
 };
+
+static LOGGER: LazyLock<Logger> = LazyLock::new(|| Logger::new());
+
+pub fn get_logger() -> Logger {
+    LOGGER.clone()
+}
 
 /// Get string for a level.
 fn get_level_string(level: Level) -> &'static str {
@@ -37,6 +48,67 @@ fn get_level_string_colored(level: Level) -> ColoredString {
         Level::ERROR => get_level_string(level).red(),
     };
     level.bold()
+}
+
+/// Make stderr writer that can be toggled into a buffer.
+#[derive(Clone)]
+pub struct Logger {
+    buffer: Arc<RwLock<VecDeque<Box<[u8]>>>>,
+    cursor: Arc<RwLock<usize>>,
+    max_size: usize,
+    writing: Arc<AtomicBool>,
+}
+
+impl Logger {
+    fn new() -> Self {
+        Self {
+            buffer: Arc::new(RwLock::new(VecDeque::new())),
+            cursor: Arc::new(RwLock::new(0)),
+            max_size: 255,
+            writing: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    pub fn set_writing(&mut self, writing: bool) -> Result<()> {
+        self.writing.store(writing, Ordering::Release);
+        if writing {
+            self.flush()?;
+        }
+        Ok(())
+    }
+}
+
+impl std::io::Write for Logger {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if let (Ok(mut buffer), Ok(mut cursor)) =
+            (self.buffer.write(), self.cursor.write())
+        {
+            buffer.push_back(Box::from(buf));
+            while buffer.len() > self.max_size {
+                buffer.pop_front();
+                if *cursor > 0 {
+                    *cursor -= 1;
+                }
+            }
+        }
+        if self.writing.load(Ordering::Acquire) {
+            self.flush()?;
+        }
+        return Ok(buf.len());
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let mut se = std::io::stderr();
+        if let (Ok(buffer), Ok(mut cursor)) =
+            (self.buffer.write(), self.cursor.write())
+        {
+            while *cursor < buffer.len() {
+                se.write(&buffer[*cursor])?;
+                *cursor += 1;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Formatter for the cli.
@@ -138,13 +210,15 @@ pub fn setup_logging(cli: &Cli, config: &Config) {
     let filter = tracing_subscriber::filter::Targets::new()
         .with_default(LevelFilter::OFF)
         .with_target("slipstream", level)
-        .with_target("slipknot", level)
         .with_target("slipfeed", level);
-    // CLI layer
+
+    // CLI layer (to stderr).
     let cli = tracing_subscriber::fmt::layer()
         .event_format(CliFormatter)
+        .with_writer(get_logger)
         .with_filter(filter.clone());
-    // File layer
+
+    // File layer.
     let file = match config.log.as_ref() {
         Some(log_file) => {
             let filename = shellexpand::full(log_file)
@@ -173,9 +247,9 @@ pub fn setup_logging(cli: &Cli, config: &Config) {
         None => None,
     };
 
-    // Log file formatting
+    // Log file formatting.
     let subscriber =
         tracing_subscriber::Registry::default().with(cli).with(file);
     tracing::subscriber::set_global_default(subscriber)
-        .expect("Unable to initialze logging.");
+        .expect("Unable to initialize logging.");
 }

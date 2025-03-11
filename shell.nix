@@ -1,5 +1,5 @@
 { pkgs ? import <nixpkgs> {
-  config.allowUnfree = true;
+  config.allowUnfree = false;
 } }:
 
 with pkgs;
@@ -8,9 +8,9 @@ mkShell rec {
   nativeBuildInputs = [
   ];
   buildInputs = [
-    dioxus-cli
     just
     rustup
+    patchelf
   ];
   LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
 }

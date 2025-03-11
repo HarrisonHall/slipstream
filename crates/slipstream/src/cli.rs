@@ -7,10 +7,10 @@ use super::*;
 pub struct Cli {
     #[arg(short, long, value_name = "FILE")]
     pub config: Option<PathBuf>,
-    #[arg(short, long, value_name = "PORT")]
-    pub port: Option<u16>,
     #[arg(short, long, action)]
     pub debug: bool,
+    #[command(subcommand)]
+    pub command: Mode,
 }
 
 impl Cli {
@@ -19,12 +19,12 @@ impl Cli {
         // Get specified config path.
         let config_path: PathBuf = match &self.config {
             Some(path) => path.clone(),
-            None => match PathBuf::from_str(DEFAULT_CONFIG_DIR) {
+            None => match PathBuf::from_str(&*DEFAULT_CONFIG_DIR) {
                 Ok(p) => p,
                 Err(e) => {
                     bail!(
                         "Invalid default config {}: {}.",
-                        DEFAULT_CONFIG_DIR,
+                        &*DEFAULT_CONFIG_DIR,
                         e
                     );
                 }
@@ -68,4 +68,13 @@ impl Cli {
             }
         }
     }
+}
+
+#[derive(Subcommand)]
+pub enum Mode {
+    Serve {
+        #[arg(short, long, value_name = "PORT")]
+        port: Option<u16>,
+    },
+    Read {},
 }

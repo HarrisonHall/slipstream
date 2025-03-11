@@ -41,6 +41,7 @@ pub enum RawFeed {
 pub struct Updater {
     pub updater: slipfeed::Updater,
     pub feeds: HashMap<String, slipfeed::FeedId>,
+    pub feeds_ids: HashMap<slipfeed::FeedId, String>,
     pub global_filters: Vec<slipfeed::Filter>,
     pub all_filters: Vec<slipfeed::Filter>,
 }
@@ -96,6 +97,10 @@ impl EntryExt for slipfeed::Entry {
 impl Updater {
     pub async fn update(&mut self) -> () {
         self.updater.update().await;
+    }
+
+    pub fn feed_name(&self, feed: slipfeed::FeedId) -> Option<&String> {
+        self.feeds_ids.get(&feed)
     }
 
     pub fn passes_global_filters(&self, entry: &slipfeed::Entry) -> bool {

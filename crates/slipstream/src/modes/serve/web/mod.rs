@@ -7,7 +7,7 @@ use handlebars::Handlebars;
 use super::*;
 
 #[derive(rust_embed::Embed)]
-#[folder = "src/web/content"]
+#[folder = "src/modes/serve/web/content"]
 #[exclude = "*.asesprite"]
 #[exclude = "*.png"]
 struct Content;

@@ -134,13 +134,16 @@ impl Feed for StandardSyndication {
                             .date(DateTime::from_chrono(
                                 entry.updated().to_utc(),
                             ))
-                            .author(entry.authors().iter().fold(
-                                "".to_string(),
-                                |acc, author| {
-                                    format!("{} {}", acc, author.name())
-                                        .to_string()
-                                },
-                            ))
+                            .author(
+                                entry
+                                    .authors()
+                                    .iter()
+                                    .fold("".to_string(), |acc, author| {
+                                        format!("{} {}", acc, author.name())
+                                            .to_string()
+                                    })
+                                    .trim(),
+                            )
                             .content(entry.content().iter().fold(
                                 "".to_string(),
                                 |_, cont| {

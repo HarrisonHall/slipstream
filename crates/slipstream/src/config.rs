@@ -54,6 +54,7 @@ impl Config {
                 self.storage.unwrap_or(1024) as usize,
             ),
             feeds: HashMap::new(),
+            feeds_ids: HashMap::new(),
             global_filters: Vec::new(),
             all_filters: Vec::new(),
         };
@@ -83,6 +84,7 @@ impl Config {
                         let feed = StandardFeed::new(url);
                         let id = updater.updater.add_feed(feed, attr);
                         updater.feeds.insert(name.clone(), id);
+                        updater.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added standard feed {}.", name);
                         world.write().await.insert(name.clone(), id, None);
                     }
@@ -90,6 +92,7 @@ impl Config {
                         let feed = AggregateFeed::new(world.clone());
                         let id = updater.updater.add_feed(feed, attr);
                         updater.feeds.insert(name.clone(), id);
+                        updater.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added aggregate feed {}.", name);
                         world.write().await.insert(
                             name.clone(),

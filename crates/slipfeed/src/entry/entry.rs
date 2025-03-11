@@ -132,6 +132,15 @@ impl Ord for Entry {
     }
 }
 
+impl std::hash::Hash for Entry {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.title.hash(state);
+        self.author.hash(state);
+        self.content.hash(state);
+        self.source.url.hash(state);
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 enum EntryDate {
     Published(DateTime),

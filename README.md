@@ -10,10 +10,17 @@ Feed fetcher, filterer, and aggregator.
 ## Crates
 
 - `slipfeed` - Feed fetcher, filterer, and aggregator library.
+- `slipreader` - CLI feed reader
 - `slipstream` - Simple CLI `slipfeed` server utilizing a simple
   [config](examples/config/slipstream.toml).
 
 ## Getting Started
+
+### slipreader
+
+...
+
+### slipstream
 
 `slipstream` is a command-line application for serving filtered/aggregated feeds
 from existing feeds a la Yahoo Pipes. A simple configuration file (e.g.
