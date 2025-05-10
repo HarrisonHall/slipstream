@@ -59,6 +59,8 @@ impl HtmlServer {
         &mut self,
         uri: impl AsRef<str>,
         entries: impl Future<Output = Vec<slipfeed::Entry>>,
+        updater: Arc<Mutex<Updater>>,
+        _config: Arc<Config>,
     ) -> String {
         let now = slipfeed::DateTime::now();
 
@@ -72,10 +74,34 @@ impl HtmlServer {
 
         // Create entry.
         tracing::debug!("Creating new entry for cache.");
-        let params = TemplateParams {
-            feed: String::from(uri.as_ref()),
-            entries: entries.await.iter().map(|e| MinEntry::from(e)).collect(),
-        };
+        let entries = entries.await;
+        let params;
+        {
+            let updater = updater.lock().await;
+            params = TemplateParams {
+                feed: String::from(uri.as_ref()),
+                entries: entries
+                    .iter()
+                    .map(|e| {
+                        let mut sources = Vec::<String>::new();
+                        let mut min = MinEntry::from(e);
+                        for source in e.feeds() {
+                            if let Some(source_name) =
+                                updater.feed_name(*source)
+                            {
+                                sources.push(source_name.clone());
+                            }
+                        }
+                        if sources.len() > 0 {
+                            min.sources = sources.join(", ");
+                        } else {
+                            min.sources = "<Unknown Source>".into();
+                        }
+                        min
+                    })
+                    .collect(),
+            };
+        }
         let page = match self.templater.render("feed", &params) {
             Ok(page) => page,
             Err(e) => {
@@ -109,6 +135,7 @@ struct MinEntry {
     title: String,
     date: String,
     author: String,
+    sources: String,
     source: slipfeed::Link,
     comments: slipfeed::Link,
     links: Vec<slipfeed::Link>,
@@ -120,22 +147,10 @@ impl From<&slipfeed::Entry> for MinEntry {
             title: value.title().clone(),
             date: value.date().clone().pretty_string(),
             author: value.author().clone(),
+            sources: String::default(),
             source: value.source().clone(),
             comments: value.comments().clone(),
             links: value.other_links().clone(),
-            // {
-            //     let mut links = Vec::new();
-            //     if !value.source().url.is_empty() {
-            //         links.push(value.source().clone());
-            //     }
-            //     if !value.comments().url.is_empty() {
-            //         links.push(value.comments().clone());
-            //     }
-            //     for link in value.other_links() {
-            //         links.push(link.clone());
-            //     }
-            //     links
-            // },
         }
     }
 }

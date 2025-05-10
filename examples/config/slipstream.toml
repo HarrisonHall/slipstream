@@ -4,6 +4,9 @@
 freq = "5min"
 cache = "2min"
 
+# Other options.
+show_source_in_title = true
+
 # Settings that apply to **everything**.
 [global]
 

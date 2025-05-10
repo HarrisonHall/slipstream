@@ -47,14 +47,13 @@ pub struct Updater {
 }
 
 trait EntryExt {
-    fn to_atom(&self) -> atom::Entry;
+    fn to_atom(&self, updater: &Updater, config: &Config) -> atom::Entry;
 }
 
 impl EntryExt for slipfeed::Entry {
-    fn to_atom(&self) -> atom::Entry {
+    fn to_atom(&self, updater: &Updater, config: &Config) -> atom::Entry {
         let mut entry = atom::EntryBuilder::default();
         entry
-            .title(self.title().clone())
             .summary(Some(self.content().clone().into()))
             // .published(Some(self.date().clone().to_chrono()))
             .updated(self.date().clone().to_chrono())
@@ -63,6 +62,25 @@ impl EntryExt for slipfeed::Entry {
                     .name(self.author().clone())
                     .build(),
             );
+        if config.show_source_in_title {
+            let mut feed_names: Vec<String> = Vec::new();
+            for feed_id in self.feeds() {
+                if let Some(name) = updater.feed_name(*feed_id) {
+                    feed_names.push(name.clone());
+                }
+            }
+            if feed_names.len() > 0 {
+                entry.title(format!(
+                    "[{}] {}",
+                    feed_names.join(", "),
+                    self.title()
+                ));
+            } else {
+                entry.title(self.title().clone());
+            }
+        } else {
+            entry.title(self.title().clone());
+        }
         if self.source().url != "" {
             entry.link(
                 atom::LinkBuilder::default()
@@ -131,7 +149,7 @@ impl Updater {
             if !self.passes_all_filters(&entry) {
                 continue;
             }
-            syn.entry(entry.to_atom());
+            syn.entry(entry.to_atom(self, config));
             count += 1;
         }
         syn.build().to_string()
@@ -185,7 +203,7 @@ impl Updater {
                 }
                 // NOTE: Individual feed filters are already checked by the underlying
                 // slipfeed updater.
-                syn.entry(entry.to_atom());
+                syn.entry(entry.to_atom(self, config));
                 count += 1;
             }
         }
@@ -242,7 +260,7 @@ impl Updater {
             if !self.passes_global_filters(&entry) {
                 continue;
             }
-            syn.entry(entry.to_atom());
+            syn.entry(entry.to_atom(self, config));
             count += 1;
         }
         syn.build().to_string()

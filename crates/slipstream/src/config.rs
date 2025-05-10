@@ -26,6 +26,10 @@ pub struct Config {
     pub all: Option<Global>,
     /// Feed configuration.
     pub feeds: Option<HashMap<String, FeedDefinition>>,
+    // Additional configuration.
+    /// Put source into served title.
+    #[serde(default = "Config::default_show_source_in_title")]
+    pub show_source_in_title: bool,
 }
 
 impl Default for Config {
@@ -39,6 +43,7 @@ impl Default for Config {
             global: Global::default(),
             all: None,
             log: None,
+            show_source_in_title: true,
         }
     }
 }
@@ -122,6 +127,10 @@ impl Config {
             return feeds.get(feed);
         }
         None
+    }
+
+    fn default_show_source_in_title() -> bool {
+        false
     }
 }
 

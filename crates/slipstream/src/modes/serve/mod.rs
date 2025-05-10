@@ -67,12 +67,20 @@ async fn get_all_html(
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("/all");
     let config = &state.config;
-    let updater = state.updater.lock().await;
     let mut html = state.html.lock().await;
+    let updater = state.updater.clone();
     return (
         [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        html.get("/all", async move { updater.collect_all(config) })
-            .await,
+        html.get(
+            "/all",
+            async move {
+                let updater = updater.lock().await;
+                updater.collect_all(config)
+            },
+            state.updater.clone(),
+            state.config.clone(),
+        )
+        .await,
     );
 }
 
@@ -97,14 +105,19 @@ async fn get_feed_html(
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("{}", uri.path());
     let feed = &uri.path()["/feed/".len()..];
-    let config = &state.config;
-    let updater = state.updater.lock().await;
+    let config = state.config.clone();
+    let updater = state.updater.clone();
     let mut html = state.html.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
         html.get(
             uri.path(),
-            async move { updater.collect_feed(feed, config) },
+            async move {
+                let updater = updater.lock().await;
+                updater.collect_feed(feed, &config)
+            },
+            state.updater.clone(),
+            state.config.clone(),
         )
         .await,
     );
@@ -136,13 +149,21 @@ async fn get_tag_html(
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("{}", uri.path());
     let tag = &uri.path()["/tag/".len()..];
-    let config = &state.config;
-    let updater = state.updater.lock().await;
+    let config = state.config.clone();
+    let updater = state.updater.clone();
     let mut html = state.html.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        html.get(uri.path(), async move { updater.collect_tag(tag, config) })
-            .await,
+        html.get(
+            uri.path(),
+            async move {
+                let updater = updater.lock().await;
+                updater.collect_tag(tag, &config)
+            },
+            state.updater.clone(),
+            state.config.clone(),
+        )
+        .await,
     );
 }
 
