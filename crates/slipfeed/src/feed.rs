@@ -126,9 +126,9 @@ impl Feed for StandardSyndication {
         if let Ok(req_result) = client.execute(request).await {
             if let Ok(body) = req_result.text().await {
                 let body = body.as_str();
-                let mut parsed = EntryBuilder::new();
                 if let Ok(atom_feed) = body.parse::<atom_syndication::Feed>() {
                     for entry in atom_feed.entries() {
+                        let mut parsed = EntryBuilder::new();
                         parsed
                             .title(entry.title().to_string())
                             .date(DateTime::from_chrono(
@@ -185,6 +185,7 @@ impl Feed for StandardSyndication {
                 }
                 if let Ok(rss_feed) = body.parse::<rss::Channel>() {
                     for entry in rss_feed.items {
+                        let mut parsed = EntryBuilder::new();
                         parsed
                             .title(entry.title().unwrap_or("").to_string())
                             .date(

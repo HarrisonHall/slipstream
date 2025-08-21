@@ -228,7 +228,7 @@ impl EntryBuilder {
     }
 
     pub fn comments(&mut self, url: impl Into<String>) -> &mut Self {
-        self.source = Some(Link {
+        self.comments = Some(Link {
             url: url.into(),
             title: "Comments".into(),
             mime_type: None,

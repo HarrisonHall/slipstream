@@ -15,15 +15,17 @@ install:
     cargo install --path ./crates/slipstream
 
 # Run debug slipreader.
-debug-slipreader:
+debug-slipreader local:
     #!/usr/bin/env sh
-    cd $(jj workspace root)
-    cargo run --bin slipstream -- --debug -c ./examples/config/slipreader.toml read
+    if [ {{local}} ]; then
+        cargo run --bin slipstream -- --debug -c ~/.config/slipstream/slipreader.toml read
+    else
+        cargo run --bin slipstream -- --debug -c ./examples/config/slipreader.toml read
+    fi
 
 # Run debug slipstream.
 debug-slipstream:
     #!/usr/bin/env sh
-    cd $(jj workspace root)
     cargo run --bin slipstream -- --debug -c ./examples/config/slipstream.toml serve
 
 # Build static release for many versions of linux via musl.

@@ -1,10 +1,11 @@
-//! Config.
+//! Slipstream configuration.
 
 use slipfeed::FeedAttributes;
 
 use super::*;
 
 /// Configuration for slipstream.
+/// This is parsed from the toml slipstream configuration file.
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     /// Update frequency.
@@ -21,15 +22,20 @@ pub struct Config {
     pub cache: Option<std::time::Duration>,
     /// Global configuration.
     #[serde(default)]
-    pub global: Global,
+    pub global: GlobalConfig,
     /// All configuration.
-    pub all: Option<Global>,
+    pub all: Option<GlobalConfig>,
     /// Feed configuration.
     pub feeds: Option<HashMap<String, FeedDefinition>>,
     // Additional configuration.
     /// Put source into served title.
     #[serde(default = "Config::default_show_source_in_title")]
     pub show_source_in_title: bool,
+    /// Location for archives.
+    pub archive_path: Option<String>,
+    // Read configuration.
+    #[serde(default)]
+    pub read: ReadConfig,
 }
 
 impl Default for Config {
@@ -40,15 +46,18 @@ impl Default for Config {
             port: None,
             storage: None,
             cache: None,
-            global: Global::default(),
+            global: GlobalConfig::default(),
             all: None,
             log: None,
             show_source_in_title: true,
+            archive_path: None,
+            read: ReadConfig::default(),
         }
     }
 }
 
 impl Config {
+    /// Create a slipstream updater from the parsed configuration.
     pub async fn updater(&self) -> Updater {
         let mut updater = Updater {
             updater: slipfeed::Updater::new(
@@ -83,7 +92,6 @@ impl Config {
                     .get_filters()
                     .iter()
                     .for_each(|f| attr.add_filter(f.clone()));
-                // let feed: Box<dyn slipfeed::Feed> =
                 match feed_def.feed() {
                     RawFeed::Raw { url } => {
                         let feed = StandardFeed::new(url);
@@ -122,6 +130,7 @@ impl Config {
         updater
     }
 
+    /// Find a feed by name.
     pub fn feed(&self, feed: &str) -> Option<&FeedDefinition> {
         if let Some(feeds) = self.feeds.as_ref() {
             return feeds.get(feed);
@@ -136,7 +145,7 @@ impl Config {
 
 /// Global configuration.
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
-pub struct Global {
+pub struct GlobalConfig {
     #[serde(default)]
     pub filters: Filters,
     #[serde(default)]

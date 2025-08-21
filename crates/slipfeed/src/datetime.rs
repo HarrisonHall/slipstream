@@ -2,20 +2,24 @@
 ///! conversions between std, chrono, and tokio.
 use super::*;
 
+/// Datetime generalization for conversion between libraries.
 #[derive(
     Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
 pub struct DateTime(chrono::DateTime<chrono::Utc>);
 
 impl DateTime {
+    /// Get the current DateTime.
     pub fn now() -> Self {
         DateTime(chrono::Utc::now())
     }
 
+    /// Generate a DateTime at the unix epoch.
     pub fn epoch() -> Self {
         DateTime(chrono::DateTime::UNIX_EPOCH)
     }
 
+    /// Check whether or not this timestamp has passed.
     pub fn has_passed(&self, duration: &Duration) -> bool {
         self.0 + duration.0 < DateTime::now().0
     }
@@ -24,6 +28,7 @@ impl DateTime {
     //     todo!()
     // }
 
+    /// Convert to chrono::DateTime.
     pub fn to_chrono(&self) -> chrono::DateTime<chrono::Utc> {
         self.0.clone()
     }
@@ -32,12 +37,15 @@ impl DateTime {
     //     Self(match chrono::DateTime::<chrono::Utc>::from_timestamp_millis(dt.duration_since(std::time::Instant)))
     // }
 
+    /// Convert from chrono::DateTime.
     pub fn from_chrono(dt: chrono::DateTime<chrono::Utc>) -> Self {
         Self(dt)
     }
+}
 
-    pub fn pretty_string(&self) -> String {
-        self.0.format("%Y-%m-%d %H:%M UTC").to_string()
+impl std::fmt::Display for DateTime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0.format("%Y-%m-%d %H:%M UTC").to_string())
     }
 }
 

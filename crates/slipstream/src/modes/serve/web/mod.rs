@@ -145,7 +145,7 @@ impl From<&slipfeed::Entry> for MinEntry {
     fn from(value: &slipfeed::Entry) -> Self {
         Self {
             title: value.title().clone(),
-            date: value.date().clone().pretty_string(),
+            date: format!("{}", value.date()),
             author: value.author().clone(),
             sources: String::default(),
             source: value.source().clone(),

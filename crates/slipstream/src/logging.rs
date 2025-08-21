@@ -128,16 +128,16 @@ where
         let metadata = event.metadata();
         write!(
             &mut writer,
-            "{} :: ",
+            "[{}]",
             get_level_string_colored(*metadata.level()),
             // metadata.target().bright_green().bold()
         )?;
 
         let now_string =
             chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-        write!(&mut writer, "{} :: ", now_string.green())?;
+        write!(&mut writer, "{}", now_string.green())?;
 
-        write!(&mut writer, "{} :: ", metadata.target().green().bold())?;
+        write!(&mut writer, "[{}] ", metadata.target().green().bold())?;
 
         // // Format all the spans in the event's span context.
         // if let Some(scope) = ctx.event_scope() {

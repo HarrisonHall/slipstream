@@ -48,6 +48,110 @@ url = "https://feeds.hachha.dev/tag/hacking/feed"
 tags = ["hacking", "tech"]
 max = 10
 
-# [feeds.hachha]
-# url = "https://hachha.dev/blog.feed"
-# tags = ["hacking", "tech"]
+[feeds.hachha]
+url = "https://hachha.dev/blog.feed"
+tags = ["hacking", "tech"]
+
+
+[read]
+
+[read.bindings]
+r = "read"
+C-a = "archive"
+o = "open"
+
+1 = "read-1"
+C-1 = "archive-1"
+S-1 = "open-1"
+2 = "read-2"
+C-2 = "archive-2"
+S-2 = "open-2"
+3 = "read-3"
+C-3 = "archive-3"
+S-3 = "open-3"
+4 = "read-4"
+C-4 = "archive-4"
+S-4 = "open-4"
+
+# Read the url.
+[[read.commands]]
+name = "read"
+command = [
+  "fish",
+  "-c",
+  """
+  curl \
+    --silent \
+    -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" \
+    {{link.url}} \
+  | pandoc \
+    --from html \
+    --to gfm-raw_html \
+    -o - \
+  | bat \
+    --color=always \
+    --language=markdown \
+    --terminal-width={{terminal.width}} \
+    -
+  """
+]
+
+[[read.commands]]
+name = "read-1"
+command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\" {{link.url1}} | pandoc --from html --to gfm-raw_html -o - | bat --color=always --language=markdown --terminal-width={{terminal.width}} -"]
+[[read.commands]]
+name = "read-2"
+command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\" {{link.url2}} | pandoc --from html --to gfm-raw_html -o - | bat --color=always --language=markdown --terminal-width={{terminal.width}} -"]
+[[read.commands]]
+name = "read-3"
+command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\" {{link.url3}} | pandoc --from html --to gfm-raw_html -o - | bat --color=always --language=markdown --terminal-width={{terminal.width}} -"]
+[[read.commands]]
+name = "read-4"
+command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\" {{link.url4}} | pandoc --from html --to gfm-raw_html -o - | bat --color=always --language=markdown --terminal-width={{terminal.width}} -"]
+
+# Open the url.
+[[read.commands]]
+name = "open"
+command = ["fish", "-c", "xdg-open {{link.url}}"]
+
+[[read.commands]]
+name = "open-1"
+command = ["fish", "-c", "xdg-open {{link.url1}}"]
+[[read.commands]]
+name = "open-2"
+command = ["fish", "-c", "xdg-open {{link.url2}}"]
+[[read.commands]]
+name = "open-3"
+command = ["fish", "-c", "xdg-open {{link.url3}}"]
+[[read.commands]]
+name = "open-4"
+command = ["fish", "-c", "xdg-open {{link.url4}}"]
+
+# Archive.
+[[read.commands]]
+name = "archive"
+command = [
+  "fish",
+  "-c",
+  """
+    monolith \
+      --no-js \
+      --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" \
+      --output ~/media/articles/{{link.name-}}.html \
+      {{link.url}}
+  """,
+]
+
+[[read.commands]]
+name = "archive-1"
+command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html {{link.url1}}""",]
+[[read.commands]]
+name = "archive-2"
+command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html {{link.url2}}""",]
+[[read.commands]]
+name = "archive-3"
+command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html {{link.url3}}""",]
+[[read.commands]]
+name = "archive-4"
+command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html {{link.url4}}""",]
+
