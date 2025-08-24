@@ -1962,7 +1962,7 @@ dependencies = [
 
 [[package]]
 name = "slipfeed"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "async-trait",
  "atom_syndication",
@@ -1977,7 +1977,7 @@ dependencies = [
 
 [[package]]
 name = "slipstream"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "ansi-to-tui",
  "anyhow",
