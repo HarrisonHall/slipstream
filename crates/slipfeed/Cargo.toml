@@ -13,8 +13,10 @@ rust-version = "1.85.0"
 [dependencies]
 chrono = { workspace = true }
 futures = { workspace = true }
+resolve-path = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
+sqlx = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 

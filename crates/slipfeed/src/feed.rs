@@ -1,14 +1,26 @@
 //! Feed management.
 
+use std::hash::Hash;
+
 use super::*;
 
 /// Id that represents a feed.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FeedId(pub(crate) usize);
+pub struct FeedId(pub usize);
+
+/// Reference to a feed.
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FeedRef {
+    pub id: FeedId,
+    pub name: Arc<String>,
+}
 
 /// Attributes all feeds must have.
 #[derive(Clone)]
 pub struct FeedAttributes {
+    /// Feed name.
+    /// This need not unique-- just something consistent that can be displayed.
+    pub display_name: Arc<String>,
     /// How old entries must be, to be ignored.
     pub timeout: Duration,
     /// How often the feed should update.
@@ -23,6 +35,7 @@ impl FeedAttributes {
     /// Generate empty feed info.
     pub fn new() -> Self {
         Self {
+            display_name: Arc::new(":empty:".into()),
             timeout: Duration::from_seconds(15),
             freq: None,
             tags: HashSet::new(),
@@ -75,7 +88,7 @@ pub trait Feed: std::fmt::Debug + Send + Sync + 'static {
         attr: &FeedAttributes,
     ) {
         // By default, we only tag our own entries.
-        if entry.from_feed(feed_id) {
+        if entry.is_from_feed(feed_id) {
             for tag in attr.get_tags() {
                 entry.add_tag(&tag);
             }
@@ -92,6 +105,12 @@ pub struct StandardSyndication {
 impl StandardSyndication {
     pub fn new(url: impl Into<String>) -> Box<Self> {
         Box::new(Self { url: url.into() })
+    }
+}
+
+impl Hash for StandardSyndication {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(self.url.as_bytes());
     }
 }
 
@@ -127,15 +146,15 @@ impl Feed for StandardSyndication {
             if let Ok(body) = req_result.text().await {
                 let body = body.as_str();
                 if let Ok(atom_feed) = body.parse::<atom_syndication::Feed>() {
-                    for entry in atom_feed.entries() {
+                    for atom_entry in atom_feed.entries() {
                         let mut parsed = EntryBuilder::new();
                         parsed
-                            .title(entry.title().to_string())
+                            .title(atom_entry.title().to_string())
                             .date(DateTime::from_chrono(
-                                entry.updated().to_utc(),
+                                atom_entry.updated().to_utc(),
                             ))
                             .author(
-                                entry
+                                atom_entry
                                     .authors()
                                     .iter()
                                     .fold("".to_string(), |acc, author| {
@@ -144,14 +163,14 @@ impl Feed for StandardSyndication {
                                     })
                                     .trim(),
                             )
-                            .content(entry.content().iter().fold(
+                            .content(atom_entry.content().iter().fold(
                                 "".to_string(),
                                 |_, cont| {
                                     format!("{}", cont.value().unwrap_or(""))
                                         .to_string()
                                 },
                             ));
-                        for (i, link) in entry.links().iter().enumerate() {
+                        for (i, link) in atom_entry.links().iter().enumerate() {
                             if i == 0 {
                                 parsed.source(&link.href);
                             } else {
@@ -162,11 +181,24 @@ impl Feed for StandardSyndication {
                                 ));
                             }
                         }
-                        let entry = parsed.build();
+                        let mut entry = parsed.build();
+                        for category in atom_entry.categories() {
+                            entry.add_tag(&Tag::new(String::from(
+                                category.term.clone(),
+                            )));
+                        }
                         let too_old = *entry.date()
                             < ctx.parse_time.clone() - attr.timeout.clone();
                         if !too_old && attr.passes_filters(self, &entry) {
-                            ctx.sender.send((parsed.build(), ctx.feed_id)).ok();
+                            ctx.sender
+                                .send((
+                                    parsed.build(),
+                                    FeedRef {
+                                        id: ctx.feed_id,
+                                        name: attr.display_name.clone(),
+                                    },
+                                ))
+                                .ok();
                         }
                         if too_old {
                             tracing::trace!(
@@ -184,29 +216,44 @@ impl Feed for StandardSyndication {
                     return;
                 }
                 if let Ok(rss_feed) = body.parse::<rss::Channel>() {
-                    for entry in rss_feed.items {
+                    for rss_entry in rss_feed.items {
                         let mut parsed = EntryBuilder::new();
                         parsed
-                            .title(entry.title().unwrap_or("").to_string())
+                            .title(rss_entry.title().unwrap_or("").to_string())
                             .date(
                                 DateTime::try_from(
-                                    entry.pub_date().unwrap_or(""),
+                                    rss_entry.pub_date().unwrap_or(""),
                                 )
                                 .unwrap_or(ctx.parse_time.clone()),
                             )
-                            .author(entry.author().unwrap_or("").to_string())
-                            .content(entry.content().unwrap_or("").to_string());
-                        if let Some(link) = entry.link() {
+                            .author(
+                                rss_entry.author().unwrap_or("").to_string(),
+                            )
+                            .content(
+                                rss_entry.content().unwrap_or("").to_string(),
+                            );
+                        if let Some(link) = rss_entry.link() {
                             parsed.source(link);
                         }
-                        if let Some(comments) = entry.comments() {
+                        if let Some(comments) = rss_entry.comments() {
                             parsed.comments(comments);
                         }
-                        let entry = parsed.build();
+                        let mut entry = parsed.build();
+                        for category in rss_entry.categories() {
+                            entry.add_tag(&Tag::new(category.name()));
+                        }
                         let too_old = *entry.date()
                             < ctx.parse_time.clone() - attr.timeout.clone();
                         if !too_old && attr.passes_filters(self, &entry) {
-                            ctx.sender.send((parsed.build(), ctx.feed_id)).ok();
+                            ctx.sender
+                                .send((
+                                    parsed.build(),
+                                    FeedRef {
+                                        id: ctx.feed_id,
+                                        name: attr.display_name.clone(),
+                                    },
+                                ))
+                                .ok();
                         }
                         if too_old {
                             tracing::trace!(

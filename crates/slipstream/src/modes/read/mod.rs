@@ -11,16 +11,14 @@ mod state;
 
 pub use command::*;
 pub use config::*;
-use entry::*;
+pub use entry::*;
 pub use keyboard::*;
-use ratatui::buffer::Buffer;
 pub use state::*;
 
 use std::time::Duration;
 
-use futures::FutureExt;
-use futures::future::BoxFuture;
 use ratatui::DefaultTerminal;
+use ratatui::buffer::Buffer;
 use ratatui::style::Stylize;
 use ratatui::{
     crossterm::event::{self, Event},
@@ -32,22 +30,27 @@ use ratatui::{
     },
     // style::Stylize,
 };
+use tokio::task::JoinHandle;
 
 type Terminal = DefaultTerminal;
 
 /// The minimum number of displayed entries before supporting scroll.
 const SCROLL_WINDOW: usize = 3;
 /// How often to refresh the screen without input.
-const REFRESH_DELTA: f32 = 0.5;
+const REFRESH_DELTA: f32 = 0.25;
 /// Minimum time to poll the terminal for queued inputs.
-const INPUT_DELTA: f32 = 0.01;
+const MAX_INPUT_PER_TICK: usize = 1;
 /// The minimum terminal width to support horizontal mode.
 const MIN_HORIZONTAL_WIDTH: u16 = 120;
+/// The C-c quit key event.
+const CONTROL_C: KeyEvent =
+    KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
 
 /// Perform the reader action.
 pub async fn read(
     config: Arc<Config>,
-    updater: Arc<Mutex<Updater>>,
+    updater: UpdaterHandle,
+    cancel_token: CancellationToken,
 ) -> Result<()> {
     // Disable logging to stdout.
     get_logger().set_writing(false)?;
@@ -55,7 +58,12 @@ pub async fn read(
     // Show reader.
     let mut terminal = ratatui::init();
     let mut reader = Reader::new(config, updater)?;
-    let result = reader.run(&mut terminal).await;
+
+    // Update reader on load.
+    reader.check_for_update(true).await;
+
+    // Run loop.
+    let result = reader.run(&mut terminal, cancel_token).await;
 
     // Restore terminal.
     ratatui::restore();
@@ -68,14 +76,14 @@ struct Reader {
     /// Slipstream configuration.
     config: Arc<Config>,
     /// State of the updating logic.
-    updater_state: UpdaterState,
+    updater: UpdaterHandle,
+    /// Refresh future.
+    refresh: Option<JoinHandle<DatabaseEntryList>>,
     /// Futures for binding commands run on entries.
     command_futures:
-        tokio::task::JoinSet<(slipfeed::Entry, command::CommandResultContext)>,
-    /// Current scroll.
-    entries: Arc<RwLock<Vec<slipfeed::Entry>>>,
-    /// Cached results form binding commands.
-    views: EntryViews,
+        tokio::task::JoinSet<(EntryDbId, command::CommandResultContext)>,
+    /// Entries.
+    entries: DatabaseEntryList,
     /// Cached of the terminal.
     terminal_state: TerminalState,
     /// State of user interaction.
@@ -84,40 +92,52 @@ struct Reader {
 
 impl Reader {
     /// Create a new reader.
-    fn new(config: Arc<Config>, updater: Arc<Mutex<Updater>>) -> Result<Self> {
-        // let size = terminal.size()?;
-        // size: (size.width, size.height),
-        // let focus = terminal.hide_cursor()?;
+    fn new(config: Arc<Config>, updater: UpdaterHandle) -> Result<Self> {
         Ok(Self {
             config,
-            updater_state: UpdaterState::new(updater),
+            updater,
+            refresh: None,
             command_futures: tokio::task::JoinSet::new(),
-            entries: Arc::new(RwLock::new(Vec::new())),
-            views: EntryViews::new(),
+            entries: DatabaseEntryList::new(0),
             terminal_state: TerminalState::default(),
             interaction_state: InteractionState::default(),
         })
     }
 
     /// Run the reader.
-    async fn run(&mut self, terminal: &mut Terminal) -> Result<()> {
-        let entries = self.entries.clone();
+    async fn run(
+        &mut self,
+        terminal: &mut Terminal,
+        cancel_token: CancellationToken,
+    ) -> Result<()> {
         'reader: loop {
+            // Check if quitting.
+            if cancel_token.is_cancelled() {
+                break 'reader Ok(());
+            }
+
+            // Draw reader.
             {
-                let entries = entries.read().await;
                 terminal.draw(|f| {
-                    ReaderWidget::new(self, &entries)
-                        .render(f.area(), f.buffer_mut());
+                    ReaderWidget::new(self).render(f.area(), f.buffer_mut());
                 })?;
             }
 
             // Poll input.
             if self.handle_input().await.is_err() {
+                cancel_token.cancel();
                 break 'reader Ok(());
             }
 
             // Manage updater.
             self.check_for_update(false).await;
+
+            // Sync current with db.
+            if self.interaction_state.selection < self.entries.len() {
+                let entry = &mut self.entries[self.interaction_state.selection];
+                self.updater.toggle_read(entry.db_id, true).await;
+                self.updater.update_view(entry).await;
+            }
         }
     }
 }
@@ -151,10 +171,9 @@ impl Reader {
     /// Handle input.
     /// Quits on error.
     async fn handle_input(&mut self) -> Result<()> {
-        for i in 0..5 {
-            let poll_time: f32 =
-                if i == 0 { REFRESH_DELTA } else { INPUT_DELTA };
-            if event::poll(Duration::from_secs_f32(poll_time))? {
+        for i in 0..MAX_INPUT_PER_TICK {
+            let poll_time = if i == 0 { REFRESH_DELTA } else { 0.1 };
+            if terminal_input_ready(poll_time).await {
                 // It's guaranteed that the `read()` won't block when the `poll()`
                 // function returns `true`.
                 match event::read()? {
@@ -162,6 +181,9 @@ impl Reader {
                     Event::FocusLost => self.terminal_state.has_focus = false,
                     Event::Key(key) => {
                         tracing::debug!("Key press: {:?}", key);
+                        if key == CONTROL_C {
+                            bail!("Quitting!")
+                        }
                         let command = self.config.read.get_key_command(&key);
                         self.run_command(command).await?;
                     }
@@ -185,15 +207,12 @@ impl Reader {
                 tracing::error!("Invalid command name: {}", name.as_str());
             }
             ReadCommand::CustomCommandFull { name, command } => {
-                let entries = self.entries.read().await;
-                self.views
-                    .get(&entries[self.interaction_state.selection])
-                    .add_result(command::CommandResultContext::new(
-                        name.clone(),
-                    ));
+                self.entries[self.interaction_state.selection].add_result(
+                    command::CommandResultContext::new(name.clone()),
+                );
                 self.command_futures.spawn(Reader::run_shell_command(
                     name.clone(),
-                    entries[self.interaction_state.selection].clone(),
+                    self.entries[self.interaction_state.selection].clone(),
                     (*command).clone(),
                     self.terminal_state.command_width,
                 ));
@@ -220,17 +239,14 @@ impl Reader {
             }
             ReadCommandLiteral::Down => match self.interaction_state.focus {
                 Focus::List => {
-                    if self.interaction_state.selection + 1
-                        < self.entries.read().await.len()
+                    if self.interaction_state.selection + 1 < self.entries.len()
                     {
                         self.interaction_state.selection += 1;
                     }
                 }
                 Focus::Entry => {
-                    let entries = self.entries.read().await;
-                    if self.interaction_state.selection < entries.len() {
-                        self.views
-                            .get(&entries[self.interaction_state.selection])
+                    if self.interaction_state.selection < self.entries.len() {
+                        self.entries[self.interaction_state.selection]
                             .scroll(1);
                     }
                 }
@@ -243,36 +259,29 @@ impl Reader {
                     }
                 }
                 Focus::Entry => {
-                    let entries = self.entries.read().await;
-                    if self.interaction_state.selection < entries.len() {
-                        self.views
-                            .get(&entries[self.interaction_state.selection])
+                    if self.interaction_state.selection < self.entries.len() {
+                        self.entries[self.interaction_state.selection]
                             .scroll(-1);
                     }
                 }
                 Focus::Menu => {}
             },
             ReadCommandLiteral::Left => {
-                let entries = self.entries.read().await;
-                if self.interaction_state.selection < entries.len() {
-                    self.views
-                        .get(&entries[self.interaction_state.selection])
+                if self.interaction_state.selection < self.entries.len() {
+                    self.entries[self.interaction_state.selection]
                         .cycle_result(-1);
                 }
             }
             ReadCommandLiteral::Right => {
-                let entries = self.entries.read().await;
-                if self.interaction_state.selection < entries.len() {
-                    self.views
-                        .get(&entries[self.interaction_state.selection])
+                if self.interaction_state.selection < self.entries.len() {
+                    self.entries[self.interaction_state.selection]
                         .cycle_result(1);
                 }
             }
             ReadCommandLiteral::PageDown => {
                 match self.interaction_state.focus {
                     Focus::List => {
-                        let entry_count =
-                            self.entries.read().await.len() as isize;
+                        let entry_count = self.entries.len() as isize;
                         let page_down = self.terminal_state.size.1 as isize
                             - (2 * SCROLL_WINDOW) as isize;
                         if self.interaction_state.selection as isize + page_down
@@ -286,10 +295,9 @@ impl Reader {
                         }
                     }
                     Focus::Entry => {
-                        let entries = self.entries.read().await;
-                        if self.interaction_state.selection < entries.len() {
-                            self.views
-                                .get(&entries[self.interaction_state.selection])
+                        if self.interaction_state.selection < self.entries.len()
+                        {
+                            self.entries[self.interaction_state.selection]
                                 .scroll(1);
                         }
                     }
@@ -298,7 +306,7 @@ impl Reader {
             }
             ReadCommandLiteral::PageUp => match self.interaction_state.focus {
                 Focus::List => {
-                    let entry_count = self.entries.read().await.len() as isize;
+                    let entry_count = self.entries.len() as isize;
                     let page_up = self.terminal_state.size.1 as isize
                         - (2 * SCROLL_WINDOW) as isize;
                     if self.interaction_state.selection as isize - page_up >= 0
@@ -310,10 +318,8 @@ impl Reader {
                     }
                 }
                 Focus::Entry => {
-                    let entries = self.entries.read().await;
-                    if self.interaction_state.selection < entries.len() {
-                        self.views
-                            .get(&entries[self.interaction_state.selection])
+                    if self.interaction_state.selection < self.entries.len() {
+                        self.entries[self.interaction_state.selection]
                             .scroll(-1);
                     }
                 }
@@ -326,15 +332,17 @@ impl Reader {
                 self.interaction_state.focus.toggle_menu();
             }
             ReadCommandLiteral::ToggleImportant => {
-                let entries = self.entries.read().await;
-                if self.interaction_state.selection < entries.len() {
-                    let important = self
-                        .views
-                        .get(&entries[self.interaction_state.selection])
+                if self.interaction_state.selection < self.entries.len() {
+                    let important = self.entries
+                        [self.interaction_state.selection]
                         .important;
-                    self.views
-                        .get(&entries[self.interaction_state.selection])
-                        .set_imporant(!important);
+                    self.updater
+                        .toggle_important(
+                            self.entries[self.interaction_state.selection]
+                                .db_id,
+                            !important,
+                        )
+                        .await;
                 }
             }
         };
@@ -347,10 +355,10 @@ impl Reader {
     /// entry.
     async fn run_shell_command(
         binding_name: Arc<String>,
-        entry: slipfeed::Entry,
+        entry: DatabaseEntry,
         shell_command: Vec<String>,
         width: u16,
-    ) -> (slipfeed::Entry, command::CommandResultContext) {
+    ) -> (EntryDbId, command::CommandResultContext) {
         // Build command.
         let mut shell_command = shell_command;
 
@@ -446,69 +454,61 @@ impl Reader {
                 };
                 tracing::info!("Output:\n{}", output);
                 ctx.update(Arc::new(output), exit == 0);
-                (entry, ctx)
+                (entry.db_id, ctx)
             }
             Err(e) => {
                 ctx.update(
                     Arc::new(format!("Failed to create subprocess: {}", e)),
                     false,
                 );
-                (entry, ctx)
+                (entry.db_id, ctx)
             }
         }
     }
 
     /// Check for an update and handle completed updates.
-    async fn check_for_update(&mut self, force_init: bool) {
-        // Start update in background.
-        let now = chrono::Local::now().to_utc();
-        if force_init
-            || now - self.updater_state.last_update
-                > chrono::Duration::seconds(2)
-        {
-            let config = self.config.clone();
-            let updater = self.updater_state.updater.clone();
-            if self.updater_state.future.is_none() {
-                self.updater_state.future = Some(
-                    async move {
-                        let updater = updater.lock().await;
-                        let entries = updater.collect_all(config.as_ref());
-                        Ok(entries)
-                    }
-                    .boxed(),
-                );
-            }
-        }
-
+    async fn check_for_update(&mut self, refresh: bool) {
         // Check for new update.
-        if let Some(entries_fut) = &mut self.updater_state.future {
-            if let Some(entries_res) = entries_fut.now_or_never() {
-                match entries_res {
-                    Ok(new_entries) => {
-                        let mut entries = self.entries.write().await;
-                        *entries = new_entries;
-                        if self.interaction_state.selection > entries.len() {
-                            if entries.len() == 0 {
+        if let Some(entries_fut) = &mut self.refresh {
+            if entries_fut.is_finished() {
+                match entries_fut.await {
+                    Ok(entries) => {
+                        self.entries = entries;
+                        if self.interaction_state.selection > self.entries.len()
+                        {
+                            if self.entries.len() == 0 {
                                 self.terminal_state.window = 0;
                                 self.interaction_state.selection = 0;
                             } else {
                                 self.interaction_state.selection =
-                                    entries.len() - 1;
+                                    self.entries.len() - 1;
                             }
                         }
                     }
                     Err(e) => {
-                        tracing::error!("Failed to update: {e:?}");
+                        tracing::error!("Failed to update entries: {}", e);
                     }
                 }
-                self.updater_state.future = None;
+                self.refresh = None;
             }
+        }
+
+        if refresh && self.refresh.is_none() {
+            tracing::debug!("Refreshing!");
+            self.refresh = Some({
+                let updater = self.updater.clone();
+                let config = self.config.clone();
+                tokio::spawn(async move { updater.collect_all(config).await })
+            });
         }
 
         // Check for loaded entries.
         while let Some(res) = self.command_futures.try_join_next() {
-            if let Ok((entry, context)) = res {
-                self.views.get(&entry).add_result(context);
+            if let Ok((entry_id, context)) = res {
+                self.updater.save_command(entry_id, &context).await;
+                if let Some(entry) = self.entries.get(entry_id) {
+                    entry.add_result(context);
+                }
             }
         }
     }
@@ -517,12 +517,11 @@ impl Reader {
 /// Widget to render the reader.
 struct ReaderWidget<'a> {
     reader: &'a mut Reader,
-    entries: &'a Vec<slipfeed::Entry>,
 }
 
 impl<'a> ReaderWidget<'a> {
-    fn new(reader: &'a mut Reader, entries: &'a Vec<slipfeed::Entry>) -> Self {
-        Self { reader, entries }
+    fn new(reader: &'a mut Reader) -> Self {
+        Self { reader }
     }
 }
 
@@ -604,7 +603,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                 format!(
                     "slipstream {}/{}",
                     self.reader.interaction_state.selection + 1,
-                    self.entries.len()
+                    self.reader.entries.len()
                 ),
                 width = &(title_layout.width as usize),
             ),
@@ -612,14 +611,9 @@ impl<'a> Widget for ReaderWidget<'a> {
         )
         .render(title_layout, buf);
 
-        let updater_lock = self.reader.updater_state.updater.try_lock().ok();
-        let updater = match updater_lock.as_ref() {
-            Some(x) => Some(&**x),
-            None => None,
-        };
-
         // Show titles.
         let formatted_entries = self
+            .reader
             .entries
             .iter()
             .enumerate()
@@ -631,17 +625,14 @@ impl<'a> Widget for ReaderWidget<'a> {
             })
             .map(|(i, e)| {
                 let feed: String = 'feed: {
-                    for feed_id in e.feeds().iter() {
-                        if let Some(updater) = updater {
-                            if let Some(feed_name) = updater.feed_name(*feed_id)
-                            {
-                                break 'feed feed_name.clone();
-                            }
-                        }
+                    for feed_ref in e.feeds().iter() {
+                        break 'feed (*feed_ref.name).clone();
                     }
                     "???".to_owned()
                 };
-                let style = if i == self.reader.interaction_state.selection {
+                let selected: bool =
+                    i == self.reader.interaction_state.selection;
+                let style = if selected {
                     if self.reader.terminal_state.has_focus {
                         match self.reader.interaction_state.focus {
                             Focus::Entry => {
@@ -653,39 +644,66 @@ impl<'a> Widget for ReaderWidget<'a> {
                         Style::new().bg(Color::White).fg(Color::Black)
                     }
                 } else {
-                    if !self.reader.views.get(e).has_been_read {
+                    if !e.has_been_read {
                         Style::new().fg(Color::Yellow)
                     } else {
-                        if self.reader.views.get(e).important {
+                        if e.important {
                             Style::new().bg(Color::Red).fg(Color::Black)
                         } else {
                             Style::new()
                         }
                     }
                 };
-                return ratatui::text::Text::styled(
-                    format!(
-                        "[{:<10}] {}",
-                        &feed[..10.min(feed.len())],
-                        e.title()
+                return Line::from(vec![
+                    Span::styled(
+                        format!("[{:<10}] ", &feed[..10.min(feed.len())]),
+                        if selected {
+                            style
+                        } else {
+                            Style::new().fg(Color::Cyan)
+                        },
                     ),
-                    style,
-                );
+                    Span::styled(e.title(), style),
+                ]);
+                // return ratatui::text::Text::styled(
+                //     format!(
+                //         "[{:<10}] {}",
+                //         &feed[..10.min(feed.len())],
+                //         e.title()
+                //     ),
+                //     style,
+                // );
             });
         ratatui::widgets::List::new(formatted_entries).render(list_layout, buf);
 
         // Render the selection:
-
         self.reader.terminal_state.command_width = entry_layout.width - 6;
-        if self.reader.interaction_state.selection < self.entries.len() {
-            let entry = &self.entries[self.reader.interaction_state.selection];
-            self.reader.views.get(entry).set_read();
-            EntryViewWidget::new(
-                self.reader.views.get(entry),
-                entry,
-                &self.reader.interaction_state.focus,
-            )
-            .render(entry_layout, buf);
+        if self.reader.interaction_state.selection < self.reader.entries.len() {
+            let entry = &mut self.reader.entries
+                [self.reader.interaction_state.selection];
+            entry.set_read();
+            EntryViewWidget::new(entry, &self.reader.interaction_state.focus)
+                .render(entry_layout, buf);
+        }
+    }
+}
+
+/// Check if a terminal event has happened.
+async fn terminal_input_ready(poll_time: f32) -> bool {
+    let check_fut = tokio::task::spawn_blocking(move || {
+        event::poll(Duration::from_secs_f32(poll_time))
+    });
+    match check_fut.await {
+        Ok(t) => match t {
+            Ok(ready) => ready,
+            Err(e) => {
+                tracing::error!("Ratatui failed to check input: {}", e);
+                false
+            }
+        },
+        Err(e) => {
+            tracing::error!("Failed to check if input is ready: {}", e);
+            false
         }
     }
 }

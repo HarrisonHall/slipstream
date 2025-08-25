@@ -6,6 +6,7 @@ const FAILED_TEXT: &'static str = "Failed to execute command.";
 const BAD_OUTPUT_TEXT: &'static str = "Unable to parse command output.";
 
 /// Results from a shell command.
+#[derive(Debug, Clone)]
 pub enum CommandResult {
     /// The command is running.
     Running,
@@ -14,6 +15,7 @@ pub enum CommandResult {
 }
 
 /// Context of a completed shell command.
+#[derive(Debug, Clone)]
 pub struct CommandResultContext {
     pub binding_name: Arc<String>,
     pub result: CommandResult,

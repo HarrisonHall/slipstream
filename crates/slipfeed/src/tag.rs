@@ -13,20 +13,26 @@ impl Tag {
     }
 }
 
-impl Into<Tag> for String {
-    fn into(self) -> Tag {
-        Tag(self)
+impl From<Tag> for String {
+    fn from(value: Tag) -> String {
+        value.0
     }
 }
 
-impl Into<Tag> for &str {
-    fn into(self) -> Tag {
-        Tag(self.to_string())
+impl From<&Tag> for String {
+    fn from(value: &Tag) -> String {
+        value.0.clone()
     }
 }
 
-impl Into<String> for Tag {
-    fn into(self) -> String {
-        self.0.clone()
+impl From<String> for Tag {
+    fn from(value: String) -> Self {
+        Tag(value)
+    }
+}
+
+impl From<&str> for Tag {
+    fn from(value: &str) -> Self {
+        Tag(value.into())
     }
 }

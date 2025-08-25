@@ -1,8 +1,9 @@
-///! Best effort DateTime handling generalization for parsing feeds and handling
+///! Best-effort DateTime handling generalization for parsing feeds and handling
 ///! conversions between std, chrono, and tokio.
 use super::*;
 
 /// Datetime generalization for conversion between libraries.
+/// This attempts to support millisecond resolution.
 #[derive(
     Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord,
 )]
@@ -25,12 +26,25 @@ impl DateTime {
     }
 
     // pub fn to_std(&self) -> std::time::Instant {
-    //     todo!()
+    //     self.0.into()
     // }
 
     /// Convert to chrono::DateTime.
     pub fn to_chrono(&self) -> chrono::DateTime<chrono::Utc> {
         self.0.clone()
+    }
+
+    /// Convert to tokio::Instant.
+    pub fn to_tokio(&self) -> tokio::time::Instant {
+        let dur: chrono::Duration = self.0 - chrono::Utc::now();
+        let millis: i64 = dur.num_milliseconds();
+        if millis >= 0 {
+            let dur = std::time::Duration::from_millis(millis as u64);
+            tokio::time::Instant::now() + dur
+        } else {
+            let dur = std::time::Duration::from_millis(millis.abs() as u64);
+            tokio::time::Instant::now() - dur
+        }
     }
 
     // pub fn from_std(&self, dt: std::time::Instant) -> Self {

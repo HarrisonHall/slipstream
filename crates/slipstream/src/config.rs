@@ -1,12 +1,10 @@
 //! Slipstream configuration.
 
-use slipfeed::FeedAttributes;
-
 use super::*;
 
 /// Configuration for slipstream.
 /// This is parsed from the toml slipstream configuration file.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     /// Update frequency.
     #[serde(default, with = "humantime_serde::option")]
@@ -17,6 +15,8 @@ pub struct Config {
     pub port: Option<u16>,
     /// Maximum entry storage size.
     pub storage: Option<u16>,
+    /// Database cache file.
+    pub database: Option<String>,
     /// Cache duration.
     #[serde(default, with = "humantime_serde::option")]
     pub cache: Option<std::time::Duration>,
@@ -45,6 +45,7 @@ impl Default for Config {
             feeds: None,
             port: None,
             storage: None,
+            database: None,
             cache: None,
             global: GlobalConfig::default(),
             all: None,
@@ -58,27 +59,29 @@ impl Default for Config {
 
 impl Config {
     /// Create a slipstream updater from the parsed configuration.
-    pub async fn updater(&self) -> Updater {
-        let mut updater = Updater {
-            updater: slipfeed::Updater::new(
-                slipfeed::Duration::from_seconds(match self.freq {
-                    Some(freq) => freq.as_secs(),
-                    None => DEFAULT_UPDATE_SEC as u64,
-                }),
-                self.storage.unwrap_or(1024) as usize,
-            ),
-            feeds: HashMap::new(),
-            feeds_ids: HashMap::new(),
-            global_filters: Vec::new(),
-            all_filters: Vec::new(),
-        };
+    pub async fn updater(&self) -> Result<Updater> {
+        let entry_db = Database::new(match &self.database {
+            Some(db) => db.as_str(),
+            None => ":memory:",
+        })
+        .await?;
+        let mut updater = Updater::default();
+        updater.updater = Arc::new(RwLock::new(slipfeed::Updater::new(
+            slipfeed::Duration::from_seconds(match self.freq {
+                Some(freq) => freq.as_secs(),
+                None => DEFAULT_UPDATE_SEC as u64,
+            }),
+            self.storage.unwrap_or(1024) as usize,
+        )));
+        updater.entry_db = Some(entry_db);
 
         if let Some(feeds) = &self.feeds {
             let world = AggregateWorld::new();
 
             // Add raw feeds.
             for (name, feed_def) in feeds {
-                let mut attr = FeedAttributes::new();
+                let mut attr = slipfeed::FeedAttributes::new();
+                attr.display_name = Arc::new(name.clone());
                 attr.freq = Some(feed_def.options().freq());
                 attr.timeout = feed_def.options().oldest();
                 feed_def
@@ -95,7 +98,8 @@ impl Config {
                 match feed_def.feed() {
                     RawFeed::Raw { url } => {
                         let feed = StandardFeed::new(url);
-                        let id = updater.updater.add_feed(feed, attr);
+                        let mut inner_updater = updater.updater.write().await;
+                        let id = inner_updater.add_feed(feed, attr);
                         updater.feeds.insert(name.clone(), id);
                         updater.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added standard feed {}.", name);
@@ -103,7 +107,8 @@ impl Config {
                     }
                     RawFeed::Aggregate { feeds } => {
                         let feed = AggregateFeed::new(world.clone());
-                        let id = updater.updater.add_feed(feed, attr);
+                        let mut inner_updater = updater.updater.write().await;
+                        let id = inner_updater.add_feed(feed, attr);
                         updater.feeds.insert(name.clone(), id);
                         updater.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added aggregate feed {}.", name);
@@ -127,7 +132,7 @@ impl Config {
             updater.all_filters.extend(all_config.filters.get_filters());
         }
 
-        updater
+        Ok(updater)
     }
 
     /// Find a feed by name.

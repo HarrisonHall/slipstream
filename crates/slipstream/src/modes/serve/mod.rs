@@ -12,7 +12,8 @@ use web::*;
 pub async fn serve(
     port: Option<u16>,
     config: Arc<Config>,
-    updater: Arc<Mutex<Updater>>,
+    updater: UpdaterHandle,
+    cancel_token: CancellationToken,
 ) -> Result<()> {
     // Create caches.
     let duration = slipfeed::Duration::from_seconds(match config.cache {
@@ -36,7 +37,7 @@ pub async fn serve(
         .route("/robots.txt", axum::routing::get(get_robots_txt))
         .route("/favicon.ico", axum::routing::get(get_favicon))
         .with_state(Arc::new(SFState {
-            updater,
+            updater: Arc::new(updater),
             config: config.clone(),
             cache,
             html,
@@ -49,13 +50,27 @@ pub async fn serve(
     // Serve.
     tracing::info!("slipstream serve");
     tracing::info!("Serving feeds @ 0.0.0.0:{}", port);
-    axum::serve(listener, app).await.expect("Error serving.");
+
+    let served = axum::serve(listener, app);
+    let cancelled = cancel_token.cancelled();
+    tokio::select! {
+        served_res = served => {
+            if let Err(e) = served_res {
+                tracing::error!("Error serving: {}", e);
+                cancel_token.cancel();
+            }
+        },
+        _ = cancelled => {
+            // Quit.
+        },
+    };
+
     Ok(())
 }
 
 #[derive(Clone)]
 struct SFState {
-    updater: Arc<Mutex<Updater>>,
+    updater: Arc<UpdaterHandle>,
     config: Arc<Config>,
     cache: Arc<Mutex<Cache>>,
     html: Arc<Mutex<HtmlServer>>,
@@ -66,17 +81,14 @@ async fn get_all_html(
     State(state): StateType,
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("/all");
-    let config = &state.config;
+    let config = state.config.clone();
     let mut html = state.html.lock().await;
     let updater = state.updater.clone();
     return (
         [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
         html.get(
             "/all",
-            async move {
-                let updater = updater.lock().await;
-                updater.collect_all(config)
-            },
+            async move { updater.collect_all(config).await },
             state.updater.clone(),
             state.config.clone(),
         )
@@ -88,13 +100,13 @@ async fn get_all_feed(
     State(state): StateType,
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("/all/feed");
-    let config = &state.config;
-    let updater = state.updater.lock().await;
+    let config = state.config.clone();
+    let updater = state.updater.clone();
     let mut cache = state.cache.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
         cache
-            .get("/all", async move { updater.syndicate_all(config) })
+            .get("/all", async move { updater.syndicate_all(config).await })
             .await,
     );
 }
@@ -112,10 +124,7 @@ async fn get_feed_html(
         [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
         html.get(
             uri.path(),
-            async move {
-                let updater = updater.lock().await;
-                updater.collect_feed(feed, &config)
-            },
+            async move { updater.collect_feed(feed, config).await },
             state.updater.clone(),
             state.config.clone(),
         )
@@ -129,16 +138,15 @@ async fn get_feed_feed(
     axum::extract::Path(feed): axum::extract::Path<String>,
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("{}", uri.path());
-    let config = &state.config;
-    let updater = state.updater.lock().await;
+    let config = state.config.clone();
+    let updater = state.updater.clone();
     let mut cache = state.cache.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
         cache
-            .get(
-                uri.path(),
-                async move { updater.syndicate_feed(&feed, config) },
-            )
+            .get(uri.path(), async move {
+                updater.syndicate_feed(&feed, config).await
+            })
             .await,
     );
 }
@@ -156,10 +164,7 @@ async fn get_tag_html(
         [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
         html.get(
             uri.path(),
-            async move {
-                let updater = updater.lock().await;
-                updater.collect_tag(tag, &config)
-            },
+            async move { updater.collect_tag(tag, config).await },
             state.updater.clone(),
             state.config.clone(),
         )
@@ -173,16 +178,15 @@ async fn get_tag_feed(
     axum::extract::Path(tag): axum::extract::Path<String>,
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("{}", uri.path());
-    let config = &state.config;
-    let updater = state.updater.lock().await;
+    let config = state.config.clone();
+    let updater = state.updater.clone();
     let mut cache = state.cache.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
         cache
-            .get(
-                uri.path(),
-                async move { updater.syndicate_tag(&tag, config) },
-            )
+            .get(uri.path(), async move {
+                updater.syndicate_tag(&tag, config).await
+            })
             .await,
     );
 }

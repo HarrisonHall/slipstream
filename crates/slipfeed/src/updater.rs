@@ -17,7 +17,7 @@ pub struct UpdaterContext {
     pub feed_id: FeedId,
     pub parse_time: DateTime,
     pub last_update: Option<DateTime>,
-    pub sender: tokio::sync::mpsc::UnboundedSender<(Entry, FeedId)>,
+    pub sender: tokio::sync::mpsc::UnboundedSender<(Entry, FeedRef)>,
 }
 
 /// Updater for feeds.
@@ -66,27 +66,27 @@ impl Updater {
         feed_id
     }
 
-    /// Update a feed. Returns early if the global frequency has not elapsed.
-    pub async fn update(&mut self) {
+    /// Update feeds.
+    /// This is _not_ cancel-safe.
+    pub async fn update(&mut self) -> EntrySet {
         let span = tracing::trace_span!("slipfeed::update");
         let _enter = span.enter();
         let now = DateTime::now();
 
-        // Return if too early for update.
-        let last_check = self
-            .last_update_check
-            .clone()
-            .unwrap_or_else(|| DateTime::epoch());
-        if !last_check.has_passed(&self.freq) {
-            tracing::trace!("Not time to update, skipping.");
-            return;
-        }
+        // Wait until time to update.
+        match &self.last_update_check {
+            Some(last_time) => {
+                let next_time = last_time.clone() + self.freq.clone();
+                tokio::time::sleep_until(next_time.to_tokio()).await;
+            }
+            None => {}
+        };
 
         // Perform updates.
         self.last_update_check = Some(now.clone());
-        // self.entries.clear(); // TODO: Don't clear!
+        self.entries.clear();
         let (sender, mut receiver) =
-            tokio::sync::mpsc::unbounded_channel::<(Entry, FeedId)>();
+            tokio::sync::mpsc::unbounded_channel::<(Entry, FeedRef)>();
         {
             tracing::info!("Updating all feeds.");
             let mut set = tokio::task::JoinSet::new();
@@ -143,6 +143,8 @@ impl Updater {
             self.entries.len(),
             self.feeds.len(),
         );
+
+        self.entries.clone()
     }
 
     /// Iterate all entries.
@@ -169,5 +171,17 @@ impl Updater {
             feed,
             next: 0,
         };
+    }
+}
+
+impl Default for Updater {
+    fn default() -> Self {
+        Self {
+            feeds: HashMap::default(),
+            last_update_check: None,
+            freq: Duration::from_seconds(10),
+            entries: EntrySet::new(1_000),
+            next_feed_id: 0,
+        }
     }
 }

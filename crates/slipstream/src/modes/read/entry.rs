@@ -1,11 +1,18 @@
 //! Entry views.
 
+use std::ops::Deref;
+
 use ratatui::widgets::Clear;
 
 use super::*;
 
 /// Entry view state.
-pub struct EntryView {
+#[derive(Debug, Clone)]
+pub struct DatabaseEntry {
+    /// Underlying entry.
+    pub entry: slipfeed::Entry,
+    /// Database id for the entry.
+    pub db_id: EntryDbId,
     /// Index for which result is being displayed.
     /// Index 0 represent the "info" metadata pannel.
     pub result_selection_index: usize,
@@ -19,10 +26,12 @@ pub struct EntryView {
     pub important: bool,
 }
 
-impl EntryView {
+impl DatabaseEntry {
     /// Create a new entry view.
-    fn new() -> Self {
+    pub fn new(entry: slipfeed::Entry, id: EntryDbId) -> Self {
         Self {
+            entry,
+            db_id: id,
             result_selection_index: 0,
             command_results: Vec::new(),
             ran_commands: Vec::new(),
@@ -109,19 +118,22 @@ impl EntryView {
     }
 }
 
+impl Deref for DatabaseEntry {
+    type Target = slipfeed::Entry;
+
+    fn deref(&self) -> &Self::Target {
+        &self.entry
+    }
+}
+
 pub struct EntryViewWidget<'a> {
-    view: &'a mut EntryView,
-    entry: &'a slipfeed::Entry,
+    entry: &'a mut DatabaseEntry,
     focus: &'a Focus,
 }
 
 impl<'a> EntryViewWidget<'a> {
-    pub fn new(
-        view: &'a mut EntryView,
-        entry: &'a slipfeed::Entry,
-        focus: &'a Focus,
-    ) -> Self {
-        Self { view, entry, focus }
+    pub fn new(entry: &'a mut DatabaseEntry, focus: &'a Focus) -> Self {
+        Self { entry, focus }
     }
 }
 
@@ -145,7 +157,7 @@ impl<'a> Widget for EntryViewWidget<'a> {
             .direction(Direction::Vertical)
             .constraints(&[Constraint::Min(1), Constraint::Percentage(100)])
             .split(inner_block);
-        let commands = self.view.get_commands();
+        let commands = self.entry.get_commands();
         ratatui::widgets::Tabs::new(
             ["info"]
                 .iter()
@@ -156,10 +168,10 @@ impl<'a> Widget for EntryViewWidget<'a> {
         .padding("", "")
         .divider(" ")
         // .bg(Color::Green)
-        .select(self.view.result_selection_index)
+        .select(self.entry.result_selection_index)
         .highlight_style((Color::Black, Color::Blue))
         .render(tab_layouts[0], buf);
-        match self.view.get_result() {
+        match self.entry.get_result() {
             None => {
                 EntryInfoWidget(self.entry).render(tab_layouts[1], buf);
             }
@@ -267,65 +279,64 @@ impl<'a> Widget for EntryInfoWidget<'a> {
     }
 }
 
-/// All command results, stored by entry.
-/// Entries can have multiple commands, but only one of each binding.
-pub struct EntryViews {
-    views: HashMap<slipfeed::Entry, EntryView>,
+/// In-memory state of all entries.
+#[derive(Debug, Clone)]
+pub struct DatabaseEntryList {
+    max_size: usize,
+    entries: Vec<DatabaseEntry>,
+    lookup: HashMap<EntryDbId, usize>,
 }
 
-impl EntryViews {
+impl DatabaseEntryList {
     /// Generate empty EntryViews.
-    pub fn new() -> Self {
+    pub fn new(max_size: usize) -> Self {
         Self {
-            views: HashMap::new(),
+            max_size,
+            entries: Vec::new(),
+            lookup: HashMap::new(),
         }
     }
 
-    /// Get the view for an entry.
-    pub fn get<'a>(&'a mut self, entry: &slipfeed::Entry) -> &'a mut EntryView {
-        if self.views.contains_key(entry) {
-            return self.views.get_mut(entry).unwrap();
+    pub fn add(&mut self, entry: DatabaseEntry) -> Result<()> {
+        if self.entries.len() < self.max_size {
+            let db_id = entry.db_id;
+            self.entries.push(entry);
+            self.lookup.insert(db_id, self.entries.len() - 1);
+            return Ok(());
         }
-        self.views.insert(entry.clone(), EntryView::new());
-        self.views.get_mut(entry).unwrap()
+        bail!("Entry list at max length");
     }
 
-    // /// Get the view context for an entry.
-    // pub fn displayed_results(
-    //     &mut self,
-    //     entry: &slipfeed::Entry,
-    // ) -> Option<&mut CommandResultContext> {
-    //     if let Some(view) = self.views.get(entry) {
-    //         if view.result_selection_index < view.command_results.len() {
-    //             return Some(
-    //                 &mut view.command_results[view.result_selection_index],
-    //             );
-    //         }
-    //     }
-    //     None
-    // }
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
 
-    // pub fn run_commands<'a>(
-    //     &'a mut self,
-    //     entry: &slipfeed::Entry,
-    // ) -> &'a Vec<Arc<String>> {
-    //     if let Some(view) = self.views.get(entry) {
-    //         return &view.ran_commands;
-    //     }
-    //     &self.no_commands
-    // }
+    pub fn get(&mut self, db_id: EntryDbId) -> Option<&mut DatabaseEntry> {
+        match self.lookup.get(&db_id) {
+            Some(idx) => Some(&mut self.entries[*idx]),
+            None => None,
+        }
+    }
 
-    // pub fn add_result(
-    //     &mut self,
-    //     entry: &slipfeed::Entry,
-    //     result: CommandResultContext,
-    // ) {
-    //     if let Some(view) = self.views.get_mut(entry) {
-    //         view.add_result(result);
-    //     } else {
-    //         let mut view = EntryView::new();
-    //         view.add_result(result);
-    //         self.views.insert(entry.clone(), view);
-    //     }
-    // }
+    pub fn iter(&self) -> impl Iterator<Item = &DatabaseEntry> {
+        self.entries.iter()
+    }
+
+    pub fn iter_entries(&self) -> impl Iterator<Item = &slipfeed::Entry> {
+        self.entries.iter().map(|e| &e.entry)
+    }
+}
+
+impl std::ops::Index<usize> for DatabaseEntryList {
+    type Output = DatabaseEntry;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.entries.index(index)
+    }
+}
+
+impl std::ops::IndexMut<usize> for DatabaseEntryList {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        self.entries.index_mut(index)
+    }
 }

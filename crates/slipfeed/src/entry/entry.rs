@@ -6,16 +6,27 @@ use super::*;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Entry {
     // Entry fields.
+    /// Entry title.
     title: String,
+    /// Entry publication date.
+    /// If publication date is not present, this is the parsed date.
     date: EntryDate,
+    /// Entry author.
     author: String,
+    /// Entry content.
     content: String,
+    /// Entry source link.
     source: Link,
+    /// Entry comments link.
     comments: Link,
+    /// Other entry links.
     other_links: Vec<Link>,
     // Meta information.
-    id: Option<String>,
-    feeds: HashSet<FeedId>,
+    /// The id provided by the source.
+    source_id: Option<String>,
+    /// List of feeds this came from.
+    feeds: HashSet<FeedRef>,
+    /// Tags applied to this entry.
     tags: HashSet<Tag>,
 }
 
@@ -58,16 +69,21 @@ impl Entry {
         &self.other_links
     }
 
-    pub fn feeds(&self) -> &HashSet<FeedId> {
+    pub fn feeds(&self) -> &HashSet<FeedRef> {
         &self.feeds
     }
 
-    pub fn add_feed(&mut self, feed: FeedId) {
+    pub fn add_feed(&mut self, feed: FeedRef) {
         self.feeds.insert(feed);
     }
 
-    pub fn from_feed(&self, feed: FeedId) -> bool {
-        self.feeds.contains(&feed)
+    pub fn is_from_feed(&self, feed: FeedId) -> bool {
+        for feed_ref in self.feeds().iter() {
+            if feed_ref.id == feed {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn tags(&self) -> &HashSet<Tag> {
@@ -81,7 +97,7 @@ impl Entry {
 
 impl PartialEq for Entry {
     fn eq(&self, other: &Entry) -> bool {
-        if let (Some(id1), Some(id2)) = (&self.id, &other.id) {
+        if let (Some(id1), Some(id2)) = (&self.source_id, &other.source_id) {
             return id1 == id2;
         }
         if self.title != other.title {
@@ -141,6 +157,23 @@ impl std::hash::Hash for Entry {
     }
 }
 
+impl Default for Entry {
+    fn default() -> Self {
+        Self {
+            title: "".into(),
+            date: EntryDate::Parsed(DateTime::epoch()),
+            author: "".into(),
+            content: "".into(),
+            source: Link::new("", ""),
+            comments: Link::new("", ""),
+            other_links: Vec::new(),
+            source_id: None,
+            feeds: HashSet::new(),
+            tags: HashSet::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 enum EntryDate {
     Published(DateTime),
@@ -181,7 +214,7 @@ pub struct EntryBuilder {
     source: Option<Link>,
     comments: Option<Link>,
     other_links: Vec<Link>,
-    id: Option<String>,
+    source_id: Option<String>,
 }
 
 impl EntryBuilder {
@@ -194,7 +227,7 @@ impl EntryBuilder {
             source: None,
             comments: None,
             other_links: Vec::new(),
-            id: None,
+            source_id: None,
         }
     }
 
@@ -241,6 +274,11 @@ impl EntryBuilder {
         self
     }
 
+    pub fn source_id(&mut self, source_id: impl Into<String>) -> &mut Self {
+        self.source_id = Some(source_id.into());
+        self
+    }
+
     pub fn build(&self) -> Entry {
         Entry {
             title: self.title.clone().unwrap_or_else(|| "".to_string()),
@@ -261,7 +299,7 @@ impl EntryBuilder {
                 .unwrap_or_else(|| Link::new("", "Comments")),
             other_links: self.other_links.clone(),
 
-            id: self.id.clone(),
+            source_id: self.source_id.clone(),
             tags: HashSet::new(),
             feeds: HashSet::new(),
         }

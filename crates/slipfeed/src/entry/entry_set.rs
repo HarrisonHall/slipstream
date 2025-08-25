@@ -5,6 +5,7 @@ use super::*;
 /// Set of entries.
 /// Entries are ordered chronologically and can be iterated
 /// on based on tag/feed.
+#[derive(Clone)]
 pub struct EntrySet {
     entries: Vec<Entry>,
     max_length: usize,
@@ -14,7 +15,7 @@ impl EntrySet {
     /// Create new entry set.
     pub fn new(max_length: usize) -> Self {
         Self {
-            entries: Vec::new(),
+            entries: Vec::with_capacity(max_length),
             max_length,
         }
     }
@@ -31,10 +32,14 @@ impl EntrySet {
 
     /// Add/update an entry in the set.
     pub fn add(&mut self, entry: Entry) {
+        // if !self.set.contains(&entry.db_id) {
+        //     self.set.insert(entry.db_id);
+        //     self.entries.push(entry);
+        // }
         for other in self.entries.iter_mut() {
             if *other == entry {
                 for feed in entry.feeds().iter() {
-                    other.add_feed(*feed);
+                    other.add_feed(feed.clone());
                 }
                 for tag in entry.tags().iter() {
                     other.add_tag(tag);
@@ -55,7 +60,13 @@ impl EntrySet {
         self.entries.truncate(self.max_length);
     }
 
-    pub fn as_slice(&mut self) -> &mut [Entry] {
+    /// Get a slice of entries.
+    pub fn as_slice(&self) -> &[Entry] {
+        &self.entries
+    }
+
+    /// Get a slice of entries, mutable.
+    pub fn as_slice_mut(&mut self) -> &mut [Entry] {
         &mut self.entries
     }
 }
@@ -92,7 +103,15 @@ impl<'a> Iterator for EntrySetIter<'a> {
             EntrySetIter::Feed { set, feed, next } => {
                 for entry in &set.entries[*next..] {
                     *next += 1;
-                    if entry.feeds().contains(feed) {
+                    // for feed_ref in entry.feeds().iter() {
+                    //     if feed_ref.id == *feed {
+                    //         return Some(entry);
+                    //     }
+                    // }
+                    // if entry.feeds().contains(feed) {
+                    //     return Some(entry);
+                    // }
+                    if entry.is_from_feed(*feed) {
                         return Some(entry);
                     }
                 }

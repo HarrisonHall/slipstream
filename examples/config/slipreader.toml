@@ -3,6 +3,7 @@
 # Root settings for the updater.
 freq = "5min"
 cache = "2min"
+database = "slip.db"
 
 # Settings that apply to **everything**.
 [global]
@@ -59,6 +60,10 @@ tags = ["hacking", "tech"]
 r = "read"
 C-a = "archive"
 o = "open"
+S-o = "open-2"
+u = "update"
+C-d = "page-down"
+C-u = "page-up"
 
 1 = "read-1"
 C-1 = "archive-1"

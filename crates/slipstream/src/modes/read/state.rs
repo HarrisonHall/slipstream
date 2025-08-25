@@ -47,25 +47,6 @@ pub enum Focus {
     Menu,
 }
 
-pub struct UpdaterState {
-    /// Slipstream updater handle.
-    pub updater: Arc<Mutex<Updater>>,
-    /// Timestamp of last slipfeed update.
-    pub last_update: chrono::DateTime<chrono::Utc>,
-    /// Updater future that returns a list of new entries.
-    pub future: Option<BoxFuture<'static, Result<Vec<slipfeed::Entry>>>>,
-}
-
-impl UpdaterState {
-    pub fn new(updater: Arc<Mutex<Updater>>) -> Self {
-        Self {
-            updater,
-            last_update: chrono::Local::now().to_utc(),
-            future: None,
-        }
-    }
-}
-
 impl Focus {
     pub fn swap(&mut self) {
         *self = match *self {
