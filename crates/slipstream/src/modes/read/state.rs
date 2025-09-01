@@ -45,6 +45,10 @@ pub enum Focus {
     List,
     Entry,
     Menu,
+    Command {
+        command: String,
+        message: Option<String>,
+    },
 }
 
 impl Focus {
@@ -53,6 +57,10 @@ impl Focus {
             Focus::List => Focus::Entry,
             Focus::Entry => Focus::List,
             Focus::Menu => Focus::List,
+            Focus::Command {
+                command: _,
+                message: _,
+            } => Focus::List,
         };
     }
 

@@ -120,16 +120,15 @@ impl Database {
                     id
                 }
                 (None,) => {
-                    let now = slipfeed::DateTime::now().to_chrono();
                     let id_res: Result<(Option<EntryDbId>,), _> =
                         sqlx::query_as(
                             "
                         INSERT INTO entries (timestamp, entry)
-                        VALUES (?, ?)
+                        VALUES (unixepoch(?), ?)
                         RETURNING id
                         ",
                         )
-                        .bind(&now.timestamp())
+                        .bind(&entry.date().to_chrono())
                         .bind(sqlx::types::Json::from(&serialized_entry))
                         .fetch_one(&mut self.conn)
                         .await;
@@ -198,11 +197,21 @@ impl Database {
 
     pub async fn get_entries(
         &mut self,
-        _params: DatabaseSearch,
+        params: DatabaseSearch,
         max_length: usize,
+        offset: slipfeed::DateTime,
     ) -> DatabaseEntryList {
         let mut set = DatabaseEntryList::new(max_length);
-        let res = sqlx::query(
+        let where_clause: String = match params {
+            DatabaseSearch::Latest => "TRUE = TRUE".into(),
+            DatabaseSearch::Unread => "entries.read = FALSE".into(),
+            DatabaseSearch::Important => "entries.important = TRUE".into(),
+            DatabaseSearch::Tag(tag) => format!("tags.tag LIKE '%{tag}%'"),
+            DatabaseSearch::Feed(feed) => {
+                format!("sources.source LIKE '%{feed}%'")
+            }
+        };
+        let res = sqlx::query(&format!(
             "
             SELECT
                 entries.id,
@@ -216,11 +225,16 @@ impl Database {
                 LEFT JOIN sources ON entries.id = sources.entry_id
                 LEFT JOIN tags ON entries.id = tags.entry_id
                 LEFT JOIN commands ON entries.id = commands.entry_id
+            WHERE
+                entries.timestamp < ? AND
+                {}
             GROUP BY entries.id
             ORDER BY entries.timestamp DESC, entries.id DESC
             LIMIT ?
             ",
-        )
+            where_clause
+        ))
+        .bind(&offset.to_chrono())
         .bind(max_length as u32)
         .fetch_all(&mut self.conn)
         .await;
@@ -262,27 +276,10 @@ impl Database {
                     }
 
                     // Parse commands.
-                    tracing::error!("HMMM {:?}", row.column(4));
-                    // let commands = row.get::<Option<
-                    //     sqlx::types::Json<HashMap<String, String>>,
-                    // >, usize>(4);
-                    // if let Some(commands) = commands {
-                    //     for command in commands.0 {
-                    //         entry.add_result(CommandResultContext {
-                    //             binding_name: Arc::new(command.0.clone()),
-                    //             result: CommandResult::Finished {
-                    //                 output: Arc::new(command.1.clone()),
-                    //                 success: true, // TODO!
-                    //             },
-                    //             vertical_scroll: 0,
-                    //         });
-                    //     }
-                    // }
                     let commands = row.try_get::<sqlx::types::Json<
                         HashMap<String, String>,
                     >, usize>(4);
                     if let Ok(commands) = &commands {
-                        tracing::error!("SUCCESS!!!");
                         for command in &commands.0 {
                             entry.add_result(CommandResultContext {
                                 binding_name: Arc::new(command.0.clone()),
@@ -293,8 +290,6 @@ impl Database {
                                 vertical_scroll: 0,
                             });
                         }
-                    } else {
-                        // tracing::error!("hmmm: {:?}", commands);
                     }
 
                     // Parse flags.
@@ -366,7 +361,9 @@ impl Database {
 #[derive(Debug, Clone)]
 pub enum DatabaseSearch {
     Latest,
-    Search(String),
+    Unread,
+    Important,
+    // Search(String),
     Tag(String),
     Feed(String),
 }
@@ -435,7 +432,3 @@ impl From<&slipfeed::Entry> for EntryV1 {
         }
     }
 }
-
-// struct DatabaseCommandJson {
-
-// }

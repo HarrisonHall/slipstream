@@ -130,24 +130,26 @@ impl Updater {
                         .await;
                 }
             }
-            UpdaterRequest::RequestEntries { tx, config, search } => {
-                match search {
-                    DatabaseSearch::Latest => {
-                        if let Some(entry_db) = &mut self.entry_db {
-                            tx.send(
-                                entry_db
-                                    .get_entries(
-                                        DatabaseSearch::Latest,
-                                        config.global.limits.max(),
-                                    )
-                                    .await,
+            UpdaterRequest::RequestEntries {
+                tx,
+                config,
+                search,
+                offset,
+            } => {
+                if let Some(entry_db) = &mut self.entry_db {
+                    tx.send(
+                        entry_db
+                            .get_entries(
+                                search,
+                                128,
+                                // config.global.limits.max(),
+                                offset.unwrap_or_else(|| {
+                                    slipfeed::DateTime::now()
+                                }),
                             )
-                            .ok();
-                        };
-                    }
-                    _ => {
-                        tx.send(DatabaseEntryList::new(0)).ok();
-                    }
+                            .await,
+                    )
+                    .ok();
                 };
             }
             UpdaterRequest::RequestSyndication { tx, config, search } => {
@@ -378,6 +380,7 @@ enum UpdaterRequest {
         tx: oneshot::Sender<DatabaseEntryList>,
         config: Arc<Config>,
         search: DatabaseSearch,
+        offset: Option<slipfeed::DateTime>,
     },
     RequestSyndication {
         tx: oneshot::Sender<String>,
@@ -405,17 +408,40 @@ impl UpdaterHandle {
         }
     }
 
+    /// Search for entries from a feed.
+    pub async fn search(
+        &self,
+        config: Arc<Config>,
+        search: DatabaseSearch,
+        offset: Option<slipfeed::DateTime>,
+    ) -> DatabaseEntryList {
+        let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
+        self.send(UpdaterRequest::RequestEntries {
+            tx,
+            config: config.clone(),
+            search,
+            offset,
+        })
+        .await;
+        match rx.await {
+            Ok(data) => data,
+            Err(e) => {
+                tracing::error!("Failed to search entries: {}", e);
+                DatabaseEntryList::new(0)
+            }
+        }
+    }
+
     /// Collect the /all feed.
     pub async fn collect_all(&self, config: Arc<Config>) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        tracing::info!("Send!");
         self.send(UpdaterRequest::RequestEntries {
             tx,
             config: config.clone(),
             search: DatabaseSearch::Latest,
+            offset: None,
         })
         .await;
-        tracing::info!("Wait!");
         match rx.await {
             Ok(data) => data,
             Err(e) => {
@@ -454,6 +480,7 @@ impl UpdaterHandle {
             tx,
             config: config.clone(),
             search: DatabaseSearch::Feed(feed.into()),
+            offset: None,
         })
         .await;
         match rx.await {
@@ -498,6 +525,7 @@ impl UpdaterHandle {
             tx,
             config: config.clone(),
             search: DatabaseSearch::Tag(tag.into()),
+            offset: None,
         })
         .await;
         match rx.await {

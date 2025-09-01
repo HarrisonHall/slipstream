@@ -40,16 +40,6 @@ impl DatabaseEntry {
         }
     }
 
-    /// Set the entry as read.
-    pub fn set_read(&mut self) {
-        self.has_been_read = true;
-    }
-
-    /// Set the entry as important.
-    pub fn set_imporant(&mut self, important: bool) {
-        self.important = important;
-    }
-
     /// Get the currently selected result.
     pub fn get_result(&self) -> Option<&CommandResultContext> {
         self.command_results
@@ -73,11 +63,12 @@ impl DatabaseEntry {
         {
             if by > 0 {
                 result.vertical_scroll =
-                    result.vertical_scroll.wrapping_add(by as usize);
+                    result.vertical_scroll.saturating_add(by as usize);
             } else {
                 if result.vertical_scroll >= by.abs() as usize {
-                    result.vertical_scroll =
-                        result.vertical_scroll.wrapping_sub(by.abs() as usize);
+                    result.vertical_scroll = result
+                        .vertical_scroll
+                        .saturating_sub(by.abs() as usize);
                 }
             }
         }

@@ -54,6 +54,8 @@ impl ReadConfig {
             ReadCommand::Literal(ReadCommandLiteral::Menu)
         } else if *key == IMPORTANT {
             ReadCommand::Literal(ReadCommandLiteral::ToggleImportant)
+        } else if *key == COMMAND_MODE {
+            ReadCommand::Literal(ReadCommandLiteral::CommandMode)
         } else {
             ReadCommand::Literal(ReadCommandLiteral::None)
         }
@@ -152,6 +154,9 @@ pub enum ReadCommandLiteral {
     /// Toggle the menu.
     #[serde(alias = "menu")]
     Menu,
+    /// Enter command mode.
+    #[serde(alias = "command-mode")]
+    CommandMode,
     /// Toggle the selection important.
     #[serde(alias = "important")]
     ToggleImportant,

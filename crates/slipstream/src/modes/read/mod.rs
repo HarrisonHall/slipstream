@@ -4,6 +4,7 @@
 use super::*;
 
 mod command;
+mod command_mode;
 mod config;
 mod entry;
 mod keyboard;
@@ -57,13 +58,13 @@ pub async fn read(
 
     // Show reader.
     let mut terminal = ratatui::init();
-    let mut reader = Reader::new(config, updater)?;
+    let mut reader = Reader::new(config, updater, cancel_token)?;
 
     // Update reader on load.
-    reader.check_for_update(true).await;
+    reader.update_entries(DatabaseSearch::Latest).await;
 
     // Run loop.
-    let result = reader.run(&mut terminal, cancel_token).await;
+    let result = reader.run(&mut terminal).await;
 
     // Restore terminal.
     ratatui::restore();
@@ -88,11 +89,17 @@ struct Reader {
     terminal_state: TerminalState,
     /// State of user interaction.
     interaction_state: InteractionState,
+    /// Cancellation token.
+    cancel_token: CancellationToken,
 }
 
 impl Reader {
     /// Create a new reader.
-    fn new(config: Arc<Config>, updater: UpdaterHandle) -> Result<Self> {
+    fn new(
+        config: Arc<Config>,
+        updater: UpdaterHandle,
+        cancel_token: CancellationToken,
+    ) -> Result<Self> {
         Ok(Self {
             config,
             updater,
@@ -101,18 +108,15 @@ impl Reader {
             entries: DatabaseEntryList::new(0),
             terminal_state: TerminalState::default(),
             interaction_state: InteractionState::default(),
+            cancel_token,
         })
     }
 
     /// Run the reader.
-    async fn run(
-        &mut self,
-        terminal: &mut Terminal,
-        cancel_token: CancellationToken,
-    ) -> Result<()> {
+    async fn run(&mut self, terminal: &mut Terminal) -> Result<()> {
         'reader: loop {
             // Check if quitting.
-            if cancel_token.is_cancelled() {
+            if self.cancel_token.is_cancelled() {
                 break 'reader Ok(());
             }
 
@@ -125,12 +129,12 @@ impl Reader {
 
             // Poll input.
             if self.handle_input().await.is_err() {
-                cancel_token.cancel();
+                self.cancel_token.cancel();
                 break 'reader Ok(());
             }
 
             // Manage updater.
-            self.check_for_update(false).await;
+            self.check_for_updates().await;
 
             // Sync current with db.
             if self.interaction_state.selection < self.entries.len() {
@@ -182,10 +186,19 @@ impl Reader {
                     Event::Key(key) => {
                         tracing::debug!("Key press: {:?}", key);
                         if key == CONTROL_C {
-                            bail!("Quitting!")
+                            self.cancel_token.cancel();
+                            return Ok(());
                         }
-                        let command = self.config.read.get_key_command(&key);
-                        self.run_command(command).await?;
+                        match &self.interaction_state.focus {
+                            Focus::Command { .. } => {
+                                self.handle_command_mode_input(&key).await?;
+                            }
+                            _ => {
+                                let command =
+                                    self.config.read.get_key_command(&key);
+                                self.run_command(command).await?;
+                            }
+                        }
                     }
                     Event::Mouse(event) => tracing::debug!("Mouse {:?}", event),
                     Event::Resize(width, height) => {
@@ -232,10 +245,11 @@ impl Reader {
         match command {
             ReadCommandLiteral::None => {}
             ReadCommandLiteral::Quit => {
-                bail!("Quit.");
+                self.cancel_token.cancel();
+                return Ok(());
             }
             ReadCommandLiteral::Update => {
-                self.check_for_update(true).await;
+                self.update_entries(DatabaseSearch::Latest).await;
             }
             ReadCommandLiteral::Down => match self.interaction_state.focus {
                 Focus::List => {
@@ -251,6 +265,7 @@ impl Reader {
                     }
                 }
                 Focus::Menu => {}
+                Focus::Command { .. } => {}
             },
             ReadCommandLiteral::Up => match self.interaction_state.focus {
                 Focus::List => {
@@ -265,6 +280,7 @@ impl Reader {
                     }
                 }
                 Focus::Menu => {}
+                Focus::Command { .. } => {}
             },
             ReadCommandLiteral::Left => {
                 if self.interaction_state.selection < self.entries.len() {
@@ -298,10 +314,11 @@ impl Reader {
                         if self.interaction_state.selection < self.entries.len()
                         {
                             self.entries[self.interaction_state.selection]
-                                .scroll(1);
+                                .scroll(20);
                         }
                     }
                     Focus::Menu => {}
+                    Focus::Command { .. } => {}
                 }
             }
             ReadCommandLiteral::PageUp => match self.interaction_state.focus {
@@ -320,16 +337,23 @@ impl Reader {
                 Focus::Entry => {
                     if self.interaction_state.selection < self.entries.len() {
                         self.entries[self.interaction_state.selection]
-                            .scroll(-1);
+                            .scroll(-20);
                     }
                 }
                 Focus::Menu => {}
+                Focus::Command { .. } => {}
             },
             ReadCommandLiteral::Swap => {
                 self.interaction_state.focus.swap();
             }
             ReadCommandLiteral::Menu => {
                 self.interaction_state.focus.toggle_menu();
+            }
+            ReadCommandLiteral::CommandMode => {
+                self.interaction_state.focus = Focus::Command {
+                    command: String::new(),
+                    message: None,
+                };
             }
             ReadCommandLiteral::ToggleImportant => {
                 if self.interaction_state.selection < self.entries.len() {
@@ -467,7 +491,7 @@ impl Reader {
     }
 
     /// Check for an update and handle completed updates.
-    async fn check_for_update(&mut self, refresh: bool) {
+    async fn check_for_updates(&mut self) {
         // Check for new update.
         if let Some(entries_fut) = &mut self.refresh {
             if entries_fut.is_finished() {
@@ -493,15 +517,6 @@ impl Reader {
             }
         }
 
-        if refresh && self.refresh.is_none() {
-            tracing::debug!("Refreshing!");
-            self.refresh = Some({
-                let updater = self.updater.clone();
-                let config = self.config.clone();
-                tokio::spawn(async move { updater.collect_all(config).await })
-            });
-        }
-
         // Check for loaded entries.
         while let Some(res) = self.command_futures.try_join_next() {
             if let Ok((entry_id, context)) = res {
@@ -511,6 +526,114 @@ impl Reader {
                 }
             }
         }
+    }
+
+    /// Search for entries.
+    async fn update_entries(&mut self, search: DatabaseSearch) {
+        // Check for new update.
+        if let Some(entries_fut) = &mut self.refresh {
+            entries_fut.abort();
+        }
+        self.refresh = None;
+
+        tracing::debug!("Refreshing!");
+        self.refresh = Some({
+            let updater = self.updater.clone();
+            let config = self.config.clone();
+            tokio::spawn(
+                async move { updater.search(config, search, None).await },
+            )
+        });
+    }
+
+    async fn handle_command_mode_input(
+        &mut self,
+        key: &KeyEvent,
+    ) -> Result<()> {
+        // Update command.
+        let (mut command, is_error) = match &self.interaction_state.focus {
+            Focus::Command { command, message } => {
+                (command.clone(), message.is_some())
+            }
+            _ => (String::new(), false),
+        };
+
+        // Go back to list if menu pressed.
+        if *key == MENU {
+            self.interaction_state.focus = Focus::List;
+            return Ok(());
+        }
+
+        // If an error, clear and let the user continue typing.
+        if is_error {
+            self.interaction_state.focus = Focus::Command {
+                command,
+                message: None,
+            };
+            return Ok(());
+        }
+
+        match key.code {
+            KeyCode::Char(c) => {
+                command.push(c);
+            }
+            KeyCode::Backspace => {
+                command.pop();
+            }
+            KeyCode::Enter => {
+                match self.handle_command_mode_command(&command).await {
+                    Ok(_) => {
+                        self.interaction_state.focus = Focus::List;
+                    }
+                    Err(e) => {
+                        self.interaction_state.focus = Focus::Command {
+                            command,
+                            message: Some(e.to_string()),
+                        };
+                    }
+                }
+                return Ok(());
+            }
+            _ => {}
+        }
+
+        self.interaction_state.focus = Focus::Command {
+            command,
+            message: None,
+        };
+
+        Ok(())
+    }
+
+    async fn handle_command_mode_command(
+        &mut self,
+        command: &str,
+    ) -> Result<()> {
+        let parsed_command =
+            match command_mode::CommandParser::parse_command(command) {
+                Ok(parsed) => parsed,
+                Err(_) => bail!("Invalid command: {command}"),
+            };
+        match parsed_command.command {
+            command_mode::Command::Quit => self.cancel_token.cancel(),
+            command_mode::Command::SearchLatest => {
+                self.update_entries(DatabaseSearch::Latest).await
+            }
+            command_mode::Command::SearchImportant => {
+                self.update_entries(DatabaseSearch::Important).await
+            }
+            command_mode::Command::SearchUnread => {
+                self.update_entries(DatabaseSearch::Unread).await
+            }
+            command_mode::Command::SearchTagged { tag } => {
+                self.update_entries(DatabaseSearch::Tag(tag)).await
+            }
+            command_mode::Command::SearchFeed { feed } => {
+                self.update_entries(DatabaseSearch::Feed(feed)).await
+            }
+        };
+
+        Ok(())
     }
 }
 
@@ -597,19 +720,42 @@ impl<'a> Widget for ReaderWidget<'a> {
         }
 
         // Show slipstream header.
-        Text::styled(
-            format!(
-                "{:<width$}",
-                format!(
-                    "slipstream {}/{}",
-                    self.reader.interaction_state.selection + 1,
-                    self.reader.entries.len()
-                ),
-                width = &(title_layout.width as usize),
-            ),
-            Style::new().bg(Color::Blue).fg(Color::Black),
-        )
-        .render(title_layout, buf);
+        match &self.reader.interaction_state.focus {
+            Focus::Command { command, message } => match message {
+                Some(message) => {
+                    Line::from(vec![
+                        Span::styled("! ", Style::new().bold()),
+                        Span::styled(message, Style::new().fg(Color::Black)),
+                    ])
+                    .bg(Color::Red)
+                    .render(title_layout, buf);
+                }
+                None => {
+                    Line::from(vec![
+                        Span::styled(":", Style::new()),
+                        Span::styled(command, Style::new().fg(Color::Blue)),
+                        Span::styled("█", Style::new()),
+                    ])
+                    .bg(Color::Black)
+                    .render(title_layout, buf);
+                }
+            },
+            _ => {
+                Text::styled(
+                    format!(
+                        "{:<width$}",
+                        format!(
+                            "slipstream {}/{}",
+                            self.reader.interaction_state.selection + 1,
+                            self.reader.entries.len()
+                        ),
+                        width = &(title_layout.width as usize),
+                    ),
+                    Style::new().bg(Color::Blue).fg(Color::Black),
+                )
+                .render(title_layout, buf);
+            }
+        }
 
         // Show titles.
         let formatted_entries = self
@@ -664,15 +810,8 @@ impl<'a> Widget for ReaderWidget<'a> {
                         },
                     ),
                     Span::styled(e.title(), style),
-                ]);
-                // return ratatui::text::Text::styled(
-                //     format!(
-                //         "[{:<10}] {}",
-                //         &feed[..10.min(feed.len())],
-                //         e.title()
-                //     ),
-                //     style,
-                // );
+                ])
+                .style(style);
             });
         ratatui::widgets::List::new(formatted_entries).render(list_layout, buf);
 
@@ -681,7 +820,7 @@ impl<'a> Widget for ReaderWidget<'a> {
         if self.reader.interaction_state.selection < self.reader.entries.len() {
             let entry = &mut self.reader.entries
                 [self.reader.interaction_state.selection];
-            entry.set_read();
+            entry.has_been_read = true;
             EntryViewWidget::new(entry, &self.reader.interaction_state.focus)
                 .render(entry_layout, buf);
         }

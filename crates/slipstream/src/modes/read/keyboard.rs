@@ -23,6 +23,8 @@ pub const MENU: KeyEvent = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
 pub const TAB: KeyEvent = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
 pub const IMPORTANT: KeyEvent =
     KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE);
+pub const COMMAND_MODE: KeyEvent =
+    KeyEvent::new(KeyCode::Char(':'), KeyModifiers::NONE);
 
 /// Keyboard key.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Hash)]
