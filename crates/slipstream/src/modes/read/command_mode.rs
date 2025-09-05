@@ -43,6 +43,12 @@ pub enum Command {
     /// Search for specific text in entries.
     #[command(alias = "search")]
     SearchAny(SearchContext),
+    /// Add a tag.
+    #[command(alias = "tag", alias = "add-tag")]
+    TagAdd { tag: String },
+    /// Remove a tag.
+    #[command(alias = "remove-tag")]
+    TagRemove { tag: String },
 }
 
 #[derive(Parser, Clone)]

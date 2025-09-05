@@ -384,6 +384,33 @@ impl Database {
         }
     }
 
+    pub async fn update_tags(
+        &mut self,
+        entry_id: EntryDbId,
+        tags: Vec<slipfeed::Tag>,
+    ) {
+        let res = sqlx::query("DELETE FROM tags WHERE entry_id = ?")
+            .bind(entry_id)
+            .execute(&mut self.conn)
+            .await;
+        if let Err(e) = res {
+            tracing::error!("Failed to remove tags: {}", e);
+        }
+
+        for tag in &tags {
+            let res =
+                sqlx::query("INSERT INTO tags (entry_id, tag) VALUES(?, ?)")
+                    .bind(entry_id)
+                    .bind(&String::from(tag))
+                    .execute(&mut self.conn)
+                    .await;
+
+            if let Err(e) = res {
+                tracing::error!("Failed to insert tag: {}", e);
+            }
+        }
+    }
+
     pub async fn store_command_result(
         &mut self,
         entry_id: EntryDbId,

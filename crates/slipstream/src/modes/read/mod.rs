@@ -639,6 +639,23 @@ impl Reader {
                     .await
                 }
             }
+            command_mode::Command::TagAdd { tag } => {
+                if self.interaction_state.selection < self.entries.len() {
+                    let entry =
+                        &mut self.entries[self.interaction_state.selection];
+                    entry.entry.add_tag(&slipfeed::Tag::new(tag));
+                    let tags: Vec<slipfeed::Tag> =
+                        entry.entry.tags().iter().map(|t| t.clone()).collect();
+                    self.updater.update_tags(entry.db_id, tags).await;
+                }
+            }
+            command_mode::Command::TagRemove { tag } => {
+                let entry = &mut self.entries[self.interaction_state.selection];
+                entry.entry.remove_tag(&slipfeed::Tag::new(tag));
+                let tags: Vec<slipfeed::Tag> =
+                    entry.entry.tags().iter().map(|t| t.clone()).collect();
+                self.updater.update_tags(entry.db_id, tags).await;
+            }
         };
 
         Ok(())

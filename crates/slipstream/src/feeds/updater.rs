@@ -96,6 +96,7 @@ impl Updater {
                 entry_id,
                 important,
                 read,
+                tags,
             } => {
                 if let Some(entry_db) = &mut self.entry_db {
                     if let Some(important) = important {
@@ -103,6 +104,9 @@ impl Updater {
                     }
                     if let Some(read) = read {
                         entry_db.toggle_read(entry_id, read).await;
+                    }
+                    if let Some(tags) = tags {
+                        entry_db.update_tags(entry_id, tags).await;
                     }
                 }
             }
@@ -365,6 +369,7 @@ enum UpdaterRequest {
         entry_id: EntryDbId,
         important: Option<bool>,
         read: Option<bool>,
+        tags: Option<Vec<slipfeed::Tag>>,
     },
     RequestUpdate {
         tx: oneshot::Sender<DatabaseEntry>,
@@ -391,7 +396,6 @@ enum UpdaterRequest {
         tx: oneshot::Sender<Option<String>>,
         feed: slipfeed::FeedId,
     },
-    // FeedId(String),
 }
 
 #[derive(Clone)]
@@ -577,6 +581,7 @@ impl UpdaterHandle {
             entry_id,
             important: None,
             read: Some(read),
+            tags: None,
         })
         .await;
     }
@@ -587,6 +592,21 @@ impl UpdaterHandle {
             entry_id,
             important: Some(important),
             read: None,
+            tags: None,
+        })
+        .await;
+    }
+
+    pub async fn update_tags(
+        &self,
+        entry_id: EntryDbId,
+        tags: Vec<slipfeed::Tag>,
+    ) {
+        self.send(UpdaterRequest::UpdateEntry {
+            entry_id,
+            important: None,
+            read: None,
+            tags: Some(tags),
         })
         .await;
     }

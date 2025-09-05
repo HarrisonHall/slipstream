@@ -94,6 +94,10 @@ impl Entry {
         self.tags.insert(tag.clone());
     }
 
+    pub fn remove_tag(&mut self, tag: &Tag) {
+        self.tags.remove(tag);
+    }
+
     pub fn source_id(&self) -> Option<&str> {
         match &self.source_id {
             Some(id) => Some(id.as_str()),

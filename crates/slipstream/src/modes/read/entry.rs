@@ -207,6 +207,19 @@ impl<'a> Widget for EntryInfoWidget<'a> {
             .into(),
         );
 
+        // Add tags:
+        let mut tags: Vec<String> = self
+            .0
+            .tags()
+            .iter()
+            .map(|t| format!("<{t}>"))
+            .collect::<Vec<String>>();
+        tags.sort();
+        top_lines.push(Line::styled(
+            tags.join(", "),
+            Style::default().fg(Color::Yellow),
+        ));
+
         // Add links:
         let mut link_count = 0;
         if !self.0.source().url.is_empty() {
