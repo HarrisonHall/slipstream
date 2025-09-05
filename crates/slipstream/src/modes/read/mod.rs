@@ -355,6 +355,12 @@ impl Reader {
                     message: None,
                 };
             }
+            ReadCommandLiteral::SearchMode => {
+                self.interaction_state.focus = Focus::Command {
+                    command: "/".into(),
+                    message: None,
+                };
+            }
             ReadCommandLiteral::ToggleImportant => {
                 if self.interaction_state.selection < self.entries.len() {
                     let important = self.entries
@@ -498,16 +504,8 @@ impl Reader {
                 match entries_fut.await {
                     Ok(entries) => {
                         self.entries = entries;
-                        if self.interaction_state.selection > self.entries.len()
-                        {
-                            if self.entries.len() == 0 {
-                                self.terminal_state.window = 0;
-                                self.interaction_state.selection = 0;
-                            } else {
-                                self.interaction_state.selection =
-                                    self.entries.len() - 1;
-                            }
-                        }
+                        self.terminal_state.window = 0;
+                        self.interaction_state.selection = 0;
                     }
                     Err(e) => {
                         tracing::error!("Failed to update entries: {}", e);
@@ -619,17 +617,27 @@ impl Reader {
             command_mode::Command::SearchLatest => {
                 self.update_entries(DatabaseSearch::Latest).await
             }
-            command_mode::Command::SearchImportant => {
-                self.update_entries(DatabaseSearch::Important).await
-            }
-            command_mode::Command::SearchUnread => {
-                self.update_entries(DatabaseSearch::Unread).await
-            }
-            command_mode::Command::SearchTagged { tag } => {
-                self.update_entries(DatabaseSearch::Tag(tag)).await
-            }
-            command_mode::Command::SearchFeed { feed } => {
-                self.update_entries(DatabaseSearch::Feed(feed)).await
+            command_mode::Command::SearchAny(search) => {
+                if search.important {
+                    self.update_entries(DatabaseSearch::Important).await
+                } else if search.unread {
+                    self.update_entries(DatabaseSearch::Unread).await
+                } else if search.tag.is_some() {
+                    self.update_entries(DatabaseSearch::Tag(
+                        search.tag.unwrap(),
+                    ))
+                    .await
+                } else if search.feed.is_some() {
+                    self.update_entries(DatabaseSearch::Feed(
+                        search.feed.unwrap(),
+                    ))
+                    .await
+                } else {
+                    self.update_entries(DatabaseSearch::Search(
+                        search.text.unwrap(),
+                    ))
+                    .await
+                }
             }
         };
 

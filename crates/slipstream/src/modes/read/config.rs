@@ -56,6 +56,8 @@ impl ReadConfig {
             ReadCommand::Literal(ReadCommandLiteral::ToggleImportant)
         } else if *key == COMMAND_MODE {
             ReadCommand::Literal(ReadCommandLiteral::CommandMode)
+        } else if *key == SEARCH_MODE {
+            ReadCommand::Literal(ReadCommandLiteral::SearchMode)
         } else {
             ReadCommand::Literal(ReadCommandLiteral::None)
         }
@@ -157,6 +159,9 @@ pub enum ReadCommandLiteral {
     /// Enter command mode.
     #[serde(alias = "command-mode")]
     CommandMode,
+    /// Enter search mode.
+    #[serde(alias = "search-mode")]
+    SearchMode,
     /// Toggle the selection important.
     #[serde(alias = "important")]
     ToggleImportant,

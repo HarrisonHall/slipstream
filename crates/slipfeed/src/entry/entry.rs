@@ -93,6 +93,13 @@ impl Entry {
     pub fn add_tag(&mut self, tag: &Tag) {
         self.tags.insert(tag.clone());
     }
+
+    pub fn source_id(&self) -> Option<&str> {
+        match &self.source_id {
+            Some(id) => Some(id.as_str()),
+            None => None,
+        }
+    }
 }
 
 impl PartialEq for Entry {

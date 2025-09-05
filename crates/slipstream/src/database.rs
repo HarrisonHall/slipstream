@@ -46,11 +46,22 @@ impl Database {
                 timestamp INTEGER NOT NULL,
                 -- The entry json blob.
                 entry TEXT NOT NULL,
+                -- Entry title.
+                title TEXT NOT NULL,
+                -- Entry content.
+                content TEXT NOT NULL,
+                -- Entry author.
+                author TEXT NOT NULL,
+                -- Entry source_id.
+                -- This is the source provided by the _original_ feed.
+                source_id TEXT DEFAULT NULL,
                 -- If the entry is marked important.
                 important INTEGER NOT NULL DEFAULT FALSE,
                 -- If the entry has been read.
                 read INTEGER NOT NULL DEFAULT FALSE,
-                UNIQUE(entry)
+                UNIQUE(entry),
+                UNIQUE(title, author),
+                UNIQUE(author, source_id)
             ) STRICT;
             CREATE INDEX IF NOT EXISTS entries_entry_idx ON entries(entry);
             CREATE INDEX IF NOT EXISTS entries_timestamp_idx ON entries(timestamp);
@@ -108,12 +119,39 @@ impl Database {
         let entry_v1 = EntryV1::from(entry);
         let serialized_entry = SerializedEntry::V1(entry_v1.clone());
         let entry_id: EntryDbId = {
-            let id: (Option<EntryDbId>,) =
-                sqlx::query_as("SELECT id, read, important FROM entries WHERE entry = ? OR (FALSE)")
+            // Find existing id.
+            let mut id: (Option<EntryDbId>,) = (None,);
+            // Search by entry.
+            if id.0.is_none() {
+                id = sqlx::query_as("SELECT id FROM entries WHERE entry = ?")
                     .bind(sqlx::types::Json::from(&serialized_entry))
                     .fetch_one(&mut self.conn)
                     .await
                     .unwrap_or_else(|_| (None,));
+            }
+            // Search by title+author.
+            if id.0.is_none() {
+                id = sqlx::query_as(
+                    "SELECT id FROM entries WHERE title IS ? AND author IS ?",
+                )
+                .bind(entry.title())
+                .bind(entry.author())
+                .fetch_one(&mut self.conn)
+                .await
+                .unwrap_or_else(|_| (None,));
+            }
+            // Search by author+source_id.
+            if id.0.is_none() {
+                id = sqlx::query_as(
+                    "SELECT id FROM entries WHERE author IS ? AND source_id IS ?",
+                )
+                .bind(entry.author())
+                .bind(entry.source_id())
+                .fetch_one(&mut self.conn)
+                .await
+                .unwrap_or_else(|_| (None,));
+            }
+
             match id {
                 (Some(id),) => {
                     tracing::debug!("Found existing {}", id);
@@ -123,13 +161,17 @@ impl Database {
                     let id_res: Result<(Option<EntryDbId>,), _> =
                         sqlx::query_as(
                             "
-                        INSERT INTO entries (timestamp, entry)
-                        VALUES (unixepoch(?), ?)
+                        INSERT INTO entries (timestamp, entry, title, author, content, source_id)
+                        VALUES (unixepoch(?), ?, ?, ?, ?, ?)
                         RETURNING id
                         ",
                         )
                         .bind(&entry.date().to_chrono())
                         .bind(sqlx::types::Json::from(&serialized_entry))
+                        .bind(entry.title())
+                        .bind(entry.author())
+                        .bind(entry.content())
+                        .bind(entry.source_id())
                         .fetch_one(&mut self.conn)
                         .await;
                     match id_res {
@@ -206,6 +248,12 @@ impl Database {
             DatabaseSearch::Latest => "TRUE = TRUE".into(),
             DatabaseSearch::Unread => "entries.read = FALSE".into(),
             DatabaseSearch::Important => "entries.important = TRUE".into(),
+            DatabaseSearch::Search(search) => {
+                let search = search.to_lowercase();
+                format!(
+                    "entries.title LIKE '%{search}%' OR entries.author LIKE '%{search}%' OR entries.content LIKE '%{search}%'"
+                )
+            }
             DatabaseSearch::Tag(tag) => format!("tags.tag LIKE '%{tag}%'"),
             DatabaseSearch::Feed(feed) => {
                 format!("sources.source LIKE '%{feed}%'")
@@ -363,7 +411,7 @@ pub enum DatabaseSearch {
     Latest,
     Unread,
     Important,
-    // Search(String),
+    Search(String),
     Tag(String),
     Feed(String),
 }
