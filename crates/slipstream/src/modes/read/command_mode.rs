@@ -47,7 +47,7 @@ pub enum Command {
     #[command(alias = "tag", alias = "add-tag")]
     TagAdd { tag: String },
     /// Remove a tag.
-    #[command(alias = "remove-tag")]
+    #[command(alias = "untag", alias = "remove-tag")]
     TagRemove { tag: String },
 }
 

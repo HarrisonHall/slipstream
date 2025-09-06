@@ -537,10 +537,7 @@ impl Reader {
         tracing::debug!("Refreshing!");
         self.refresh = Some({
             let updater = self.updater.clone();
-            let config = self.config.clone();
-            tokio::spawn(
-                async move { updater.search(config, search, None).await },
-            )
+            tokio::spawn(async move { updater.search(search, None).await })
         });
     }
 

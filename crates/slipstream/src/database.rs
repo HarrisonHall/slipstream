@@ -12,7 +12,7 @@ use crate::modes::DatabaseEntry;
 /// Slipfeed database abstraction.
 pub struct Database {
     /// Path to the sqlite database.
-    path: String,
+    _path: String,
     /// Connection to the sqlite database.
     conn: sqlx::SqliteConnection,
 }
@@ -34,7 +34,7 @@ impl Database {
             .create_if_missing(true);
         let mut conn = SqliteConnection::connect_with(&options).await.unwrap();
         Database::initialize(&mut conn).await?;
-        Ok(Self { path, conn })
+        Ok(Self { _path: path, conn })
     }
 
     async fn initialize(conn: &mut sqlx::SqliteConnection) -> Result<()> {
@@ -130,7 +130,10 @@ impl Database {
                     .unwrap_or_else(|_| (None,));
             }
             // Search by title+author.
-            if id.0.is_none() {
+            if id.0.is_none()
+                && !entry.title().is_empty()
+                && !entry.author().is_empty()
+            {
                 id = sqlx::query_as(
                     "SELECT id FROM entries WHERE title IS ? AND author IS ?",
                 )
@@ -141,7 +144,10 @@ impl Database {
                 .unwrap_or_else(|_| (None,));
             }
             // Search by author+source_id.
-            if id.0.is_none() {
+            if id.0.is_none()
+                && !entry.author().is_empty()
+                && !entry.source_id().is_none()
+            {
                 id = sqlx::query_as(
                     "SELECT id FROM entries WHERE author IS ? AND source_id IS ?",
                 )

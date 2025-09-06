@@ -81,14 +81,13 @@ async fn get_all_html(
     State(state): StateType,
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("/all");
-    let config = state.config.clone();
     let mut html = state.html.lock().await;
     let updater = state.updater.clone();
     return (
         [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
         html.get(
             "/all",
-            async move { updater.collect_all(config).await },
+            async move { updater.collect_all().await },
             state.updater.clone(),
             state.config.clone(),
         )
@@ -117,14 +116,13 @@ async fn get_feed_html(
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("{}", uri.path());
     let feed = &uri.path()["/feed/".len()..];
-    let config = state.config.clone();
     let updater = state.updater.clone();
     let mut html = state.html.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
         html.get(
             uri.path(),
-            async move { updater.collect_feed(feed, config).await },
+            async move { updater.collect_feed(feed).await },
             state.updater.clone(),
             state.config.clone(),
         )
@@ -157,14 +155,13 @@ async fn get_tag_html(
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("{}", uri.path());
     let tag = &uri.path()["/tag/".len()..];
-    let config = state.config.clone();
     let updater = state.updater.clone();
     let mut html = state.html.lock().await;
     return (
         [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
         html.get(
             uri.path(),
-            async move { updater.collect_tag(tag, config).await },
+            async move { updater.collect_tag(tag).await },
             state.updater.clone(),
             state.config.clone(),
         )

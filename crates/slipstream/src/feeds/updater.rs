@@ -92,7 +92,7 @@ impl Updater {
         config: &Arc<Config>,
     ) {
         match command {
-            UpdaterRequest::UpdateEntry {
+            UpdaterRequest::EntryUpdate {
                 entry_id,
                 important,
                 read,
@@ -110,14 +110,14 @@ impl Updater {
                     }
                 }
             }
-            UpdaterRequest::RequestUpdate { tx, entry } => {
+            UpdaterRequest::EntryFetch { tx, entry } => {
                 let mut entry = entry;
                 if let Some(entry_db) = &mut self.entry_db {
                     entry_db.update_slipstream_entry(&mut entry).await;
                     tx.send(entry).ok();
                 }
             }
-            UpdaterRequest::UpdateCommand {
+            UpdaterRequest::CommandUpdate {
                 entry_id,
                 command,
                 result,
@@ -134,12 +134,7 @@ impl Updater {
                         .await;
                 }
             }
-            UpdaterRequest::RequestEntries {
-                tx,
-                config,
-                search,
-                offset,
-            } => {
+            UpdaterRequest::EntriesSearch { tx, search, offset } => {
                 if let Some(entry_db) = &mut self.entry_db {
                     tx.send(
                         entry_db
@@ -156,19 +151,103 @@ impl Updater {
                     .ok();
                 };
             }
-            UpdaterRequest::RequestSyndication { tx, config, search } => {
-                todo!()
+            UpdaterRequest::FeedFetch { tx, options } => {
+                if let Some(entry_db) = &mut self.entry_db {
+                    let entries = match options {
+                        FeedFetchOptions::All => {
+                            let unfiltered_entries = entry_db
+                                .get_entries(
+                                    DatabaseSearch::Latest,
+                                    config.global.limits.max(),
+                                    slipfeed::DateTime::now(),
+                                )
+                                .await;
+                            let mut entries = DatabaseEntryList::new(
+                                config.global.limits.max(),
+                            );
+                            for entry in unfiltered_entries.iter() {
+                                if config.global.limits.too_old(entry.date()) {
+                                    continue;
+                                }
+                                if !self.passes_global_filters(&entry) {
+                                    continue;
+                                }
+                                if !self.passes_all_filters(&entry) {
+                                    continue;
+                                }
+                                entries.add(entry.clone()).ok();
+                            }
+                            entries
+                        }
+                        FeedFetchOptions::Tag(tag) => {
+                            let unfiltered_entries = entry_db
+                                .get_entries(
+                                    DatabaseSearch::Tag(tag),
+                                    config.global.limits.max(),
+                                    slipfeed::DateTime::now(),
+                                )
+                                .await;
+                            let mut entries = DatabaseEntryList::new(
+                                config.global.limits.max(),
+                            );
+                            for entry in unfiltered_entries.iter() {
+                                if config.global.limits.too_old(entry.date()) {
+                                    continue;
+                                }
+                                if !self.passes_global_filters(&entry) {
+                                    continue;
+                                }
+                                entries.add(entry.clone()).ok();
+                            }
+                            entries
+                        }
+                        FeedFetchOptions::Feed(feed) => {
+                            if let (Some(_feed_id), Some(feed_def)) =
+                                (self.feeds.get(&feed), config.feed(&feed))
+                            {
+                                let unfiltered_entries = entry_db
+                                    .get_entries(
+                                        DatabaseSearch::Feed(feed.clone()),
+                                        config.global.limits.max(),
+                                        slipfeed::DateTime::now(),
+                                    )
+                                    .await;
+                                let mut entries = DatabaseEntryList::new(
+                                    feed_def.options().max(),
+                                );
+                                for entry in unfiltered_entries.iter() {
+                                    if config
+                                        .global
+                                        .limits
+                                        .too_old(entry.date())
+                                    {
+                                        continue;
+                                    }
+                                    if feed_def.options().too_old(entry.date())
+                                    {
+                                        continue;
+                                    }
+                                    if !self.passes_global_filters(&entry) {
+                                        continue;
+                                    }
+                                    // NOTE: Individual feed filters are already checked by the underlying
+                                    // slipfeed updater.
+                                    entries.add(entry.clone()).ok();
+                                }
+                                entries
+                            } else {
+                                DatabaseEntryList::new(0)
+                            }
+                        }
+                    };
+                    tx.send(entries).ok();
+                };
             }
             UpdaterRequest::FeedName { tx, feed } => {
                 // config.feed(feed)
                 tx.send(self.feeds_ids.get(&feed).map(|f| f.clone())).ok();
             }
         }
-    }
-
-    /// Get feed name from id.
-    pub fn feed_name(&self, feed: slipfeed::FeedId) -> Option<&String> {
-        self.feeds_ids.get(&feed)
     }
 
     /// Check if entry passes the global filters.
@@ -181,168 +260,6 @@ impl Updater {
     pub fn passes_all_filters(&self, entry: &slipfeed::Entry) -> bool {
         let feed = NoopFeed;
         self.all_filters.iter().all(|f| f(&feed, entry))
-    }
-
-    pub fn syndicate_all(&self, config: &Config) -> String {
-        let mut syn = atom::FeedBuilder::default();
-        syn.title("All")
-            .author(atom::PersonBuilder::default().name("slipstream").build());
-        let mut count = 0;
-        // for entry in self.updater.iter() {
-        //     if count > config.global.limits.max() {
-        //         break;
-        //     }
-        //     if config.global.limits.too_old(entry.date()) {
-        //         continue;
-        //     }
-        //     if !self.passes_global_filters(&entry) {
-        //         continue;
-        //     }
-        //     if !self.passes_all_filters(&entry) {
-        //         continue;
-        //     }
-        //     syn.entry(entry.to_atom(self, config));
-        //     count += 1;
-        // }
-        syn.build().to_string()
-    }
-
-    pub fn collect_all(&self, config: &Config) -> Vec<slipfeed::Entry> {
-        let mut entries = Vec::with_capacity(config.global.limits.max());
-        let mut count = 0;
-        // for entry in self.updater.iter() {
-        //     if count > config.global.limits.max() {
-        //         break;
-        //     }
-        //     if config.global.limits.too_old(entry.date()) {
-        //         continue;
-        //     }
-        //     if !self.passes_global_filters(&entry) {
-        //         continue;
-        //     }
-        //     if !self.passes_all_filters(&entry) {
-        //         continue;
-        //     }
-        //     entries.push(entry.clone());
-        //     count += 1;
-        // }
-        entries
-    }
-
-    /// Convert the feed into an atom feed.
-    pub fn syndicate_feed(&self, feed: &str, config: &Config) -> String {
-        let mut syn = atom::FeedBuilder::default();
-        syn.title(feed)
-            .author(atom::PersonBuilder::default().name("slipstream").build());
-        if let (Some(id), Some(feed)) =
-            (self.feeds.get(feed), config.feed(feed))
-        {
-            let mut count = 0;
-            // for entry in self.updater.from_feed(*id) {
-            //     if count >= config.global.limits.max() {
-            //         break;
-            //     }
-            //     if count >= feed.options().max() {
-            //         break;
-            //     }
-            //     if config.global.limits.too_old(entry.date()) {
-            //         continue;
-            //     }
-            //     if feed.options().too_old(entry.date()) {
-            //         continue;
-            //     }
-            //     if !self.passes_global_filters(&entry) {
-            //         continue;
-            //     }
-            //     // NOTE: Individual feed filters are already checked by the underlying
-            //     // slipfeed updater.
-            //     syn.entry(entry.to_atom(self, config));
-            //     count += 1;
-            // }
-        }
-        syn.build().to_string()
-    }
-
-    /// Collect the feed.
-    pub fn collect_feed(
-        &self,
-        feed: &str,
-        config: &Config,
-    ) -> Vec<slipfeed::Entry> {
-        let mut entries = Vec::with_capacity(config.global.limits.max());
-        if let (Some(id), Some(feed)) =
-            (self.feeds.get(feed), config.feed(feed))
-        {
-            let mut count = 0;
-            // for entry in self.updater.from_feed(*id) {
-            //     if count >= config.global.limits.max() {
-            //         break;
-            //     }
-            //     if count >= feed.options().max() {
-            //         break;
-            //     }
-            //     if config.global.limits.too_old(entry.date()) {
-            //         continue;
-            //     }
-            //     if feed.options().too_old(entry.date()) {
-            //         continue;
-            //     }
-            //     if !self.passes_global_filters(&entry) {
-            //         continue;
-            //     }
-            //     // NOTE: Individual feed filters are already checked by the underlying
-            //     // slipfeed updater.
-            //     entries.push(entry.clone());
-            //     count += 1;
-            // }
-        }
-        entries
-    }
-
-    /// Convert entries matching /tag to an atom feed.
-    pub fn syndicate_tag(&self, tag: &str, config: &Config) -> String {
-        let mut syn = atom::FeedBuilder::default();
-        syn.title(tag)
-            .author(atom::PersonBuilder::default().name("slipstream").build());
-        let mut count = 0;
-        // for entry in self.updater.with_tags(tag) {
-        //     if count >= config.global.limits.max() {
-        //         break;
-        //     }
-        //     if config.global.limits.too_old(entry.date()) {
-        //         continue;
-        //     }
-        //     if !self.passes_global_filters(&entry) {
-        //         continue;
-        //     }
-        //     syn.entry(entry.to_atom(self, config));
-        //     count += 1;
-        // }
-        syn.build().to_string()
-    }
-
-    /// Collect entries matching /tag.
-    pub fn collect_tag(
-        &self,
-        tag: &str,
-        config: &Config,
-    ) -> Vec<slipfeed::Entry> {
-        let mut entries = Vec::with_capacity(config.global.limits.max());
-        let mut count = 0;
-        // for entry in self.updater.with_tags(tag) {
-        //     if count >= config.global.limits.max() {
-        //         break;
-        //     }
-        //     if config.global.limits.too_old(entry.date()) {
-        //         continue;
-        //     }
-        //     if !self.passes_global_filters(&entry) {
-        //         continue;
-        //     }
-        //     entries.push(entry.clone());
-        //     count += 1;
-        // }
-        entries
     }
 }
 
@@ -365,37 +282,42 @@ impl Default for Updater {
 /// Message used to communicate with the database handler.
 #[derive(Debug)]
 enum UpdaterRequest {
-    UpdateEntry {
+    EntryFetch {
+        tx: oneshot::Sender<DatabaseEntry>,
+        entry: DatabaseEntry,
+    },
+    EntryUpdate {
         entry_id: EntryDbId,
         important: Option<bool>,
         read: Option<bool>,
         tags: Option<Vec<slipfeed::Tag>>,
     },
-    RequestUpdate {
-        tx: oneshot::Sender<DatabaseEntry>,
-        entry: DatabaseEntry,
-    },
-    UpdateCommand {
-        entry_id: EntryDbId,
-        command: String,
-        result: i32,
-        output: String,
-    },
-    RequestEntries {
+    EntriesSearch {
         tx: oneshot::Sender<DatabaseEntryList>,
-        config: Arc<Config>,
         search: DatabaseSearch,
         offset: Option<slipfeed::DateTime>,
     },
-    RequestSyndication {
-        tx: oneshot::Sender<String>,
-        config: Arc<Config>,
-        search: DatabaseSearch,
+    FeedFetch {
+        tx: oneshot::Sender<DatabaseEntryList>,
+        options: FeedFetchOptions,
     },
     FeedName {
         tx: oneshot::Sender<Option<String>>,
         feed: slipfeed::FeedId,
     },
+    CommandUpdate {
+        entry_id: EntryDbId,
+        command: String,
+        result: i32,
+        output: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+enum FeedFetchOptions {
+    All,
+    Feed(String),
+    Tag(String),
 }
 
 #[derive(Clone)]
@@ -415,18 +337,12 @@ impl UpdaterHandle {
     /// Search for entries from a feed.
     pub async fn search(
         &self,
-        config: Arc<Config>,
         search: DatabaseSearch,
         offset: Option<slipfeed::DateTime>,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::RequestEntries {
-            tx,
-            config: config.clone(),
-            search,
-            offset,
-        })
-        .await;
+        self.send(UpdaterRequest::EntriesSearch { tx, search, offset })
+            .await;
         match rx.await {
             Ok(data) => data,
             Err(e) => {
@@ -437,13 +353,11 @@ impl UpdaterHandle {
     }
 
     /// Collect the /all feed.
-    pub async fn collect_all(&self, config: Arc<Config>) -> DatabaseEntryList {
+    pub async fn collect_all(&self) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::RequestEntries {
+        self.send(UpdaterRequest::FeedFetch {
             tx,
-            config: config.clone(),
-            search: DatabaseSearch::Latest,
-            offset: None,
+            options: FeedFetchOptions::All,
         })
         .await;
         match rx.await {
@@ -457,15 +371,14 @@ impl UpdaterHandle {
 
     /// Convert the /all feed into an atom feed.
     pub async fn syndicate_all(&self, config: Arc<Config>) -> String {
-        let (tx, rx) = oneshot::channel::<String>();
-        self.send(UpdaterRequest::RequestSyndication {
+        let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
+        self.send(UpdaterRequest::FeedFetch {
             tx,
-            config: config.clone(),
-            search: DatabaseSearch::Latest,
+            options: FeedFetchOptions::All,
         })
         .await;
         match rx.await {
-            Ok(data) => data,
+            Ok(data) => data.syndicate("All", &config),
             Err(e) => {
                 tracing::error!("Failed to syndicate_all: {}", e);
                 String::new()
@@ -477,20 +390,17 @@ impl UpdaterHandle {
     pub async fn collect_feed(
         &self,
         feed: impl Into<String>,
-        config: Arc<Config>,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::RequestEntries {
+        self.send(UpdaterRequest::FeedFetch {
             tx,
-            config: config.clone(),
-            search: DatabaseSearch::Feed(feed.into()),
-            offset: None,
+            options: FeedFetchOptions::Feed(feed.into()),
         })
         .await;
         match rx.await {
             Ok(data) => data,
             Err(e) => {
-                tracing::error!("Failed to collect_tag: {}", e);
+                tracing::error!("Failed to collect_feed: {}", e);
                 DatabaseEntryList::new(0)
             }
         }
@@ -502,15 +412,15 @@ impl UpdaterHandle {
         feed: impl Into<String>,
         config: Arc<Config>,
     ) -> String {
-        let (tx, rx) = oneshot::channel::<String>();
-        self.send(UpdaterRequest::RequestSyndication {
+        let feed = feed.into();
+        let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
+        self.send(UpdaterRequest::FeedFetch {
             tx,
-            config: config.clone(),
-            search: DatabaseSearch::Feed(feed.into()),
+            options: FeedFetchOptions::Feed(feed.clone()),
         })
         .await;
         match rx.await {
-            Ok(data) => data,
+            Ok(data) => data.syndicate(&feed, &config),
             Err(e) => {
                 tracing::error!("Failed to syndicate_tag: {}", e);
                 String::new()
@@ -522,14 +432,11 @@ impl UpdaterHandle {
     pub async fn collect_tag(
         &self,
         tag: impl Into<String>,
-        config: Arc<Config>,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::RequestEntries {
+        self.send(UpdaterRequest::FeedFetch {
             tx,
-            config: config.clone(),
-            search: DatabaseSearch::Tag(tag.into()),
-            offset: None,
+            options: FeedFetchOptions::Tag(tag.into()),
         })
         .await;
         match rx.await {
@@ -547,15 +454,15 @@ impl UpdaterHandle {
         tag: impl Into<String>,
         config: Arc<Config>,
     ) -> String {
-        let (tx, rx) = oneshot::channel::<String>();
-        self.send(UpdaterRequest::RequestSyndication {
+        let tag = tag.into();
+        let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
+        self.send(UpdaterRequest::FeedFetch {
             tx,
-            config: config.clone(),
-            search: DatabaseSearch::Tag(tag.into()),
+            options: FeedFetchOptions::Tag(tag.clone()),
         })
         .await;
         match rx.await {
-            Ok(data) => data,
+            Ok(data) => data.syndicate(&tag, &config),
             Err(e) => {
                 tracing::error!("Failed to syndicate_tag: {}", e);
                 String::new()
@@ -564,6 +471,7 @@ impl UpdaterHandle {
     }
 
     /// Get the feed name from id.
+    #[allow(unused)]
     pub async fn feed_name(&self, id: slipfeed::FeedId) -> Option<String> {
         let (tx, rx) = oneshot::channel::<Option<String>>();
         self.send(UpdaterRequest::FeedName { tx, feed: id }).await;
@@ -577,7 +485,7 @@ impl UpdaterHandle {
     }
 
     pub async fn toggle_read(&self, entry_id: EntryDbId, read: bool) {
-        self.send(UpdaterRequest::UpdateEntry {
+        self.send(UpdaterRequest::EntryUpdate {
             entry_id,
             important: None,
             read: Some(read),
@@ -588,7 +496,7 @@ impl UpdaterHandle {
 
     /// Toggle the important attribute.
     pub async fn toggle_important(&self, entry_id: EntryDbId, important: bool) {
-        self.send(UpdaterRequest::UpdateEntry {
+        self.send(UpdaterRequest::EntryUpdate {
             entry_id,
             important: Some(important),
             read: None,
@@ -602,7 +510,7 @@ impl UpdaterHandle {
         entry_id: EntryDbId,
         tags: Vec<slipfeed::Tag>,
     ) {
-        self.send(UpdaterRequest::UpdateEntry {
+        self.send(UpdaterRequest::EntryUpdate {
             entry_id,
             important: None,
             read: None,
@@ -623,7 +531,7 @@ impl UpdaterHandle {
                 ((**output).clone(), *success)
             }
         };
-        self.send(UpdaterRequest::UpdateCommand {
+        self.send(UpdaterRequest::CommandUpdate {
             entry_id,
             command: (*command.binding_name).clone(),
             result: match success {
@@ -638,7 +546,7 @@ impl UpdaterHandle {
     /// Update the view for an entry.
     pub async fn update_view(&self, entry: &mut DatabaseEntry) {
         let (tx, rx) = oneshot::channel::<DatabaseEntry>();
-        self.send(UpdaterRequest::RequestUpdate {
+        self.send(UpdaterRequest::EntryFetch {
             tx,
             entry: entry.clone(),
         })

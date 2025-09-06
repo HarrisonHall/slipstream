@@ -329,6 +329,16 @@ impl DatabaseEntryList {
     pub fn iter_entries(&self) -> impl Iterator<Item = &slipfeed::Entry> {
         self.entries.iter().map(|e| &e.entry)
     }
+
+    pub fn syndicate(&self, name: impl AsRef<str>, config: &Config) -> String {
+        let mut syn = atom::FeedBuilder::default();
+        syn.title(name.as_ref())
+            .author(atom::PersonBuilder::default().name("slipstream").build());
+        for entry in self.iter() {
+            syn.entry(entry.to_atom(config));
+        }
+        syn.build().to_string()
+    }
 }
 
 impl std::ops::Index<usize> for DatabaseEntryList {
