@@ -21,6 +21,6 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 
 atom_syndication = { workspace = true }
-rss = "2.0"
+rss = "2.0.12"
 
 async-trait = "0.1.85"

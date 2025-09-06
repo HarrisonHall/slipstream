@@ -61,7 +61,7 @@ impl Cli {
             }
         };
         // Parse.
-        match Config::deserialize(toml::Deserializer::new(&config_data)) {
+        match toml::from_str(&config_data) {
             Ok(config) => Ok(config),
             Err(e) => {
                 bail!("Configuration file is not valid: {}.", e);
