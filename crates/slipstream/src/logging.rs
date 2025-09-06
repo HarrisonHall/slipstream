@@ -60,6 +60,7 @@ pub struct Logger {
 }
 
 impl Logger {
+    /// Create a new logger.
     fn new() -> Self {
         Self {
             buffer: Arc::new(RwLock::new(VecDeque::new())),
@@ -69,12 +70,29 @@ impl Logger {
         }
     }
 
+    /// Toggle whether or not the writer is outputing to the terminal.
     pub fn set_writing(&mut self, writing: bool) -> Result<()> {
         self.writing.store(writing, Ordering::Release);
         if writing {
             self.flush()?;
         }
         Ok(())
+    }
+
+    /// Peek the back of the flush buffer.
+    pub fn peek(&self, len: usize) -> Vec<String> {
+        let mut logs = Vec::with_capacity(len);
+        if let Ok(buffer) = self.buffer.read() {
+            let mut cursor = buffer.len().wrapping_sub(1);
+            while cursor < buffer.len() && logs.len() < len {
+                logs.push(
+                    String::from_utf8_lossy(&buffer[cursor]).into_owned(),
+                );
+                cursor = cursor.wrapping_sub(1);
+            }
+            logs.reverse();
+        }
+        logs
     }
 }
 
@@ -99,13 +117,16 @@ impl std::io::Write for Logger {
 
     fn flush(&mut self) -> std::io::Result<()> {
         let mut se = std::io::stderr();
-        if let (Ok(buffer), Ok(mut cursor)) =
+        if let (Ok(mut buffer), Ok(mut cursor)) =
             (self.buffer.write(), self.cursor.write())
         {
             while *cursor < buffer.len() {
                 se.write(&buffer[*cursor])?;
                 *cursor += 1;
             }
+            // Clear buffer and cursor.
+            *cursor = 0;
+            buffer.clear();
         }
         Ok(())
     }

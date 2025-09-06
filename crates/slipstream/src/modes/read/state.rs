@@ -44,7 +44,9 @@ impl Default for InteractionState {
 pub enum Focus {
     List,
     Entry,
-    Menu,
+    Menu {
+        scroll: u16,
+    },
     Command {
         command: String,
         message: Option<String>,
@@ -56,7 +58,7 @@ impl Focus {
         *self = match *self {
             Focus::List => Focus::Entry,
             Focus::Entry => Focus::List,
-            Focus::Menu => Focus::List,
+            Focus::Menu { .. } => Focus::List,
             Focus::Command {
                 command: _,
                 message: _,
@@ -66,8 +68,8 @@ impl Focus {
 
     pub fn toggle_menu(&mut self) {
         *self = match *self {
-            Focus::Menu => Focus::List,
-            _ => Focus::Menu,
+            Focus::Menu { .. } => Focus::List,
+            _ => Focus::Menu { scroll: 0 },
         }
     }
 }

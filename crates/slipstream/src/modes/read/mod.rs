@@ -8,6 +8,7 @@ mod command_mode;
 mod config;
 mod entry;
 mod keyboard;
+mod menu;
 mod state;
 
 pub use command::*;
@@ -121,11 +122,28 @@ impl Reader {
             }
 
             // Draw reader.
-            {
-                terminal.draw(|f| {
-                    ReaderWidget::new(self).render(f.area(), f.buffer_mut());
-                })?;
-            }
+            terminal.draw(|f| {
+                let area = f.area();
+                let buf = f.buffer_mut();
+
+                // Update components.
+                self.terminal_state.size = (area.width, area.height);
+
+                // Do not render below minimum size.
+                if !self.check_size_or_render(buf) {
+                    return;
+                }
+
+                // Render the correct widget.
+                match &self.interaction_state.focus {
+                    Focus::Menu { .. } => {
+                        menu::MenuWidget::new(self).render(area, buf);
+                    }
+                    _ => {
+                        ReaderWidget::new(self).render(area, buf);
+                    }
+                };
+            })?;
 
             // Poll input.
             if self.handle_input().await.is_err() {
@@ -184,7 +202,6 @@ impl Reader {
                     Event::FocusGained => self.terminal_state.has_focus = true,
                     Event::FocusLost => self.terminal_state.has_focus = false,
                     Event::Key(key) => {
-                        tracing::debug!("Key press: {:?}", key);
                         if key == CONTROL_C {
                             self.cancel_token.cancel();
                             return Ok(());
@@ -245,7 +262,11 @@ impl Reader {
         match command {
             ReadCommandLiteral::None => {}
             ReadCommandLiteral::Quit => {
-                self.cancel_token.cancel();
+                if let Focus::Menu { .. } = &self.interaction_state.focus {
+                    self.interaction_state.focus.toggle_menu();
+                } else {
+                    self.cancel_token.cancel();
+                }
                 return Ok(());
             }
             ReadCommandLiteral::Update => {
@@ -264,7 +285,11 @@ impl Reader {
                             .scroll(1);
                     }
                 }
-                Focus::Menu => {}
+                Focus::Menu { scroll } => {
+                    self.interaction_state.focus = Focus::Menu {
+                        scroll: scroll.saturating_add(1),
+                    };
+                }
                 Focus::Command { .. } => {}
             },
             ReadCommandLiteral::Up => match self.interaction_state.focus {
@@ -279,7 +304,11 @@ impl Reader {
                             .scroll(-1);
                     }
                 }
-                Focus::Menu => {}
+                Focus::Menu { scroll } => {
+                    self.interaction_state.focus = Focus::Menu {
+                        scroll: scroll.saturating_sub(1),
+                    };
+                }
                 Focus::Command { .. } => {}
             },
             ReadCommandLiteral::Left => {
@@ -317,7 +346,7 @@ impl Reader {
                                 .scroll(20);
                         }
                     }
-                    Focus::Menu => {}
+                    Focus::Menu { .. } => {}
                     Focus::Command { .. } => {}
                 }
             }
@@ -340,7 +369,7 @@ impl Reader {
                             .scroll(-20);
                     }
                 }
-                Focus::Menu => {}
+                Focus::Menu { .. } => {}
                 Focus::Command { .. } => {}
             },
             ReadCommandLiteral::Swap => {
@@ -412,11 +441,6 @@ impl Reader {
             }
             for i in 0..entry.other_links().len() {
                 link_count += 1;
-                tracing::info!(
-                    "Other links {} {}",
-                    i,
-                    &entry.other_links()[i].url
-                );
                 *command = command.replace(
                     &format!("{{{{link.url{}}}}}", link_count),
                     &entry.other_links()[i].url,
@@ -453,7 +477,6 @@ impl Reader {
             }
 
             // Add terminal settings.
-            tracing::debug!("terminal width: {}", width);
             *command =
                 command.replace("{{terminal.width}}", &format!("{}", width));
         }
@@ -534,7 +557,6 @@ impl Reader {
         }
         self.refresh = None;
 
-        tracing::debug!("Refreshing!");
         self.refresh = Some({
             let updater = self.updater.clone();
             tokio::spawn(async move { updater.search(search, None).await })
@@ -573,7 +595,12 @@ impl Reader {
                 command.push(c);
             }
             KeyCode::Backspace => {
-                command.pop();
+                if command.len() > 0 {
+                    command.pop();
+                } else {
+                    self.interaction_state.focus = Focus::List;
+                    return Ok(());
+                }
             }
             KeyCode::Enter => {
                 match self.handle_command_mode_command(&command).await {
@@ -675,14 +702,6 @@ impl<'a> Widget for ReaderWidget<'a> {
     where
         Self: Sized,
     {
-        // Update components.
-        self.reader.terminal_state.size = (area.width, area.height);
-
-        // Do not render below minimum size.
-        if !self.reader.check_size_or_render(buf) {
-            return ();
-        }
-
         // Render the entry list:
 
         // Compute layout.
@@ -692,10 +711,7 @@ impl<'a> Widget for ReaderWidget<'a> {
         if area.width > MIN_HORIZONTAL_WIDTH {
             let vert_layouts = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints(vec![
-                    Constraint::Min(1),
-                    Constraint::Percentage(100),
-                ])
+                .constraints(&[Constraint::Min(1), Constraint::Percentage(100)])
                 .split(area);
             title_layout = vert_layouts[0];
             let hor_layouts = Layout::default()
@@ -710,7 +726,7 @@ impl<'a> Widget for ReaderWidget<'a> {
         } else {
             let layouts = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints(vec![
+                .constraints(&[
                     Constraint::Min(1),
                     Constraint::Percentage(50),
                     Constraint::Percentage(50),

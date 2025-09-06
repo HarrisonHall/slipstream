@@ -19,7 +19,7 @@ impl ReadConfig {
     /// defaults. If a default is not preferred, the config should specific
     /// a mapping of the key to "none".
     pub fn get_key_command(&self, key: &KeyEvent) -> ReadCommand {
-        tracing::warn!("Key!: {:?}", key);
+        tracing::trace!("Key press: {:?}", key);
 
         for (binding, command) in self.bindings.iter() {
             if *key == binding.into() {
