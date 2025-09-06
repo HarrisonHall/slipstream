@@ -1,64 +1,71 @@
-//! Read mode.
-//!
+//!!utput
 //! Fields: time (relative),
 
 use super::*;
 
-use std::{
-    io,
-    time::{Duration, Instant},
-};
+mod command;
+mod command_mode;
+mod config;
+mod entry;
+mod keyboard;
+mod menu;
+mod state;
 
-use futures::FutureExt;
-use futures::future::BoxFuture;
-use ratatui::{DefaultTerminal, Frame};
+pub use command::*;
+pub use config::*;
+pub use entry::*;
+pub use keyboard::*;
+pub use state::*;
+
+use std::time::Duration;
+
+use ratatui::DefaultTerminal;
+use ratatui::buffer::Buffer;
+use ratatui::style::Stylize;
 use ratatui::{
-    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
+    crossterm::event::{self, Event},
     widgets::{Block, Paragraph, Widget},
 };
 use ratatui::{
     prelude::{
         Color, Constraint, Direction, Layout, Line, Rect, Span, Style, Text,
     },
-    style::Stylize,
+    // style::Stylize,
 };
-use tokio::time::timeout;
-use tracing::Instrument;
+use tokio::task::JoinHandle;
 
 type Terminal = DefaultTerminal;
 
-const QUIT: KeyEvent = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
-const UPDATE: KeyEvent = KeyEvent::new(KeyCode::Char('u'), KeyModifiers::NONE);
-const DOWN: KeyEvent = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
-const UP: KeyEvent = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE);
-const PAGE_DOWN: KeyEvent =
-    KeyEvent::new(KeyCode::Char('j'), KeyModifiers::SHIFT);
-const PAGE_UP: KeyEvent =
-    KeyEvent::new(KeyCode::Char('k'), KeyModifiers::SHIFT);
-const MENU: KeyEvent = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
-const OPEN: KeyEvent = KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE);
-const LOAD: KeyEvent = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
-const ENTRY_SCROLL_DOWN: KeyEvent =
-    KeyEvent::new(KeyCode::Char('l'), KeyModifiers::SHIFT);
-const ENTRY_SCROLL_UP: KeyEvent =
-    KeyEvent::new(KeyCode::Char('h'), KeyModifiers::SHIFT);
-
+/// The minimum number of displayed entries before supporting scroll.
 const SCROLL_WINDOW: usize = 3;
-const REFRESH_DELTA: f32 = 5.0;
-const INPUT_DELTA: f32 = 0.01;
+/// How often to refresh the screen without input.
+const REFRESH_DELTA: f32 = 0.25;
+/// Minimum time to poll the terminal for queued inputs.
+const MAX_INPUT_PER_TICK: usize = 1;
+/// The minimum terminal width to support horizontal mode.
+const MIN_HORIZONTAL_WIDTH: u16 = 120;
+/// The C-c quit key event.
+const CONTROL_C: KeyEvent =
+    KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
 
 /// Perform the reader action.
 pub async fn read(
     config: Arc<Config>,
-    updater: Arc<Mutex<Updater>>,
+    updater: UpdaterHandle,
+    cancel_token: CancellationToken,
 ) -> Result<()> {
     // Disable logging to stdout.
     get_logger().set_writing(false)?;
 
     // Show reader.
-    let terminal = ratatui::init();
-    let mut reader = Reader::new(config, updater, terminal)?;
-    let result = reader.run().await;
+    let mut terminal = ratatui::init();
+    let mut reader = Reader::new(config, updater, cancel_token)?;
+
+    // Update reader on load.
+    reader.update_entries(DatabaseSearch::Latest).await;
+
+    // Run loop.
+    let result = reader.run(&mut terminal).await;
 
     // Restore terminal.
     ratatui::restore();
@@ -68,130 +75,644 @@ pub async fn read(
 
 /// Terminal reader.
 struct Reader {
-    // Configuration
+    /// Slipstream configuration.
     config: Arc<Config>,
-    updater: Arc<Mutex<Updater>>,
-    // TUI.
-    terminal: Terminal,
-    // Jobs.
-    last_update: chrono::DateTime<chrono::Utc>,
-    updater_future: Option<BoxFuture<'static, Result<Vec<slipfeed::Entry>>>>,
-    loading_futures: tokio::task::JoinSet<(slipfeed::Entry, LoadedEntry)>,
-    // Reading state.
-    selection: usize,
-    entry_scroll: usize,
-    window: usize,
-    entries: RwLock<Vec<slipfeed::Entry>>,
-    has_focus: bool,
-    size: (u16, u16),
-    show_menu: bool,
-    loaded_entries: HashMap<slipfeed::Entry, LoadedEntry>,
+    /// State of the updating logic.
+    updater: UpdaterHandle,
+    /// Refresh future.
+    refresh: Option<JoinHandle<DatabaseEntryList>>,
+    /// Futures for binding commands run on entries.
+    command_futures:
+        tokio::task::JoinSet<(EntryDbId, command::CommandResultContext)>,
+    /// Entries.
+    entries: DatabaseEntryList,
+    /// Cached of the terminal.
+    terminal_state: TerminalState,
+    /// State of user interaction.
+    interaction_state: InteractionState,
+    /// Cancellation token.
+    cancel_token: CancellationToken,
 }
 
 impl Reader {
     /// Create a new reader.
     fn new(
         config: Arc<Config>,
-        updater: Arc<Mutex<Updater>>,
-        terminal: Terminal,
+        updater: UpdaterHandle,
+        cancel_token: CancellationToken,
     ) -> Result<Self> {
-        let size = terminal.size()?;
-        // let focus = terminal.hide_cursor()?;
         Ok(Self {
             config,
             updater,
-            terminal,
-            last_update: chrono::Local::now().to_utc(),
-            updater_future: None,
-            loading_futures: tokio::task::JoinSet::new(),
-            selection: 0,
-            entry_scroll: 0,
-            window: 0,
-            entries: RwLock::new(Vec::new()),
-            has_focus: true,
-            size: (size.width, size.height),
-            show_menu: false,
-            loaded_entries: HashMap::new(),
+            refresh: None,
+            command_futures: tokio::task::JoinSet::new(),
+            entries: DatabaseEntryList::new(0),
+            terminal_state: TerminalState::default(),
+            interaction_state: InteractionState::default(),
+            cancel_token,
         })
     }
 
     /// Run the reader.
-    async fn run(&mut self) -> Result<()> {
+    async fn run(&mut self, terminal: &mut Terminal) -> Result<()> {
         'reader: loop {
-            // Draw entries.
-            self.draw().await?;
+            // Check if quitting.
+            if self.cancel_token.is_cancelled() {
+                break 'reader Ok(());
+            }
+
+            // Draw reader.
+            terminal.draw(|f| {
+                let area = f.area();
+                let buf = f.buffer_mut();
+
+                // Update components.
+                self.terminal_state.size = (area.width, area.height);
+
+                // Do not render below minimum size.
+                if !self.check_size_or_render(buf) {
+                    return;
+                }
+
+                // Render the correct widget.
+                match &self.interaction_state.focus {
+                    Focus::Menu { .. } => {
+                        menu::MenuWidget::new(self).render(area, buf);
+                    }
+                    _ => {
+                        ReaderWidget::new(self).render(area, buf);
+                    }
+                };
+            })?;
 
             // Poll input.
             if self.handle_input().await.is_err() {
+                self.cancel_token.cancel();
                 break 'reader Ok(());
             }
 
             // Manage updater.
-            self.handle_update(false).await;
+            self.check_for_updates().await;
+
+            // Sync current with db.
+            if self.interaction_state.selection < self.entries.len() {
+                let entry = &mut self.entries[self.interaction_state.selection];
+                self.updater.toggle_read(entry.db_id, true).await;
+                self.updater.update_view(entry).await;
+            }
         }
     }
 }
 
 // Draw logic.
 impl Reader {
-    /// Draw a frame of the TUI.
-    async fn draw(&mut self) -> Result<()> {
-        // Draw entries.
-        let entries = self.entries.read().await;
-        let updater_lock = self.updater.try_lock().ok();
-        let updater = match updater_lock.as_ref() {
-            Some(x) => Some(&**x),
-            None => None,
-        };
-        self.terminal.draw(|f| {
-            if let Err(e) = Reader::tui_render(
-                f,
-                self.selection,
-                &mut self.window,
-                updater,
-                &entries,
-                &self.loaded_entries,
-                &mut self.entry_scroll,
-                self.size,
-                self.has_focus,
-            ) {
-                tracing::error!("Render error: {e}");
+    /// Check the size.
+    /// If the buffer size is too small, this returns false and renders a notification.
+    fn check_size_or_render(&mut self, buf: &mut Buffer) -> bool {
+        if self.terminal_state.size.0 < 20
+            || self.terminal_state.size.1 < (2 * SCROLL_WINDOW as u16) + 5
+        {
+            let area = buf.area;
+            ratatui::widgets::Paragraph::new("Too Small")
+                .block(
+                    ratatui::widgets::Block::new()
+                        .style(Style::new().bg(Color::White).fg(Color::Black))
+                        .padding(ratatui::widgets::Padding::new(
+                            0,
+                            0,
+                            area.height / 2,
+                            0,
+                        )),
+                )
+                .render(area, buf);
+            return false;
+        }
+        return true;
+    }
+
+    /// Handle input.
+    /// Quits on error.
+    async fn handle_input(&mut self) -> Result<()> {
+        for i in 0..MAX_INPUT_PER_TICK {
+            let poll_time = if i == 0 { REFRESH_DELTA } else { 0.1 };
+            if terminal_input_ready(poll_time).await {
+                // It's guaranteed that the `read()` won't block when the `poll()`
+                // function returns `true`.
+                match event::read()? {
+                    Event::FocusGained => self.terminal_state.has_focus = true,
+                    Event::FocusLost => self.terminal_state.has_focus = false,
+                    Event::Key(key) => {
+                        if key == CONTROL_C {
+                            self.cancel_token.cancel();
+                            return Ok(());
+                        }
+                        match &self.interaction_state.focus {
+                            Focus::Command { .. } => {
+                                self.handle_command_mode_input(&key).await?;
+                            }
+                            _ => {
+                                let command =
+                                    self.config.read.get_key_command(&key);
+                                self.run_command(command).await?;
+                            }
+                        }
+                    }
+                    Event::Mouse(event) => tracing::debug!("Mouse {:?}", event),
+                    Event::Resize(width, height) => {
+                        self.terminal_state.size = (width, height);
+                    }
+                    _ => {}
+                }
+            } else {
+                break;
             }
-        })?;
-        let size = self.terminal.size()?;
-        self.size = (size.width, size.height);
+        }
+        Ok(())
+    }
+
+    /// Run command.
+    async fn run_command(&mut self, command: ReadCommand) -> Result<()> {
+        match command {
+            ReadCommand::CustomCommandRef(name) => {
+                tracing::error!("Invalid command name: {}", name.as_str());
+            }
+            ReadCommand::CustomCommandFull { name, command } => {
+                self.entries[self.interaction_state.selection].add_result(
+                    command::CommandResultContext::new(name.clone()),
+                );
+                self.command_futures.spawn(Reader::run_shell_command(
+                    name.clone(),
+                    self.entries[self.interaction_state.selection].clone(),
+                    (*command).clone(),
+                    self.terminal_state.command_width,
+                ));
+            }
+            ReadCommand::Literal(command) => {
+                self.run_command_literal(command).await?
+            }
+        }
+        Ok(())
+    }
+
+    /// Run built-in command.
+    async fn run_command_literal(
+        &mut self,
+        command: ReadCommandLiteral,
+    ) -> Result<()> {
+        match command {
+            ReadCommandLiteral::None => {}
+            ReadCommandLiteral::Quit => {
+                if let Focus::Menu { .. } = &self.interaction_state.focus {
+                    self.interaction_state.focus.toggle_menu();
+                } else {
+                    self.cancel_token.cancel();
+                }
+                return Ok(());
+            }
+            ReadCommandLiteral::Update => {
+                self.update_entries(DatabaseSearch::Latest).await;
+            }
+            ReadCommandLiteral::Down => match self.interaction_state.focus {
+                Focus::List => {
+                    if self.interaction_state.selection + 1 < self.entries.len()
+                    {
+                        self.interaction_state.selection += 1;
+                    }
+                }
+                Focus::Entry => {
+                    if self.interaction_state.selection < self.entries.len() {
+                        self.entries[self.interaction_state.selection]
+                            .scroll(1);
+                    }
+                }
+                Focus::Menu { scroll } => {
+                    self.interaction_state.focus = Focus::Menu {
+                        scroll: scroll.saturating_add(1),
+                    };
+                }
+                Focus::Command { .. } => {}
+            },
+            ReadCommandLiteral::Up => match self.interaction_state.focus {
+                Focus::List => {
+                    if (self.interaction_state.selection as isize) - 1 >= 0 {
+                        self.interaction_state.selection -= 1;
+                    }
+                }
+                Focus::Entry => {
+                    if self.interaction_state.selection < self.entries.len() {
+                        self.entries[self.interaction_state.selection]
+                            .scroll(-1);
+                    }
+                }
+                Focus::Menu { scroll } => {
+                    self.interaction_state.focus = Focus::Menu {
+                        scroll: scroll.saturating_sub(1),
+                    };
+                }
+                Focus::Command { .. } => {}
+            },
+            ReadCommandLiteral::Left => {
+                if self.interaction_state.selection < self.entries.len() {
+                    self.entries[self.interaction_state.selection]
+                        .cycle_result(-1);
+                }
+            }
+            ReadCommandLiteral::Right => {
+                if self.interaction_state.selection < self.entries.len() {
+                    self.entries[self.interaction_state.selection]
+                        .cycle_result(1);
+                }
+            }
+            ReadCommandLiteral::PageDown => {
+                match self.interaction_state.focus {
+                    Focus::List => {
+                        let entry_count = self.entries.len() as isize;
+                        let page_down = self.terminal_state.size.1 as isize
+                            - (2 * SCROLL_WINDOW) as isize;
+                        if self.interaction_state.selection as isize + page_down
+                            < entry_count
+                        {
+                            self.interaction_state.selection +=
+                                page_down as usize;
+                        } else {
+                            self.interaction_state.selection =
+                                (entry_count - 1).max(0) as usize;
+                        }
+                    }
+                    Focus::Entry => {
+                        if self.interaction_state.selection < self.entries.len()
+                        {
+                            self.entries[self.interaction_state.selection]
+                                .scroll(20);
+                        }
+                    }
+                    Focus::Menu { .. } => {}
+                    Focus::Command { .. } => {}
+                }
+            }
+            ReadCommandLiteral::PageUp => match self.interaction_state.focus {
+                Focus::List => {
+                    let entry_count = self.entries.len() as isize;
+                    let page_up = self.terminal_state.size.1 as isize
+                        - (2 * SCROLL_WINDOW) as isize;
+                    if self.interaction_state.selection as isize - page_up >= 0
+                    {
+                        self.interaction_state.selection -=
+                            page_up.min(entry_count) as usize;
+                    } else {
+                        self.interaction_state.selection = 0;
+                    }
+                }
+                Focus::Entry => {
+                    if self.interaction_state.selection < self.entries.len() {
+                        self.entries[self.interaction_state.selection]
+                            .scroll(-20);
+                    }
+                }
+                Focus::Menu { .. } => {}
+                Focus::Command { .. } => {}
+            },
+            ReadCommandLiteral::Swap => {
+                self.interaction_state.focus.swap();
+            }
+            ReadCommandLiteral::Menu => {
+                self.interaction_state.focus.toggle_menu();
+            }
+            ReadCommandLiteral::CommandMode => {
+                self.interaction_state.focus = Focus::Command {
+                    command: String::new(),
+                    message: None,
+                };
+            }
+            ReadCommandLiteral::SearchMode => {
+                self.interaction_state.focus = Focus::Command {
+                    command: "/".into(),
+                    message: None,
+                };
+            }
+            ReadCommandLiteral::ToggleImportant => {
+                if self.interaction_state.selection < self.entries.len() {
+                    let important = self.entries
+                        [self.interaction_state.selection]
+                        .important;
+                    self.updater
+                        .toggle_important(
+                            self.entries[self.interaction_state.selection]
+                                .db_id,
+                            !important,
+                        )
+                        .await;
+                }
+            }
+        };
 
         Ok(())
     }
 
-    fn tui_render(
-        frame: &mut Frame,
-        selection: usize,
-        window: &mut usize,
-        updater: Option<&Updater>,
-        entries: &Vec<slipfeed::Entry>,
-        loaded_entries: &HashMap<slipfeed::Entry, LoadedEntry>,
-        entry_scroll: &mut usize,
-        size: (u16, u16),
-        has_focus: bool,
+    /// Run a custom shell command.
+    /// This replaces select substrings of the shell command with values from the
+    /// entry.
+    async fn run_shell_command(
+        binding_name: Arc<String>,
+        entry: DatabaseEntry,
+        shell_command: Vec<String>,
+        width: u16,
+    ) -> (EntryDbId, command::CommandResultContext) {
+        // Build command.
+        let mut shell_command = shell_command;
+
+        for command in shell_command.iter_mut() {
+            // Add links.
+            *command = command.replace("{{link.url}}", &entry.source().url);
+            let mut link_count: usize = 0;
+            if !entry.source().url.is_empty() {
+                link_count += 1;
+                *command = command.replace(
+                    &format!("{{{{link.url{}}}}}", link_count),
+                    &entry.source().url,
+                );
+            }
+            if !entry.comments().url.is_empty() {
+                link_count += 1;
+                *command = command.replace(
+                    &format!("{{{{link.url{}}}}}", link_count),
+                    &entry.comments().url,
+                );
+            }
+            for i in 0..entry.other_links().len() {
+                link_count += 1;
+                *command = command.replace(
+                    &format!("{{{{link.url{}}}}}", link_count),
+                    &entry.other_links()[i].url,
+                );
+            }
+
+            // Add link name.
+            if command.contains("{{link.name}}")
+                || command.contains("{{link.name_}}")
+            {
+                let link_name = entry
+                    .title()
+                    .clone()
+                    .replace(
+                        &['(', ')', ',', '\"', '.', ';', ':', '\''][..],
+                        "",
+                    )
+                    .replace(" ", "_")
+                    .to_lowercase();
+                *command = command.replace("{{link.name}}", &link_name);
+                *command = command.replace("{{link.name_}}", &link_name);
+            }
+            if command.contains("{{link.name-}}") {
+                let link_name = entry
+                    .title()
+                    .clone()
+                    .replace(
+                        &['(', ')', ',', '\"', '.', ';', ':', '\''][..],
+                        "",
+                    )
+                    .replace(" ", "-")
+                    .to_lowercase();
+                *command = command.replace("{{link.name-}}", &link_name);
+            }
+
+            // Add terminal settings.
+            *command =
+                command.replace("{{terminal.width}}", &format!("{}", width));
+        }
+
+        // Log final command.
+        tracing::trace!("Command: {:?}", &shell_command);
+
+        // Build subprocess.
+        let mut subproc = tokio::process::Command::new(&shell_command[0]);
+        subproc.args(&shell_command[1..]);
+
+        // Run subprocess.
+        let mut ctx = CommandResultContext::new(binding_name.clone());
+        match subproc.output().await {
+            Ok(output) => {
+                let exit: i32 = output.status.code().unwrap_or(1);
+                let output: String = match exit {
+                    0 => String::from_utf8(output.stdout)
+                        .unwrap_or_else(|_| String::new()),
+                    _ => {
+                        String::from_utf8(output.stderr).unwrap_or_else(|_| {
+                            format!(
+                                "Failed to execute command: {:?}",
+                                shell_command
+                            )
+                        })
+                    }
+                };
+                tracing::info!("Output:\n{}", output);
+                ctx.update(Arc::new(output), exit == 0);
+                (entry.db_id, ctx)
+            }
+            Err(e) => {
+                ctx.update(
+                    Arc::new(format!("Failed to create subprocess: {}", e)),
+                    false,
+                );
+                (entry.db_id, ctx)
+            }
+        }
+    }
+
+    /// Check for an update and handle completed updates.
+    async fn check_for_updates(&mut self) {
+        // Check for new update.
+        if let Some(entries_fut) = &mut self.refresh {
+            if entries_fut.is_finished() {
+                match entries_fut.await {
+                    Ok(entries) => {
+                        self.entries = entries;
+                        self.terminal_state.window = 0;
+                        self.interaction_state.selection = 0;
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to update entries: {}", e);
+                    }
+                }
+                self.refresh = None;
+            }
+        }
+
+        // Check for loaded entries.
+        while let Some(res) = self.command_futures.try_join_next() {
+            if let Ok((entry_id, context)) = res {
+                self.updater.save_command(entry_id, &context).await;
+                if let Some(entry) = self.entries.get(entry_id) {
+                    entry.add_result(context);
+                }
+            }
+        }
+    }
+
+    /// Search for entries.
+    async fn update_entries(&mut self, search: DatabaseSearch) {
+        // Check for new update.
+        if let Some(entries_fut) = &mut self.refresh {
+            entries_fut.abort();
+        }
+        self.refresh = None;
+
+        self.refresh = Some({
+            let updater = self.updater.clone();
+            tokio::spawn(async move { updater.search(search, None).await })
+        });
+    }
+
+    async fn handle_command_mode_input(
+        &mut self,
+        key: &KeyEvent,
     ) -> Result<()> {
-        // Check size.
-        if !Reader::check_size(frame, size) {
+        // Update command.
+        let (mut command, is_error) = match &self.interaction_state.focus {
+            Focus::Command { command, message } => {
+                (command.clone(), message.is_some())
+            }
+            _ => (String::new(), false),
+        };
+
+        // Go back to list if menu pressed.
+        if *key == MENU {
+            self.interaction_state.focus = Focus::List;
             return Ok(());
         }
+
+        // If an error, clear and let the user continue typing.
+        if is_error {
+            self.interaction_state.focus = Focus::Command {
+                command,
+                message: None,
+            };
+            return Ok(());
+        }
+
+        match key.code {
+            KeyCode::Char(c) => {
+                command.push(c);
+            }
+            KeyCode::Backspace => {
+                if command.len() > 0 {
+                    command.pop();
+                } else {
+                    self.interaction_state.focus = Focus::List;
+                    return Ok(());
+                }
+            }
+            KeyCode::Enter => {
+                match self.handle_command_mode_command(&command).await {
+                    Ok(_) => {
+                        self.interaction_state.focus = Focus::List;
+                    }
+                    Err(e) => {
+                        self.interaction_state.focus = Focus::Command {
+                            command,
+                            message: Some(e.to_string()),
+                        };
+                    }
+                }
+                return Ok(());
+            }
+            _ => {}
+        }
+
+        self.interaction_state.focus = Focus::Command {
+            command,
+            message: None,
+        };
+
+        Ok(())
+    }
+
+    async fn handle_command_mode_command(
+        &mut self,
+        command: &str,
+    ) -> Result<()> {
+        let parsed_command =
+            match command_mode::CommandParser::parse_command(command) {
+                Ok(parsed) => parsed,
+                Err(_) => bail!("Invalid command: {command}"),
+            };
+        match parsed_command.command {
+            command_mode::Command::Quit => self.cancel_token.cancel(),
+            command_mode::Command::SearchLatest => {
+                self.update_entries(DatabaseSearch::Latest).await
+            }
+            command_mode::Command::SearchAny(search) => {
+                if search.important {
+                    self.update_entries(DatabaseSearch::Important).await
+                } else if search.unread {
+                    self.update_entries(DatabaseSearch::Unread).await
+                } else if search.tag.is_some() {
+                    self.update_entries(DatabaseSearch::Tag(
+                        search.tag.unwrap(),
+                    ))
+                    .await
+                } else if search.feed.is_some() {
+                    self.update_entries(DatabaseSearch::Feed(
+                        search.feed.unwrap(),
+                    ))
+                    .await
+                } else {
+                    self.update_entries(DatabaseSearch::Search(
+                        search.text.unwrap(),
+                    ))
+                    .await
+                }
+            }
+            command_mode::Command::TagAdd { tag } => {
+                if self.interaction_state.selection < self.entries.len() {
+                    let entry =
+                        &mut self.entries[self.interaction_state.selection];
+                    entry.entry.add_tag(&slipfeed::Tag::new(tag));
+                    let tags: Vec<slipfeed::Tag> =
+                        entry.entry.tags().iter().map(|t| t.clone()).collect();
+                    self.updater.update_tags(entry.db_id, tags).await;
+                }
+            }
+            command_mode::Command::TagRemove { tag } => {
+                let entry = &mut self.entries[self.interaction_state.selection];
+                entry.entry.remove_tag(&slipfeed::Tag::new(tag));
+                let tags: Vec<slipfeed::Tag> =
+                    entry.entry.tags().iter().map(|t| t.clone()).collect();
+                self.updater.update_tags(entry.db_id, tags).await;
+            }
+        };
+
+        Ok(())
+    }
+}
+
+/// Widget to render the reader.
+struct ReaderWidget<'a> {
+    reader: &'a mut Reader,
+}
+
+impl<'a> ReaderWidget<'a> {
+    fn new(reader: &'a mut Reader) -> Self {
+        Self { reader }
+    }
+}
+
+impl<'a> Widget for ReaderWidget<'a> {
+    fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        // Render the entry list:
 
         // Compute layout.
         let title_layout;
         let list_layout;
         let entry_layout;
-        if frame.area().width > 80 {
+        if area.width > MIN_HORIZONTAL_WIDTH {
             let vert_layouts = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints(vec![
-                    Constraint::Min(1),
-                    Constraint::Percentage(100),
-                ])
-                .split(frame.area());
+                .constraints(&[Constraint::Min(1), Constraint::Percentage(100)])
+                .split(area);
             title_layout = vert_layouts[0];
             let hor_layouts = Layout::default()
                 .direction(Direction::Horizontal)
@@ -205,379 +726,161 @@ impl Reader {
         } else {
             let layouts = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints(vec![
+                .constraints(&[
                     Constraint::Min(1),
                     Constraint::Percentage(50),
                     Constraint::Percentage(50),
                 ])
-                .split(frame.area());
+                .split(area);
             title_layout = layouts[0];
             list_layout = layouts[1];
             entry_layout = layouts[2];
         }
 
         // Update window based on layout.
-        if selection < *window + SCROLL_WINDOW {
-            *window =
-                (selection as isize - SCROLL_WINDOW as isize).max(0) as usize;
+        if self.reader.interaction_state.selection
+            < self.reader.terminal_state.window + SCROLL_WINDOW
+        {
+            self.reader.terminal_state.window =
+                (self.reader.interaction_state.selection as isize
+                    - SCROLL_WINDOW as isize)
+                    .max(0) as usize;
         }
-        if selection > *window + list_layout.height as usize - SCROLL_WINDOW {
-            *window = (selection as isize + SCROLL_WINDOW as isize
-                - list_layout.height as isize)
-                .max(0) as usize;
+        if self.reader.interaction_state.selection
+            > self.reader.terminal_state.window + list_layout.height as usize
+                - SCROLL_WINDOW
+        {
+            self.reader.terminal_state.window =
+                (self.reader.interaction_state.selection as isize
+                    + SCROLL_WINDOW as isize
+                    - list_layout.height as isize)
+                    .max(0) as usize;
         }
 
         // Show slipstream header.
-        frame.render_widget(
-            Text::styled(
-                format!(
-                    "{:<width$}",
-                    format!("slipstream {}/{}", selection + 1, entries.len()),
-                    width = &(title_layout.width as usize),
-                ),
-                Style::new().bg(Color::Green).fg(Color::Black),
-            ),
-            title_layout,
-        );
+        match &self.reader.interaction_state.focus {
+            Focus::Command { command, message } => match message {
+                Some(message) => {
+                    Line::from(vec![
+                        Span::styled("! ", Style::new().bold()),
+                        Span::styled(message, Style::new().fg(Color::Black)),
+                    ])
+                    .bg(Color::Red)
+                    .render(title_layout, buf);
+                }
+                None => {
+                    Line::from(vec![
+                        Span::styled(":", Style::new()),
+                        Span::styled(command, Style::new().fg(Color::Blue)),
+                        Span::styled("█", Style::new()),
+                    ])
+                    .bg(Color::Black)
+                    .render(title_layout, buf);
+                }
+            },
+            _ => {
+                Text::styled(
+                    format!(
+                        "{:<width$}",
+                        format!(
+                            "slipstream {}/{}",
+                            self.reader.interaction_state.selection + 1,
+                            self.reader.entries.len()
+                        ),
+                        width = &(title_layout.width as usize),
+                    ),
+                    Style::new().bg(Color::Blue).fg(Color::Black),
+                )
+                .render(title_layout, buf);
+            }
+        }
 
         // Show titles.
-        let formatted_entries = entries
+        let formatted_entries = self
+            .reader
+            .entries
             .iter()
             .enumerate()
             .filter(|(i, _)| {
-                *i >= *window && *i < *window + list_layout.height as usize
+                *i >= self.reader.terminal_state.window
+                    && *i
+                        < self.reader.terminal_state.window
+                            + list_layout.height as usize
             })
             .map(|(i, e)| {
                 let feed: String = 'feed: {
-                    for feed_id in e.feeds().iter() {
-                        if let Some(updater) = updater {
-                            if let Some(feed_name) = updater.feed_name(*feed_id)
-                            {
-                                break 'feed feed_name.clone();
-                            }
-                        }
+                    for feed_ref in e.feeds().iter() {
+                        break 'feed (*feed_ref.name).clone();
                     }
                     "???".to_owned()
                 };
-                let style = if i == selection {
-                    if has_focus {
-                        Style::new().bg(Color::Blue).fg(Color::Black)
+                let selected: bool =
+                    i == self.reader.interaction_state.selection;
+                let style = if selected {
+                    if self.reader.terminal_state.has_focus {
+                        match self.reader.interaction_state.focus {
+                            Focus::Entry => {
+                                Style::new().bg(Color::Black).fg(Color::Green)
+                            }
+                            _ => Style::new().bg(Color::Green).fg(Color::Black),
+                        }
                     } else {
                         Style::new().bg(Color::White).fg(Color::Black)
                     }
                 } else {
-                    Style::new()
+                    if !e.has_been_read {
+                        Style::new().fg(Color::Yellow)
+                    } else {
+                        if e.important {
+                            Style::new().bg(Color::Red).fg(Color::Black)
+                        } else {
+                            Style::new()
+                        }
+                    }
                 };
-                return ratatui::text::Text::styled(
-                    format!(
-                        "[{:<10}] {}",
-                        &feed[..10.min(feed.len())],
-                        e.title()
+                return Line::from(vec![
+                    Span::styled(
+                        format!("[{:<10}] ", &feed[..10.min(feed.len())]),
+                        if selected {
+                            style
+                        } else {
+                            Style::new().fg(Color::Cyan)
+                        },
                     ),
-                    style,
-                );
+                    Span::styled(e.title(), style),
+                ])
+                .style(style);
             });
-        let entry_list = ratatui::widgets::List::new(formatted_entries)
-            // .block(ratatui::widgets::Block::bordered().title("slipstream"))
-        ;
-        frame.render_widget(entry_list, list_layout);
+        ratatui::widgets::List::new(formatted_entries).render(list_layout, buf);
 
-        // Show selection.
-        if selection < entries.len() {
-            let entry = &entries[selection];
-            Reader::entry_render(
-                entry,
-                match loaded_entries.get(entry) {
-                    Some(l) => l,
-                    None => &LoadedEntry::None,
-                },
-                entry_scroll,
-                frame,
-                &entry_layout,
-            )?;
+        // Render the selection:
+        self.reader.terminal_state.command_width = entry_layout.width - 6;
+        if self.reader.interaction_state.selection < self.reader.entries.len() {
+            let entry = &mut self.reader.entries
+                [self.reader.interaction_state.selection];
+            entry.has_been_read = true;
+            EntryViewWidget::new(entry, &self.reader.interaction_state.focus)
+                .render(entry_layout, buf);
         }
-
-        Ok(())
-    }
-
-    fn entry_render(
-        entry: &slipfeed::Entry,
-        loaded: &LoadedEntry,
-        entry_scroll: &mut usize,
-        frame: &mut Frame,
-        rect: &Rect,
-    ) -> Result<()> {
-        // Render outline.
-        let block = Block::bordered().title(entry.title().as_str());
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Min(2), Constraint::Percentage(100)])
-            .split(block.inner(*rect));
-        frame.render_widget(block, *rect);
-
-        // Render metadata.
-        let text = Text::from(vec![
-            Line::from(Span::styled(
-                format!("Link: {}", entry.source().url.as_str()),
-                Style::default().fg(Color::Red),
-            )),
-            Line::from(Span::styled(
-                format!("Author: {}", entry.author().as_str()),
-                Style::default().fg(Color::LightGreen),
-            )),
-        ]);
-        let p = Paragraph::new(text);
-        frame.render_widget(p, layout[0]);
-
-        // Render loaded entry.
-        match loaded {
-            LoadedEntry::None => frame.render_widget(
-                Span::styled("Unloaded", Style::default()),
-                layout[1],
-            ),
-            LoadedEntry::Loading => frame.render_widget(
-                Span::styled("Loading", Style::default()),
-                layout[1],
-            ),
-            LoadedEntry::Loaded { html: _, markdown } => {
-                let t = tui_markdown::from_str(markdown.as_str());
-                // let t = Text::raw(markdown.as_str());
-                let p = Paragraph::new(t).scroll((*entry_scroll as u16, 0));
-                frame.render_widget(p, layout[1]);
-            }
-            LoadedEntry::Failed => frame.render_widget(
-                Span::styled("Failed", Style::default()),
-                layout[1],
-            ),
-        };
-
-        Ok(())
-    }
-
-    fn check_size(frame: &mut Frame, size: (u16, u16)) -> bool {
-        if size.0 < 20 || size.1 < (2 * SCROLL_WINDOW as u16) + 5 {
-            let rect = frame.area();
-            frame.render_widget(
-                ratatui::widgets::Paragraph::new("Too Small").block(
-                    ratatui::widgets::Block::new()
-                        .style(Style::new().bg(Color::White).fg(Color::Black))
-                        .padding(ratatui::widgets::Padding::new(
-                            0,
-                            0,
-                            rect.height / 2,
-                            0,
-                        )),
-                ),
-                rect,
-            );
-            return false;
-        }
-        return true;
     }
 }
 
-// Input logic.
-impl Reader {
-    /// Handle input. Quits on error.
-    async fn handle_input(&mut self) -> Result<()> {
-        for i in 0..5 {
-            let poll_time: f32 =
-                if i == 0 { REFRESH_DELTA } else { INPUT_DELTA };
-            if event::poll(Duration::from_secs_f32(poll_time))? {
-                // It's guaranteed that the `read()` won't block when the `poll()` function
-                // returns `true`.
-                match event::read()? {
-                    Event::FocusGained => self.has_focus = true,
-                    Event::FocusLost => self.has_focus = false,
-                    Event::Key(key) => {
-                        if key == UPDATE {
-                            self.handle_update(true).await;
-                        }
-                        if key == DOWN {
-                            if self.selection + 1
-                                < self.entries.read().await.len()
-                            {
-                                self.selection += 1;
-                            }
-                            self.entry_scroll = 0;
-                        }
-                        if key == UP {
-                            if (self.selection as isize) - 1 >= 0 {
-                                self.selection -= 1;
-                            }
-                            self.entry_scroll = 0;
-                        }
-                        if key == PAGE_DOWN {
-                            let entry_count =
-                                self.entries.read().await.len() as isize;
-                            let page_down = self.size.1 as isize
-                                - (2 * SCROLL_WINDOW) as isize;
-                            if self.selection as isize + page_down < entry_count
-                            {
-                                self.selection += page_down as usize;
-                            } else {
-                                self.selection =
-                                    (entry_count - 1).max(0) as usize;
-                            }
-                            self.entry_scroll = 0;
-                        }
-                        if key == PAGE_UP {
-                            let entry_count =
-                                self.entries.read().await.len() as isize;
-                            let page_up = self.size.1 as isize
-                                - (2 * SCROLL_WINDOW) as isize;
-                            if self.selection as isize - page_up >= 0 {
-                                self.selection -=
-                                    page_up.min(entry_count) as usize;
-                            } else {
-                                self.selection = 0;
-                            }
-                            self.entry_scroll = 0;
-                        }
-                        if key == ENTRY_SCROLL_DOWN {
-                            self.entry_scroll =
-                                (self.entry_scroll as isize + 1) as usize;
-                        }
-                        if key == ENTRY_SCROLL_UP {
-                            self.entry_scroll = (self.entry_scroll as isize - 1)
-                                .max(0)
-                                as usize;
-                        }
-                        if key == QUIT {
-                            bail!("Quit.");
-                        }
-                        if key == MENU {
-                            self.show_menu = !self.show_menu;
-                        }
-                        if key == LOAD {
-                            let entries = self.entries.read().await;
-                            if self.selection < entries.len() {
-                                if !self
-                                    .loaded_entries
-                                    .contains_key(&entries[self.selection])
-                                {
-                                    self.loading_futures.spawn(
-                                        Reader::load_entry(
-                                            entries[self.selection].clone(),
-                                        ),
-                                    );
-                                }
-                                self.loaded_entries.insert(
-                                    entries[self.selection].clone(),
-                                    LoadedEntry::Loading,
-                                );
-                            }
-                        }
-                        if key == OPEN {
-                            let entries = self.entries.read().await;
-                            if self.selection < entries.len() {
-                                let link = entries[self.selection].source();
-                                if link.url.len() > 0 {
-                                    tracing::debug!("xdg-open {}", &link.url);
-                                    let res =
-                                        std::process::Command::new("xdg-open")
-                                            .args([&link.url])
-                                            .env_clear()
-                                            .output();
-                                    tracing::debug!("Res {:?}", res);
-                                }
-                            }
-                        }
-                    }
-                    Event::Mouse(event) => tracing::debug!("Mouse {:?}", event),
-                    Event::Resize(width, height) => {
-                        self.size = (width, height);
-                    }
-                    _ => {}
-                }
-            } else {
-                break;
+/// Check if a terminal event has happened.
+async fn terminal_input_ready(poll_time: f32) -> bool {
+    let check_fut = tokio::task::spawn_blocking(move || {
+        event::poll(Duration::from_secs_f32(poll_time))
+    });
+    match check_fut.await {
+        Ok(t) => match t {
+            Ok(ready) => ready,
+            Err(e) => {
+                tracing::error!("Ratatui failed to check input: {}", e);
+                false
             }
-        }
-        Ok(())
-    }
-}
-
-// Updating logic.
-impl Reader {
-    async fn handle_update(&mut self, force_init: bool) {
-        // Start update in background.
-        let now = chrono::Local::now().to_utc();
-        if force_init || now - self.last_update > chrono::Duration::seconds(2) {
-            self.feeds_update().await;
-        }
-
-        // Check for new update.
-        if let Some(entries_fut) = &mut self.updater_future {
-            if let Some(entries_res) = entries_fut.now_or_never() {
-                match entries_res {
-                    Ok(new_entries) => {
-                        let mut entries = self.entries.write().await;
-                        *entries = new_entries;
-                        if self.selection > entries.len() {
-                            if entries.len() == 0 {
-                                self.window = 0;
-                                self.selection = 0;
-                            } else {
-                                self.selection = entries.len() - 1;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to update: {e:?}");
-                    }
-                }
-                self.updater_future = None;
-            }
-        }
-
-        // Check for loaded entries.
-        while let Some(res) = self.loading_futures.try_join_next() {
-            if let Ok((entry, loaded)) = res {
-                self.loaded_entries.insert(entry, loaded);
-            }
+        },
+        Err(e) => {
+            tracing::error!("Failed to check if input is ready: {}", e);
+            false
         }
     }
-
-    async fn feeds_update(&mut self) {
-        let config = self.config.clone();
-        let updater = self.updater.clone();
-        if self.updater_future.is_none() {
-            self.updater_future = Some(
-                async move {
-                    let updater = updater.lock().await;
-                    let entries = updater.collect_all(config.as_ref());
-                    Ok(entries)
-                }
-                .boxed(),
-            );
-        }
-    }
-
-    async fn load_entry(
-        entry: slipfeed::Entry,
-    ) -> (slipfeed::Entry, LoadedEntry) {
-        let html = match reqwest::get(&entry.source().url).await {
-            Ok(resp) => match resp.text().await {
-                Ok(body) => body,
-                Err(_) => return (entry, LoadedEntry::Failed),
-            },
-
-            Err(_) => return (entry, LoadedEntry::Failed),
-        };
-        // let markdown = match htmd::convert(&html) {
-        //     Ok(md) => md,
-        //     Err(_) => return (entry, LoadedEntry::Failed),
-        // };
-        // let markdown = html2md::rewrite_html(&html, false);
-        let markdown = html2md::parse_html(&html, false);
-        (entry, LoadedEntry::Loaded { html, markdown })
-    }
-}
-
-enum LoadedEntry {
-    None,
-    Loading,
-    Loaded { html: String, markdown: String },
-    Failed,
 }

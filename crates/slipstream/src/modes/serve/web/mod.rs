@@ -58,8 +58,8 @@ impl HtmlServer {
     pub async fn get(
         &mut self,
         uri: impl AsRef<str>,
-        entries: impl Future<Output = Vec<slipfeed::Entry>>,
-        updater: Arc<Mutex<Updater>>,
+        entries: impl Future<Output = DatabaseEntryList>,
+        _updater: Arc<UpdaterHandle>,
         _config: Arc<Config>,
     ) -> String {
         let now = slipfeed::DateTime::now();
@@ -77,20 +77,15 @@ impl HtmlServer {
         let entries = entries.await;
         let params;
         {
-            let updater = updater.lock().await;
             params = TemplateParams {
                 feed: String::from(uri.as_ref()),
                 entries: entries
-                    .iter()
+                    .iter_entries()
                     .map(|e| {
                         let mut sources = Vec::<String>::new();
                         let mut min = MinEntry::from(e);
                         for source in e.feeds() {
-                            if let Some(source_name) =
-                                updater.feed_name(*source)
-                            {
-                                sources.push(source_name.clone());
-                            }
+                            sources.push((*source.name).clone());
                         }
                         if sources.len() > 0 {
                             min.sources = sources.join(", ");
@@ -145,7 +140,7 @@ impl From<&slipfeed::Entry> for MinEntry {
     fn from(value: &slipfeed::Entry) -> Self {
         Self {
             title: value.title().clone(),
-            date: value.date().clone().pretty_string(),
+            date: format!("{}", value.date()),
             author: value.author().clone(),
             sources: String::default(),
             source: value.source().clone(),

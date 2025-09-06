@@ -11,6 +11,7 @@ mkShell rec {
     just
     rustup
     patchelf
+    cargo-zigbuild
   ];
   LD_LIBRARY_PATH = lib.makeLibraryPath buildInputs;
 }

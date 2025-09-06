@@ -1,7 +1,7 @@
 [package]
 name = "slipfeed"
 description = "Feed fetching, filtering, and aggregating utilities."
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 authors = ["hachha <hachha@hachha.dev>"]
 keywords = ["rss", "atom", "feed"]
@@ -13,8 +13,10 @@ rust-version = "1.85.0"
 [dependencies]
 chrono = { workspace = true }
 futures = { workspace = true }
+resolve-path = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
+sqlx = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 

@@ -13,20 +13,32 @@ impl Tag {
     }
 }
 
-impl Into<Tag> for String {
-    fn into(self) -> Tag {
-        Tag(self)
+impl std::fmt::Display for Tag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 
-impl Into<Tag> for &str {
-    fn into(self) -> Tag {
-        Tag(self.to_string())
+impl From<Tag> for String {
+    fn from(value: Tag) -> String {
+        value.0
     }
 }
 
-impl Into<String> for Tag {
-    fn into(self) -> String {
-        self.0.clone()
+impl From<&Tag> for String {
+    fn from(value: &Tag) -> String {
+        value.0.clone()
+    }
+}
+
+impl From<String> for Tag {
+    fn from(value: String) -> Self {
+        Tag(value)
+    }
+}
+
+impl From<&str> for Tag {
+    fn from(value: &str) -> Self {
+        Tag(value.into())
     }
 }

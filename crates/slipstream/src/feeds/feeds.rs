@@ -2,7 +2,7 @@
 
 use super::*;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FeedDefinition {
     #[serde(flatten)]
     feed: RawFeed,
@@ -31,27 +31,19 @@ impl FeedDefinition {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RawFeed {
     Raw { url: String },
     Aggregate { feeds: Vec<String> },
 }
 
-pub struct Updater {
-    pub updater: slipfeed::Updater,
-    pub feeds: HashMap<String, slipfeed::FeedId>,
-    pub feeds_ids: HashMap<slipfeed::FeedId, String>,
-    pub global_filters: Vec<slipfeed::Filter>,
-    pub all_filters: Vec<slipfeed::Filter>,
-}
-
-trait EntryExt {
-    fn to_atom(&self, updater: &Updater, config: &Config) -> atom::Entry;
+pub trait EntryExt {
+    fn to_atom(&self, config: &Config) -> atom::Entry;
 }
 
 impl EntryExt for slipfeed::Entry {
-    fn to_atom(&self, updater: &Updater, config: &Config) -> atom::Entry {
+    fn to_atom(&self, config: &Config) -> atom::Entry {
         let mut entry = atom::EntryBuilder::default();
         entry
             .summary(Some(self.content().clone().into()))
@@ -63,16 +55,14 @@ impl EntryExt for slipfeed::Entry {
                     .build(),
             );
         if config.show_source_in_title {
-            let mut feed_names: Vec<String> = Vec::new();
-            for feed_id in self.feeds() {
-                if let Some(name) = updater.feed_name(*feed_id) {
-                    feed_names.push(name.clone());
-                }
-            }
-            if feed_names.len() > 0 {
+            if self.feeds().len() > 0 {
                 entry.title(format!(
                     "[{}] {}",
-                    feed_names.join(", "),
+                    self.feeds()
+                        .iter()
+                        .map(|f| (*f.name).clone())
+                        .collect::<Vec<String>>()
+                        .join(", "),
                     self.title()
                 ));
             } else {
@@ -108,185 +98,14 @@ impl EntryExt for slipfeed::Entry {
                     .build(),
             );
         }
+        for tag in self.tags() {
+            entry.category(
+                atom::CategoryBuilder::default()
+                    .term(String::from(tag))
+                    .build(),
+            );
+        }
         entry.build()
-    }
-}
-
-impl Updater {
-    pub async fn update(&mut self) -> () {
-        self.updater.update().await;
-    }
-
-    pub fn feed_name(&self, feed: slipfeed::FeedId) -> Option<&String> {
-        self.feeds_ids.get(&feed)
-    }
-
-    pub fn passes_global_filters(&self, entry: &slipfeed::Entry) -> bool {
-        let feed = NoopFeed;
-        self.global_filters.iter().all(|f| f(&feed, entry))
-    }
-
-    pub fn passes_all_filters(&self, entry: &slipfeed::Entry) -> bool {
-        let feed = NoopFeed;
-        self.all_filters.iter().all(|f| f(&feed, entry))
-    }
-
-    pub fn syndicate_all(&self, config: &Config) -> String {
-        let mut syn = atom::FeedBuilder::default();
-        syn.title("All")
-            .author(atom::PersonBuilder::default().name("slipstream").build());
-        let mut count = 0;
-        for entry in self.updater.iter() {
-            if count > config.global.limits.max() {
-                break;
-            }
-            if config.global.limits.too_old(entry.date()) {
-                continue;
-            }
-            if !self.passes_global_filters(&entry) {
-                continue;
-            }
-            if !self.passes_all_filters(&entry) {
-                continue;
-            }
-            syn.entry(entry.to_atom(self, config));
-            count += 1;
-        }
-        syn.build().to_string()
-    }
-
-    pub fn collect_all(&self, config: &Config) -> Vec<slipfeed::Entry> {
-        let mut entries = Vec::with_capacity(config.global.limits.max());
-        let mut count = 0;
-        for entry in self.updater.iter() {
-            if count > config.global.limits.max() {
-                break;
-            }
-            if config.global.limits.too_old(entry.date()) {
-                continue;
-            }
-            if !self.passes_global_filters(&entry) {
-                continue;
-            }
-            if !self.passes_all_filters(&entry) {
-                continue;
-            }
-            entries.push(entry.clone());
-            count += 1;
-        }
-        entries
-    }
-
-    pub fn syndicate_feed(&self, feed: &str, config: &Config) -> String {
-        let mut syn = atom::FeedBuilder::default();
-        syn.title(feed)
-            .author(atom::PersonBuilder::default().name("slipstream").build());
-        if let (Some(id), Some(feed)) =
-            (self.feeds.get(feed), config.feed(feed))
-        {
-            let mut count = 0;
-            for entry in self.updater.from_feed(*id) {
-                if count >= config.global.limits.max() {
-                    break;
-                }
-                if count >= feed.options().max() {
-                    break;
-                }
-                if config.global.limits.too_old(entry.date()) {
-                    continue;
-                }
-                if feed.options().too_old(entry.date()) {
-                    continue;
-                }
-                if !self.passes_global_filters(&entry) {
-                    continue;
-                }
-                // NOTE: Individual feed filters are already checked by the underlying
-                // slipfeed updater.
-                syn.entry(entry.to_atom(self, config));
-                count += 1;
-            }
-        }
-        syn.build().to_string()
-    }
-
-    pub fn collect_feed(
-        &self,
-        feed: &str,
-        config: &Config,
-    ) -> Vec<slipfeed::Entry> {
-        let mut entries = Vec::with_capacity(config.global.limits.max());
-        if let (Some(id), Some(feed)) =
-            (self.feeds.get(feed), config.feed(feed))
-        {
-            let mut count = 0;
-            for entry in self.updater.from_feed(*id) {
-                if count >= config.global.limits.max() {
-                    break;
-                }
-                if count >= feed.options().max() {
-                    break;
-                }
-                if config.global.limits.too_old(entry.date()) {
-                    continue;
-                }
-                if feed.options().too_old(entry.date()) {
-                    continue;
-                }
-                if !self.passes_global_filters(&entry) {
-                    continue;
-                }
-                // NOTE: Individual feed filters are already checked by the underlying
-                // slipfeed updater.
-                entries.push(entry.clone());
-                count += 1;
-            }
-        }
-        entries
-    }
-
-    pub fn syndicate_tag(&self, tag: &str, config: &Config) -> String {
-        let mut syn = atom::FeedBuilder::default();
-        syn.title(tag)
-            .author(atom::PersonBuilder::default().name("slipstream").build());
-        let mut count = 0;
-        for entry in self.updater.with_tags(tag) {
-            if count >= config.global.limits.max() {
-                break;
-            }
-            if config.global.limits.too_old(entry.date()) {
-                continue;
-            }
-            if !self.passes_global_filters(&entry) {
-                continue;
-            }
-            syn.entry(entry.to_atom(self, config));
-            count += 1;
-        }
-        syn.build().to_string()
-    }
-
-    pub fn collect_tag(
-        &self,
-        tag: &str,
-        config: &Config,
-    ) -> Vec<slipfeed::Entry> {
-        let mut entries = Vec::with_capacity(config.global.limits.max());
-        let mut count = 0;
-        for entry in self.updater.with_tags(tag) {
-            if count >= config.global.limits.max() {
-                break;
-            }
-            if config.global.limits.too_old(entry.date()) {
-                continue;
-            }
-            if !self.passes_global_filters(&entry) {
-                continue;
-            }
-            entries.push(entry.clone());
-            count += 1;
-        }
-        entries
     }
 }
 
@@ -328,7 +147,7 @@ impl AggregateWorld {
         feed: slipfeed::FeedId,
         entry: &slipfeed::Entry,
     ) -> bool {
-        // TODO: Use graph solver!
+        // FUTURE: Use graph solver!
         self.feed_owns_entry_lim(feed, entry, 6)
     }
 
@@ -344,10 +163,8 @@ impl AggregateWorld {
         }
 
         // Check direct ownership.
-        for id in entry.feeds().iter() {
-            if *id == feed {
-                return true;
-            }
+        if entry.is_from_feed(feed) {
+            return true;
         }
 
         // Check indirect ownership.
@@ -407,7 +224,10 @@ impl slipfeed::Feed for AggregateFeed {
                 for tag in attr.get_tags() {
                     entry.add_tag(tag);
                 }
-                entry.add_feed(feed_id);
+                entry.add_feed(slipfeed::FeedRef {
+                    id: feed_id,
+                    name: attr.display_name.clone(),
+                });
             }
         }
     }

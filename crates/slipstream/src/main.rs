@@ -11,16 +11,21 @@ use atom_syndication::{self as atom};
 use clap::{Parser, Subcommand};
 use resolve_path::PathResolveExt;
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::{Mutex, RwLock};
+use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 
 mod cli;
 mod config;
+mod database;
 mod feeds;
 mod logging;
 mod modes;
 
 use cli::*;
 use config::*;
+use database::*;
 use feeds::*;
 use logging::*;
 use modes::*;
@@ -46,28 +51,52 @@ async fn main() -> Result<()> {
     let config = Arc::new(cli.parse_config().expect("Unable to parse config."));
     setup_logging(&cli, &config);
 
-    // Allow updates to run in the background.
-    let updater = Arc::new(Mutex::new(config.updater().await));
+    let cancel_token = CancellationToken::new();
+    let mut tasks = JoinSet::new();
+
+    // Run feed updates:
+    let mut updater = config.updater().await?;
+    let updater_handle = updater.handle()?;
+    tasks.spawn(update(updater, config.clone(), cancel_token.clone()));
+
+    // Run the command:
+    match cli.command {
+        Mode::Serve { port } => tasks.spawn(serve(
+            port,
+            config.clone(),
+            updater_handle,
+            cancel_token.clone(),
+        )),
+        Mode::Read {} => tasks.spawn(read(
+            config.clone(),
+            updater_handle,
+            cancel_token.clone(),
+        )),
+    };
+
+    // Wait for ctrl+c (top-level):
     {
-        let updater = updater.clone();
-        tokio::task::spawn(async move {
-            loop {
-                {
-                    let mut guard = updater.lock().await;
-                    guard.update().await;
-                }
-                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-            }
+        let cancel_token = cancel_token.clone();
+        tasks.spawn(async move {
+            tokio::select! {
+                _ = cancel_token.cancelled() => {},
+                _ = tokio::signal::ctrl_c() => {
+                    cancel_token.cancel();
+                },
+            };
+            Ok(())
         });
     }
 
-    match cli.command {
-        Mode::Serve { port } => {
-            serve(port, config.clone(), updater.clone()).await?;
+    // Wait for tasks to complete.
+    while let Some(task_res) = tasks.join_next().await {
+        // If the task failed, print the error.
+        if let Err(e) = task_res {
+            tracing::error!("{}", e);
         }
-        Mode::Read {} => {
-            read(config.clone(), updater.clone()).await?;
-        }
+
+        // Kill all other tasks.
+        cancel_token.cancel();
     }
 
     Ok(())

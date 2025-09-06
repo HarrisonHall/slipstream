@@ -52,11 +52,15 @@ be separate, but it has since been merged into `slipknot` (now named
 
 - `slipfeed`
   - [ ] Add other built-in feed implementations (e.g. activitypub)
-- `slipstream`
+  - [ ] Allow custom user agents
+- `slipstream` (general)
   - [ ] Add more filters (regex/pomsky, allowlists, etc.)
   - [ ] OPML conversion support
   - [ ] Use sqlite for storing entries and feed definitions
   - [ ] Support atom exports
+- `slipstream` (reader)
+  - [ ] Support pagination (or make automatic)
+  - [ ] Indicate pending updates
 
 ## Contributing
 
