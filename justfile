@@ -37,9 +37,10 @@ build-many-correct:
 # This is a hacky build while sqlx figures out how to disable fts to support musl.
 build-many:
     # Req: rustup component add rust-std-x86_64-unknown-linux-musl
-    cargo build --package slipstream --target x86_64-unknown-linux-gnu --release
+    # cargo build --package slipstream --target x86_64-unknown-linux-gnu --release
     # patchelf --set-interpreter /usr/lib64/ld-linux-x86-64.so.2 target/x86_64-unknown-linux-gnu/release/slipstream
-    patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 target/x86_64-unknown-linux-gnu/release/slipstream
+    # patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 target/x86_64-unknown-linux-gnu/release/slipstream
+    cargo zigbuild --package slipstream --target x86_64-unknown-linux-gnu.2.32 --release
 
 # Test the repo.
 test:

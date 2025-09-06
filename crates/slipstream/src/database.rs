@@ -58,13 +58,14 @@ impl Database {
                 -- If the entry is marked important.
                 important INTEGER NOT NULL DEFAULT FALSE,
                 -- If the entry has been read.
-                read INTEGER NOT NULL DEFAULT FALSE,
-                UNIQUE(entry),
-                UNIQUE(title, author),
-                UNIQUE(author, source_id)
+                read INTEGER NOT NULL DEFAULT FALSE
             ) STRICT;
             CREATE INDEX IF NOT EXISTS entries_entry_idx ON entries(entry);
             CREATE INDEX IF NOT EXISTS entries_timestamp_idx ON entries(timestamp);
+            CREATE INDEX IF NOT EXISTS entries_title_idx ON entries(title);
+            CREATE INDEX IF NOT EXISTS entries_content_idx ON entries(content);
+            CREATE INDEX IF NOT EXISTS entries_author_idx ON entries(author);
+            CREATE INDEX IF NOT EXISTS entries_source_id_idx ON entries(source_id);
 
             CREATE TABLE IF NOT EXISTS sources(
                 id INTEGER PRIMARY KEY ASC,
@@ -75,6 +76,7 @@ impl Database {
                 UNIQUE(entry_id, source)
             ) STRICT;
             CREATE INDEX IF NOT EXISTS sources_source_idx ON sources(source);
+            CREATE INDEX IF NOT EXISTS sources_entry_id_idx ON sources(entry_id);
             
             CREATE TABLE IF NOT EXISTS tags(
                 id INTEGER PRIMARY KEY ASC,
@@ -85,6 +87,7 @@ impl Database {
                 UNIQUE(entry_id, tag)
             ) STRICT;
             CREATE INDEX IF NOT EXISTS tags_tag_idx ON tags(tag);
+            CREATE INDEX IF NOT EXISTS tags_entry_id_idx ON tags(entry_id);
             
             CREATE TABLE IF NOT EXISTS commands(
                 id INTEGER PRIMARY KEY ASC,
@@ -101,6 +104,7 @@ impl Database {
             ) STRICT;
             CREATE INDEX IF NOT EXISTS commands_name_idx ON commands(name);
             CREATE INDEX IF NOT EXISTS commands_timestamp_idx ON commands(timestamp);
+            CREATE INDEX IF NOT EXISTS commands_entry_id_idx ON commands(entry_id);
             ",
         )
         .execute(conn)
