@@ -39,6 +39,11 @@ exclude-tags = ["rust"]
 [feeds.hacking]
 feeds = ["rust-blog", "hachha-hacking"]
 
+[feeds.local]
+url = "https://127.0.0.1:3000/all/feed"
+tags = ["local"]
+max = 20
+
 [feeds.rust-blog]
 url = "https://blog.rust-lang.org/feed.xml"
 tags = ["blog", "rust", "tech"]

@@ -12,7 +12,8 @@ use crate::modes::DatabaseEntry;
 /// Slipfeed database abstraction.
 pub struct Database {
     /// Path to the sqlite database.
-    _path: String,
+    #[allow(unused)]
+    path: String,
     /// Connection to the sqlite database.
     conn: sqlx::SqliteConnection,
 }
@@ -24,7 +25,13 @@ impl Database {
             _ => {
                 let mut path: PathBuf = path.as_ref().into();
                 path = path.resolve().into_owned();
-                // TODO: Create parent directory.
+                if let Some(parent) = path.parent() {
+                    if let Err(e) = std::fs::create_dir_all(parent) {
+                        tracing::error!(
+                            "Failed to create parent directory: {e}"
+                        );
+                    }
+                }
                 path.to_string_lossy().into_owned()
             }
         };
@@ -34,7 +41,7 @@ impl Database {
             .create_if_missing(true);
         let mut conn = SqliteConnection::connect_with(&options).await.unwrap();
         Database::initialize(&mut conn).await?;
-        Ok(Self { _path: path, conn })
+        Ok(Self { path, conn })
     }
 
     async fn initialize(conn: &mut sqlx::SqliteConnection) -> Result<()> {
@@ -478,8 +485,6 @@ pub struct EntryV1 {
     source: slipfeed::Link,
     comments: slipfeed::Link,
     other_links: Vec<slipfeed::Link>,
-    // feeds? TODO
-    tags: Vec<slipfeed::Tag>,
 }
 
 impl From<&EntryV1> for slipfeed::Entry {
@@ -495,11 +500,7 @@ impl From<&EntryV1> for slipfeed::Entry {
         for link in &value.other_links {
             entry.other_link(link.clone());
         }
-        let mut entry = entry.build();
-        for tag in &value.tags {
-            entry.add_tag(tag);
-        }
-        entry
+        entry.build()
     }
 }
 
@@ -513,7 +514,6 @@ impl From<&slipfeed::Entry> for EntryV1 {
             source: value.source().clone(),
             comments: value.comments().clone(),
             other_links: value.other_links().clone(),
-            tags: value.tags().iter().map(|tag| tag.clone()).collect(),
         }
     }
 }

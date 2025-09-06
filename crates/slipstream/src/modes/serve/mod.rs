@@ -192,14 +192,16 @@ async fn get_config(
     State(state): StateType,
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("/config");
-    let mut with_feed = String::new();
-    state
-        .config
-        .serialize(toml::Serializer::new(&mut with_feed))
-        .ok();
+    let serialized: String = match toml::to_string_pretty(&state.config) {
+        Ok(config) => config,
+        Err(e) => {
+            tracing::error!("Failed to serialize config: {e}");
+            String::new()
+        }
+    };
     return (
         [(axum::http::header::CONTENT_TYPE, "application/toml")],
-        with_feed,
+        serialized,
     );
 }
 

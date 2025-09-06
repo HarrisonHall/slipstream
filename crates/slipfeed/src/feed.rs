@@ -192,25 +192,13 @@ impl Feed for StandardSyndication {
                         if !too_old && attr.passes_filters(self, &entry) {
                             ctx.sender
                                 .send((
-                                    parsed.build(),
+                                    entry.clone(),
                                     FeedRef {
                                         id: ctx.feed_id,
                                         name: attr.display_name.clone(),
                                     },
                                 ))
                                 .ok();
-                        }
-                        if too_old {
-                            tracing::trace!(
-                                "Too old! dt={:?} parse={:?} to={:?} cutoff={:?}",
-                                entry.date(),
-                                ctx.parse_time,
-                                attr.timeout,
-                                ctx.last_update
-                                    .clone()
-                                    .unwrap_or(DateTime::now())
-                                    + attr.timeout.clone()
-                            );
                         }
                     }
                     return;
@@ -247,25 +235,13 @@ impl Feed for StandardSyndication {
                         if !too_old && attr.passes_filters(self, &entry) {
                             ctx.sender
                                 .send((
-                                    parsed.build(),
+                                    entry.clone(),
                                     FeedRef {
                                         id: ctx.feed_id,
                                         name: attr.display_name.clone(),
                                     },
                                 ))
                                 .ok();
-                        }
-                        if too_old {
-                            tracing::trace!(
-                                "Too old! dt={:?} parse={:?} to={:?} cutoff={:?}",
-                                entry.date(),
-                                ctx.parse_time,
-                                attr.timeout,
-                                ctx.last_update
-                                    .clone()
-                                    .unwrap_or(DateTime::now())
-                                    + attr.timeout.clone()
-                            );
                         }
                     }
                     return;
