@@ -163,13 +163,15 @@ impl Feed for StandardSyndication {
                                     })
                                     .trim(),
                             )
-                            .content(atom_entry.content().iter().fold(
-                                "".to_string(),
-                                |_, cont| {
-                                    format!("{}", cont.value().unwrap_or(""))
-                                        .to_string()
+                            .content(match atom_entry.summary() {
+                                Some(sum) => &sum.value,
+                                None => match atom_entry.content() {
+                                    Some(content) => {
+                                        content.value().unwrap_or("")
+                                    }
+                                    None => "",
                                 },
-                            ));
+                            });
                         for (i, link) in atom_entry.links().iter().enumerate() {
                             if i == 0 {
                                 parsed.source(&link.href);
@@ -207,19 +209,18 @@ impl Feed for StandardSyndication {
                     for rss_entry in rss_feed.items {
                         let mut parsed = EntryBuilder::new();
                         parsed
-                            .title(rss_entry.title().unwrap_or("").to_string())
+                            .title(rss_entry.title().unwrap_or(""))
                             .date(
                                 DateTime::try_from(
                                     rss_entry.pub_date().unwrap_or(""),
                                 )
                                 .unwrap_or(ctx.parse_time.clone()),
                             )
-                            .author(
-                                rss_entry.author().unwrap_or("").to_string(),
-                            )
-                            .content(
-                                rss_entry.content().unwrap_or("").to_string(),
-                            );
+                            .author(rss_entry.author().unwrap_or(""))
+                            .content(match rss_entry.description() {
+                                Some(desc) => desc,
+                                None => rss_entry.content().unwrap_or(""),
+                            });
                         if let Some(link) = rss_entry.link() {
                             parsed.source(link);
                         }

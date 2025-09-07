@@ -2,7 +2,7 @@
 
 use std::ops::Deref;
 
-use ratatui::widgets::Clear;
+use ratatui::widgets::{Clear, Wrap};
 
 use super::*;
 
@@ -265,7 +265,9 @@ impl<'a> Widget for EntryInfoWidget<'a> {
             .into(),
         );
 
-        Paragraph::new(top_lines).render(layouts[0], buf);
+        Paragraph::new(top_lines)
+            .wrap(Wrap { trim: false })
+            .render(layouts[0], buf);
 
         // Bottom text lines.
         let mut bottom_lines: Vec<Line> = Vec::new();
