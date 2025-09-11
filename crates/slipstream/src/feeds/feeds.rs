@@ -54,6 +54,13 @@ impl EntryExt for slipfeed::Entry {
                     .name(self.author().clone())
                     .build(),
             );
+        entry.content(atom::Content {
+            base: None,
+            lang: None,
+            value: Some(self.content().clone()),
+            src: None,
+            content_type: Some("text".into()),
+        });
         if config.show_source_in_title {
             if self.feeds().len() > 0 {
                 entry.title(format!(
@@ -148,7 +155,7 @@ impl AggregateWorld {
         entry: &slipfeed::Entry,
     ) -> bool {
         // FUTURE: Use graph solver!
-        self.feed_owns_entry_lim(feed, entry, 6)
+        return self.feed_owns_entry_lim(feed, entry, 6);
     }
 
     fn feed_owns_entry_lim(
@@ -175,20 +182,20 @@ impl AggregateWorld {
                 return false;
             }
         };
-        feeds.iter().any(|feed_name| {
+        return feeds.iter().any(|feed_name| {
             if let Some(feed_id) = self.feed_ids.get(feed_name) {
                 self.feed_owns_entry_lim(*feed_id, entry, limit - 1)
             } else {
                 tracing::warn!("AggregateWorld lacks feed {}.", feed_name);
                 false
             }
-        })
+        });
     }
 }
 
 impl std::fmt::Debug for AggregateWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AggregateWorld").finish()
+        return f.debug_struct("AggregateWorld").finish();
     }
 }
 
@@ -199,7 +206,7 @@ pub struct AggregateFeed {
 
 impl AggregateFeed {
     pub fn new(world: Arc<RwLock<AggregateWorld>>) -> Box<Self> {
-        Box::new(Self { world })
+        return Box::new(Self { world });
     }
 
     async fn owns_entry(
@@ -207,7 +214,7 @@ impl AggregateFeed {
         id: slipfeed::FeedId,
         entry: &slipfeed::Entry,
     ) -> bool {
-        self.world.read().await.feed_owns_entry(id, entry)
+        return self.world.read().await.feed_owns_entry(id, entry);
     }
 }
 

@@ -2,7 +2,10 @@
 
 use std::ops::Deref;
 
-use ratatui::widgets::{Clear, Wrap};
+use ratatui::{
+    layout::Flex,
+    widgets::{Clear, Wrap},
+};
 
 use super::*;
 
@@ -186,7 +189,12 @@ impl<'a> Widget for EntryInfoWidget<'a> {
 
         let layouts = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Fill(1), Constraint::Max(1)])
+            .constraints(vec![
+                Constraint::Min(5),
+                Constraint::Fill(1),
+                Constraint::Max(1),
+            ])
+            .flex(Flex::Legacy)
             .split(area);
 
         // All text lines.
@@ -253,21 +261,33 @@ impl<'a> Widget for EntryInfoWidget<'a> {
             );
         }
 
-        top_lines.push(
-            Span::styled(
-                if !self.0.content().is_empty() {
-                    self.0.content().as_str()
-                } else {
-                    "---"
-                },
-                Style::default().fg(Color::White),
-            )
-            .into(),
-        );
+        // top_lines.push(
+        //     Span::styled(
+        //         if !self.0.content().is_empty() {
+        //             self.0.content().as_str()
+        //         } else {
+        //             "---"
+        //         },
+        //         Style::default().fg(Color::White),
+        //     )
+        //     .into(),
+        // );
 
         Paragraph::new(top_lines)
             .wrap(Wrap { trim: false })
             .render(layouts[0], buf);
+
+        if !self.0.content().is_empty() {
+            tracing::info!("Rendering: {}", self.0.content());
+            Paragraph::new(tui_markdown::from_str(self.0.content()))
+                .left_aligned()
+                .wrap(Wrap { trim: false })
+                .render(layouts[1], buf);
+        } else {
+            tracing::info!("Rendering: empty");
+            Span::styled("---", Style::default().fg(Color::Gray))
+                .render(layouts[1], buf);
+        }
 
         // Bottom text lines.
         let mut bottom_lines: Vec<Line> = Vec::new();
@@ -281,7 +301,7 @@ impl<'a> Widget for EntryInfoWidget<'a> {
             .right_aligned(),
         );
 
-        Paragraph::new(bottom_lines).render(layouts[1], buf);
+        Paragraph::new(bottom_lines).render(layouts[2], buf);
     }
 }
 
