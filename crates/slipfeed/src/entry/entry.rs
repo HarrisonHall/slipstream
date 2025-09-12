@@ -100,6 +100,23 @@ impl Entry {
         self.tags.remove(tag);
     }
 
+    pub fn has_tag(&self, tag: &Tag) -> bool {
+        self.tags.contains(tag)
+    }
+
+    pub fn has_tag_loose(&self, tag: impl AsRef<str>) -> bool {
+        for other_tag in &self.tags {
+            if other_tag
+                .to_string()
+                .to_lowercase()
+                .contains(&tag.as_ref().to_lowercase())
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     pub fn source_id(&self) -> Option<&str> {
         match &self.source_id {
             Some(id) => Some(id.as_str()),

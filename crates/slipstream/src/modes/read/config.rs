@@ -5,6 +5,9 @@ use super::*;
 /// Read configuration.
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct ReadConfig {
+    /// Tags that are hidden.
+    #[serde(default)]
+    pub tags: TagConfig,
     /// Configured mappings for keys to commands.
     #[serde(default)]
     pub bindings: HashMap<BindingKey, ReadCommand>,
@@ -52,8 +55,6 @@ impl ReadConfig {
             ReadCommand::Literal(ReadCommandLiteral::Swap)
         } else if *key == MENU {
             ReadCommand::Literal(ReadCommandLiteral::Menu)
-        } else if *key == IMPORTANT {
-            ReadCommand::Literal(ReadCommandLiteral::ToggleImportant)
         } else if *key == COMMAND_MODE {
             ReadCommand::Literal(ReadCommandLiteral::CommandMode)
         } else if *key == SEARCH_MODE {
@@ -76,6 +77,106 @@ impl ReadConfig {
             name.as_ref()
         );
         ReadCommand::Literal(ReadCommandLiteral::None)
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TagConfig {
+    /// Hidden tags.
+    pub hidden: Vec<String>,
+    /// Tag colors, in descending order of importance.
+    pub colors: Vec<TagColor>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TagColor {
+    /// Tag that color should apply to.
+    tag: String,
+    /// Color for the tag.
+    color: ColorConfig,
+}
+
+impl TagColor {
+    pub fn matches(&self, entry: &slipfeed::Entry) -> bool {
+        entry.has_tag_loose(&self.tag)
+    }
+
+    pub fn style(&self) -> Style {
+        (&self.color).into()
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ColorConfig {
+    fg: Option<ColorLiteral>,
+    bg: Option<ColorLiteral>,
+    underline: Option<ColorLiteral>,
+}
+
+impl From<&ColorConfig> for Style {
+    fn from(value: &ColorConfig) -> Self {
+        let mut modi = ratatui::style::Modifier::empty();
+        if value.underline.is_some() {
+            modi = modi.union(ratatui::style::Modifier::UNDERLINED);
+        }
+
+        return Self {
+            fg: match &value.fg {
+                Some(col) => Some(col.into()),
+                None => None,
+            },
+            bg: match &value.bg {
+                Some(col) => Some(col.into()),
+                None => None,
+            },
+            underline_color: match &value.underline {
+                Some(col) => Some(col.into()),
+                None => None,
+            },
+            add_modifier: modi,
+            sub_modifier: ratatui::style::Modifier::empty(),
+        };
+    }
+}
+
+impl From<ColorConfig> for Style {
+    fn from(value: ColorConfig) -> Self {
+        (&value).into()
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ColorLiteral {
+    #[serde(alias = "black")]
+    Black,
+    #[serde(alias = "white")]
+    White,
+    #[serde(alias = "red")]
+    Red,
+    #[serde(alias = "blue")]
+    Blue,
+    #[serde(alias = "lightblue", alias = "light-blue")]
+    LightBlue,
+    #[serde(alias = "cyan")]
+    Cyan,
+    #[serde(alias = "green")]
+    Green,
+    #[serde(alias = "yellow")]
+    Yellow,
+}
+
+impl From<&ColorLiteral> for Color {
+    fn from(value: &ColorLiteral) -> Self {
+        match *value {
+            ColorLiteral::Black => Color::Black,
+            ColorLiteral::White => Color::White,
+            ColorLiteral::Red => Color::Red,
+            ColorLiteral::Blue => Color::Blue,
+            ColorLiteral::LightBlue => Color::LightBlue,
+            ColorLiteral::Cyan => Color::Cyan,
+            ColorLiteral::Green => Color::Green,
+            ColorLiteral::Yellow => Color::Yellow,
+        }
     }
 }
 
@@ -106,7 +207,7 @@ impl From<&CustomCommand> for ReadCommand {
 }
 
 /// Read command variants.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(untagged)]
 pub enum ReadCommand {
     /// The built-in commands.
@@ -118,6 +219,39 @@ pub enum ReadCommand {
         name: Arc<String>,
         command: Arc<Vec<String>>,
     },
+}
+
+impl<'de> Deserialize<'de> for ReadCommand {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+
+        if text.starts_with(":") {
+            return Ok(ReadCommand::Literal(ReadCommandLiteral::Command(
+                text[1..].trim().into(),
+            )));
+        }
+
+        if text.starts_with("!") {
+            return Ok(ReadCommand::CustomCommandRef(Arc::new(
+                text[1..].trim().into(),
+            )));
+        }
+
+        let text = format!("\"{text}\"");
+        let de = match toml::de::ValueDeserializer::parse(&text) {
+            Ok(de) => de,
+            Err(e) => {
+                return Err(<D::Error as serde::de::Error>::custom(e));
+            }
+        };
+        return match ReadCommandLiteral::deserialize(de) {
+            Ok(literal) => Ok(ReadCommand::Literal(literal)),
+            Err(e) => Err(<D::Error as serde::de::Error>::custom(e)),
+        };
+    }
 }
 
 /// Built-in commands.
@@ -162,7 +296,7 @@ pub enum ReadCommandLiteral {
     /// Enter search mode.
     #[serde(alias = "search-mode")]
     SearchMode,
-    /// Toggle the selection important.
-    #[serde(alias = "important")]
-    ToggleImportant,
+    /// Run a specific command_mode command.
+    #[serde(alias = "command")]
+    Command(String),
 }

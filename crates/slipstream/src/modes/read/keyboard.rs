@@ -21,8 +21,6 @@ pub const PAGE_UP: KeyEvent =
     KeyEvent::new(KeyCode::Char('k'), KeyModifiers::SHIFT);
 pub const MENU: KeyEvent = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
 pub const TAB: KeyEvent = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
-pub const IMPORTANT: KeyEvent =
-    KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE);
 pub const COMMAND_MODE: KeyEvent =
     KeyEvent::new(KeyCode::Char(':'), KeyModifiers::NONE);
 pub const SEARCH_MODE: KeyEvent =

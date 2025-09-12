@@ -92,29 +92,11 @@ impl Updater {
         config: &Arc<Config>,
     ) {
         match command {
-            UpdaterRequest::EntryUpdate {
-                entry_id,
-                important,
-                read,
-                tags,
-            } => {
+            UpdaterRequest::EntryUpdate { entry_id, tags } => {
                 if let Some(entry_db) = &mut self.entry_db {
-                    if let Some(important) = important {
-                        entry_db.toggle_important(entry_id, important).await;
-                    }
-                    if let Some(read) = read {
-                        entry_db.toggle_read(entry_id, read).await;
-                    }
                     if let Some(tags) = tags {
                         entry_db.update_tags(entry_id, tags).await;
                     }
-                }
-            }
-            UpdaterRequest::EntryFetch { tx, entry } => {
-                let mut entry = entry;
-                if let Some(entry_db) = &mut self.entry_db {
-                    entry_db.update_slipstream_entry(&mut entry).await;
-                    tx.send(entry).ok();
                 }
             }
             UpdaterRequest::CommandUpdate {
@@ -282,14 +264,8 @@ impl Default for Updater {
 /// Message used to communicate with the database handler.
 #[derive(Debug)]
 enum UpdaterRequest {
-    EntryFetch {
-        tx: oneshot::Sender<DatabaseEntry>,
-        entry: DatabaseEntry,
-    },
     EntryUpdate {
         entry_id: EntryDbId,
-        important: Option<bool>,
-        read: Option<bool>,
         tags: Option<Vec<slipfeed::Tag>>,
     },
     EntriesSearch {
@@ -484,27 +460,6 @@ impl UpdaterHandle {
         }
     }
 
-    pub async fn toggle_read(&self, entry_id: EntryDbId, read: bool) {
-        self.send(UpdaterRequest::EntryUpdate {
-            entry_id,
-            important: None,
-            read: Some(read),
-            tags: None,
-        })
-        .await;
-    }
-
-    /// Toggle the important attribute.
-    pub async fn toggle_important(&self, entry_id: EntryDbId, important: bool) {
-        self.send(UpdaterRequest::EntryUpdate {
-            entry_id,
-            important: Some(important),
-            read: None,
-            tags: None,
-        })
-        .await;
-    }
-
     pub async fn update_tags(
         &self,
         entry_id: EntryDbId,
@@ -512,8 +467,6 @@ impl UpdaterHandle {
     ) {
         self.send(UpdaterRequest::EntryUpdate {
             entry_id,
-            important: None,
-            read: None,
             tags: Some(tags),
         })
         .await;
@@ -541,23 +494,5 @@ impl UpdaterHandle {
             output,
         })
         .await;
-    }
-
-    /// Update the view for an entry.
-    pub async fn update_view(&self, entry: &mut DatabaseEntry) {
-        let (tx, rx) = oneshot::channel::<DatabaseEntry>();
-        self.send(UpdaterRequest::EntryFetch {
-            tx,
-            entry: entry.clone(),
-        })
-        .await;
-        match rx.await {
-            Ok(data) => {
-                *entry = data;
-            }
-            Err(e) => {
-                tracing::error!("Failed to update_view: {}", e);
-            }
-        };
     }
 }

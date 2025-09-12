@@ -61,27 +61,49 @@ tags = ["hacking", "tech"]
 
 [read]
 
+[read.tags]
+hidden = ["unread"]
+
+[[read.tags.colors]]
+tag = "important"
+color = { bg = "red", fg = "black" }
+
+[[read.tags.colors]]
+tag = "unread"
+color = { fg = "yellow" }
+
+[[read.tags.colors]]
+tag = "hacking"
+color = { underline = "cyan" }
+
+[read.hooks]
+fetch = []
+insert = [":add-tag unread"]
+read = [":remove-tag unread"]
+
 [read.bindings]
-r = "read"
-C-a = "archive"
-o = "open"
-S-o = "open-2"
+i = ":toggle-tag important"
+a = ":toggle-tag archive"
+r = "!read"
+C-a = "!archive"
+o = "!open"
+S-o = "!open-2"
 u = "update"
 C-d = "page-down"
 C-u = "page-up"
 
-1 = "read-1"
-C-1 = "archive-1"
-S-1 = "open-1"
-2 = "read-2"
-C-2 = "archive-2"
-S-2 = "open-2"
-3 = "read-3"
-C-3 = "archive-3"
-S-3 = "open-3"
-4 = "read-4"
-C-4 = "archive-4"
-S-4 = "open-4"
+1 = "!read-1"
+C-1 = "!archive-1"
+S-1 = "!open-1"
+2 = "!read-2"
+C-2 = "!archive-2"
+S-2 = "!open-2"
+3 = "!read-3"
+C-3 = "!archive-3"
+S-3 = "!open-3"
+4 = "!read-4"
+C-4 = "!archive-4"
+S-4 = "!open-4"
 
 # Read the url.
 [[read.commands]]

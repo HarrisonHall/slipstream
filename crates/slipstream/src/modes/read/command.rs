@@ -1,4 +1,5 @@
-///! Shell commands io storage.
+//! Shell commands and storage.
+
 use super::*;
 
 const RUNNING_TEXT: &'static str = "Running...";

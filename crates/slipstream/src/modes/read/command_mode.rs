@@ -49,16 +49,19 @@ pub enum Command {
     /// Remove a tag.
     #[command(alias = "untag", alias = "remove-tag")]
     TagRemove { tag: String },
+    /// Toggle a tag.
+    #[command(alias = "toggle-tag")]
+    TagToggle { tag: String },
 }
 
 #[derive(Parser, Clone)]
 pub struct SearchContext {
-    /// Filter by important.
-    #[arg(short, long, default_value_t = false)]
-    pub important: bool,
-    /// Filter by unread.
-    #[arg(short, long, default_value_t = false)]
-    pub unread: bool,
+    // /// Filter by important.
+    // #[arg(short, long, default_value_t = false)]
+    // pub important: bool,
+    // /// Filter by unread.
+    // #[arg(short, long, default_value_t = false)]
+    // pub unread: bool,
     /// Filter by tag.
     #[arg(short, long)]
     pub tag: Option<String>,

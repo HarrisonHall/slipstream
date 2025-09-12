@@ -156,9 +156,10 @@ impl Reader {
 
             // Sync current with db.
             if self.interaction_state.selection < self.entries.len() {
-                let entry = &mut self.entries[self.interaction_state.selection];
-                self.updater.toggle_read(entry.db_id, true).await;
-                self.updater.update_view(entry).await;
+                // TODO: Read hook!
+                // let entry = &mut self.entries[self.interaction_state.selection];
+                // self.updater.toggle_read(entry.db_id, true).await;
+                // self.updater.update_view(entry).await;
             }
         }
     }
@@ -390,18 +391,13 @@ impl Reader {
                     message: None,
                 };
             }
-            ReadCommandLiteral::ToggleImportant => {
+            ReadCommandLiteral::Command(command) => {
                 if self.interaction_state.selection < self.entries.len() {
-                    let important = self.entries
-                        [self.interaction_state.selection]
-                        .important;
-                    self.updater
-                        .toggle_important(
-                            self.entries[self.interaction_state.selection]
-                                .db_id,
-                            !important,
-                        )
-                        .await;
+                    if let Err(e) =
+                        self.handle_command_mode_command(&command).await
+                    {
+                        tracing::error!("Failed to run command: {}", e);
+                    }
                 }
             }
         };
@@ -642,11 +638,7 @@ impl Reader {
                 self.update_entries(DatabaseSearch::Latest).await
             }
             command_mode::Command::SearchAny(search) => {
-                if search.important {
-                    self.update_entries(DatabaseSearch::Important).await
-                } else if search.unread {
-                    self.update_entries(DatabaseSearch::Unread).await
-                } else if search.tag.is_some() {
+                if search.tag.is_some() {
                     self.update_entries(DatabaseSearch::Tag(
                         search.tag.unwrap(),
                     ))
@@ -676,6 +668,18 @@ impl Reader {
             command_mode::Command::TagRemove { tag } => {
                 let entry = &mut self.entries[self.interaction_state.selection];
                 entry.entry.remove_tag(&slipfeed::Tag::new(tag));
+                let tags: Vec<slipfeed::Tag> =
+                    entry.entry.tags().iter().map(|t| t.clone()).collect();
+                self.updater.update_tags(entry.db_id, tags).await;
+            }
+            command_mode::Command::TagToggle { tag } => {
+                let tag = slipfeed::Tag::new(tag);
+                let entry = &mut self.entries[self.interaction_state.selection];
+                if entry.entry.tags().contains(&tag) {
+                    entry.entry.remove_tag(&tag);
+                } else {
+                    entry.entry.add_tag(&tag);
+                }
                 let tags: Vec<slipfeed::Tag> =
                     entry.entry.tags().iter().map(|t| t.clone()).collect();
                 self.updater.update_tags(entry.db_id, tags).await;
@@ -828,15 +832,14 @@ impl<'a> Widget for ReaderWidget<'a> {
                         Style::new().bg(Color::White).fg(Color::Black)
                     }
                 } else {
-                    if !e.has_been_read {
-                        Style::new().fg(Color::Yellow)
-                    } else {
-                        if e.important {
-                            Style::new().bg(Color::Red).fg(Color::Black)
-                        } else {
-                            Style::new()
+                    let mut style = Style::new();
+                    for color_rule in &self.reader.config.read.tags.colors {
+                        if color_rule.matches(e) {
+                            style = color_rule.style();
+                            break;
                         }
                     }
+                    style
                 };
                 return Line::from(vec![
                     Span::styled(
@@ -858,7 +861,6 @@ impl<'a> Widget for ReaderWidget<'a> {
         if self.reader.interaction_state.selection < self.reader.entries.len() {
             let entry = &mut self.reader.entries
                 [self.reader.interaction_state.selection];
-            entry.has_been_read = true;
             EntryViewWidget::new(entry, &self.reader.interaction_state.focus)
                 .render(entry_layout, buf);
         }

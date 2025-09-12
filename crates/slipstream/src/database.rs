@@ -61,11 +61,7 @@ impl Database {
                 author TEXT NOT NULL,
                 -- Entry source_id.
                 -- This is the source provided by the _original_ feed.
-                source_id TEXT DEFAULT NULL,
-                -- If the entry is marked important.
-                important INTEGER NOT NULL DEFAULT FALSE,
-                -- If the entry has been read.
-                read INTEGER NOT NULL DEFAULT FALSE
+                source_id TEXT DEFAULT NULL
             ) STRICT;
             CREATE INDEX IF NOT EXISTS entries_entry_idx ON entries(entry);
             CREATE INDEX IF NOT EXISTS entries_timestamp_idx ON entries(timestamp);
@@ -233,27 +229,6 @@ impl Database {
         return entry_id;
     }
 
-    pub async fn update_slipstream_entry(&mut self, entry: &mut DatabaseEntry) {
-        let data: (Option<bool>, Option<bool>) = sqlx::query_as(
-            "SELECT read, important FROM entries WHERE id = ? LIMIT 1",
-        )
-        .bind(entry.db_id)
-        .fetch_one(&mut self.conn)
-        .await
-        .unwrap_or_else(|_| (None, None));
-        match data {
-            (Some(read), Some(important)) => {
-                entry.has_been_read = read;
-                entry.important = important;
-            }
-            _ => {
-                tracing::error!("Failed to find entry {}", entry.db_id);
-                entry.has_been_read = false;
-                entry.important = false;
-            }
-        }
-    }
-
     pub async fn get_entries(
         &mut self,
         params: DatabaseSearch,
@@ -263,8 +238,6 @@ impl Database {
         let mut set = DatabaseEntryList::new(max_length);
         let where_clause: String = match params {
             DatabaseSearch::Latest => "TRUE = TRUE".into(),
-            DatabaseSearch::Unread => "entries.read = FALSE".into(),
-            DatabaseSearch::Important => "entries.important = TRUE".into(),
             DatabaseSearch::Search(search) => {
                 let search = search.to_lowercase();
                 format!(
@@ -283,9 +256,7 @@ impl Database {
                 entries.entry,
                 json_group_array(sources.source) AS sources,
                 json_group_array(tags.tag) AS tags,
-                json_group_object(commands.name, commands.result) AS commands,
-                entries.read,
-                entries.important
+                json_group_object(commands.name, commands.result) AS commands
             FROM entries
                 LEFT JOIN sources ON entries.id = sources.entry_id
                 LEFT JOIN tags ON entries.id = tags.entry_id
@@ -358,8 +329,8 @@ impl Database {
                     }
 
                     // Parse flags.
-                    entry.has_been_read = row.get::<bool, usize>(5);
-                    entry.important = row.get::<bool, usize>(6);
+                    // entry.has_been_read = row.get::<bool, usize>(5);
+                    // entry.important = row.get::<bool, usize>(6);
 
                     set.add(entry).ok();
                 }
@@ -371,34 +342,6 @@ impl Database {
 
         tracing::trace!("Got latest: {}", set.len());
         set
-    }
-
-    pub async fn toggle_important(
-        &mut self,
-        entry_id: EntryDbId,
-        important: bool,
-    ) {
-        let res = sqlx::query("UPDATE entries SET important = ? WHERE id = ?")
-            .bind(important)
-            .bind(entry_id)
-            .execute(&mut self.conn)
-            .await;
-
-        if let Err(e) = res {
-            tracing::error!("Failed to toggle important: {}", e);
-        }
-    }
-
-    pub async fn toggle_read(&mut self, entry_id: EntryDbId, read: bool) {
-        let res = sqlx::query("UPDATE entries SET read = ? WHERE id = ?")
-            .bind(read)
-            .bind(entry_id)
-            .execute(&mut self.conn)
-            .await;
-
-        if let Err(e) = res {
-            tracing::error!("Failed to toggle read: {}", e);
-        }
     }
 
     pub async fn update_tags(
@@ -453,8 +396,6 @@ impl Database {
 #[derive(Debug, Clone)]
 pub enum DatabaseSearch {
     Latest,
-    Unread,
-    Important,
     Search(String),
     Tag(String),
     Feed(String),

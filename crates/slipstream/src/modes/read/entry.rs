@@ -23,10 +23,6 @@ pub struct DatabaseEntry {
     command_results: Vec<CommandResultContext>,
     /// List of commands that were ran.
     ran_commands: Vec<Arc<String>>,
-    /// Whether or not the entry has been read.
-    pub has_been_read: bool,
-    /// If the entry has been marked important.
-    pub important: bool,
 }
 
 impl DatabaseEntry {
@@ -38,8 +34,6 @@ impl DatabaseEntry {
             result_selection_index: 0,
             command_results: Vec::new(),
             ran_commands: Vec::new(),
-            has_been_read: false,
-            important: false,
         }
     }
 
@@ -190,7 +184,7 @@ impl<'a> Widget for EntryInfoWidget<'a> {
         let layouts = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![
-                Constraint::Min(5),
+                Constraint::Min(3),
                 Constraint::Fill(1),
                 Constraint::Max(1),
             ])
