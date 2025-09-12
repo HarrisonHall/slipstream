@@ -16,10 +16,6 @@ Feed fetcher, filterer, and aggregator.
 
 ## Getting Started
 
-### slipreader
-
-...
-
 ### slipstream
 
 `slipstream` is a command-line application for serving filtered/aggregated feeds

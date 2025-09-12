@@ -24,6 +24,12 @@
       .container {
         max-width: 840px;
       }
+      .sources {
+        color: rgb(0, 137, 90);
+      }
+      .tag {
+        color: rgb(255, 191, 0);
+      }
     </style>
   </head>
   <body>
@@ -35,8 +41,9 @@
       <section>
         {{#each entries}}
         <article>
-          <header>{{sources}}</header>
-          <p><strong>{{title}}</strong></p>
+          <header class="title">
+            <h4>{{title}}</h4>
+          </header>
           {{#if author}}
           <p>{{author}}</p>
           {{/if}}
@@ -47,6 +54,16 @@
           </summary>
           {{/if}}
           <footer>
+            <p class="sources">{{sources}}</p>
+            {{#if tags}}
+            <p>
+              {{#each tags}}
+              <span>
+                <code class="tag">&lt;{{this}}&gt;</code>
+              </span>
+              {{/each}}
+            </p>
+            {{/if}}
             <div class="grid">
               <div>
                 <a href="{{source.url}}" class="primary">Source</a>

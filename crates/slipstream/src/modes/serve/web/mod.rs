@@ -135,6 +135,7 @@ struct MinEntry {
     content: String,
     comments: slipfeed::Link,
     links: Vec<slipfeed::Link>,
+    tags: Vec<String>,
 }
 
 impl From<&slipfeed::Entry> for MinEntry {
@@ -151,6 +152,7 @@ impl From<&slipfeed::Entry> for MinEntry {
             content,
             comments: value.comments().clone(),
             links: value.other_links().clone(),
+            tags: value.tags().iter().map(|t| t.to_string()).collect(),
         }
     }
 }

@@ -2,6 +2,8 @@
 
 use super::*;
 
+use std::collections::BTreeSet;
+
 /// An entry from a feed.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Entry {
@@ -25,9 +27,9 @@ pub struct Entry {
     /// The id provided by the source.
     source_id: Option<String>,
     /// List of feeds this came from.
-    feeds: HashSet<FeedRef>,
+    feeds: BTreeSet<FeedRef>,
     /// Tags applied to this entry.
-    tags: HashSet<Tag>,
+    tags: BTreeSet<Tag>,
 }
 
 impl Entry {
@@ -69,7 +71,7 @@ impl Entry {
         &self.other_links
     }
 
-    pub fn feeds(&self) -> &HashSet<FeedRef> {
+    pub fn feeds(&self) -> &BTreeSet<FeedRef> {
         &self.feeds
     }
 
@@ -86,7 +88,7 @@ impl Entry {
         false
     }
 
-    pub fn tags(&self) -> &HashSet<Tag> {
+    pub fn tags(&self) -> &BTreeSet<Tag> {
         &self.tags
     }
 
@@ -179,8 +181,8 @@ impl Default for Entry {
             comments: Link::new("", ""),
             other_links: Vec::new(),
             source_id: None,
-            feeds: HashSet::new(),
-            tags: HashSet::new(),
+            feeds: BTreeSet::new(),
+            tags: BTreeSet::new(),
         }
     }
 }
@@ -311,8 +313,8 @@ impl EntryBuilder {
             other_links: self.other_links.clone(),
 
             source_id: self.source_id.clone(),
-            tags: HashSet::new(),
-            feeds: HashSet::new(),
+            feeds: BTreeSet::new(),
+            tags: BTreeSet::new(),
         }
     }
 }

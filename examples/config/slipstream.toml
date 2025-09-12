@@ -9,6 +9,7 @@ show_source_in_title = true
 
 # Settings that apply to **everything**.
 [global]
+user-agent = "slipstream/2.0"
 
 [global.filters]
 exclude-title-words = [

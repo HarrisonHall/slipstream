@@ -97,7 +97,10 @@ impl Config {
                     .for_each(|f| attr.add_filter(f.clone()));
                 match feed_def.feed() {
                     RawFeed::Raw { url } => {
-                        let feed = StandardFeed::new(url);
+                        let feed = StandardFeed::new(
+                            url,
+                            self.global.user_agent.clone(),
+                        );
                         let mut inner_updater = updater.updater.write().await;
                         let id = inner_updater.add_feed(feed, attr);
                         updater.feeds.insert(name.clone(), id);
@@ -155,4 +158,6 @@ pub struct GlobalConfig {
     pub filters: Filters,
     #[serde(default)]
     pub limits: FeedOptions,
+    #[serde(default, alias = "user-agent")]
+    pub user_agent: Option<String>,
 }
