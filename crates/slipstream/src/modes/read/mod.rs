@@ -14,7 +14,6 @@ mod state;
 pub use command::*;
 pub use config::*;
 pub use entry::*;
-use futures::FutureExt;
 pub use keyboard::*;
 pub use state::*;
 
@@ -65,7 +64,9 @@ pub async fn read(
     let mut reader = Reader::new(config, updater, cancel_token)?;
 
     // Update reader on load.
-    reader.update_entries(DatabaseSearch::Latest).await;
+    reader
+        .update_entries(DatabaseSearch::Latest, OffsetCursor::Latest)
+        .await;
 
     // Run loop.
     let result = reader.run(&mut terminal).await;
@@ -323,7 +324,11 @@ impl Reader {
                 return Ok(());
             }
             ReadCommandLiteral::Update => {
-                self.update_entries(DatabaseSearch::Latest).await;
+                self.update_entries(
+                    DatabaseSearch::Latest,
+                    OffsetCursor::Latest,
+                )
+                .await;
             }
             ReadCommandLiteral::Down => match self.interaction_state.focus {
                 Focus::List => {
@@ -439,6 +444,30 @@ impl Reader {
                     command: "/".into(),
                     message: None,
                 };
+            }
+            ReadCommandLiteral::PageForwards => {
+                let offset = if let Some(entry) = self.entries.last() {
+                    OffsetCursor::Before(entry.date().clone())
+                } else {
+                    OffsetCursor::Latest
+                };
+                self.update_entries(
+                    self.interaction_state.previous_search.clone(),
+                    offset,
+                )
+                .await;
+            }
+            ReadCommandLiteral::PageBackwards => {
+                let offset = if let Some(entry) = self.entries.first() {
+                    OffsetCursor::After(entry.date().clone())
+                } else {
+                    OffsetCursor::Latest
+                };
+                self.update_entries(
+                    self.interaction_state.previous_search.clone(),
+                    offset,
+                )
+                .await;
             }
             ReadCommandLiteral::Command(command) => {
                 if self.interaction_state.selection < self.entries.len() {
@@ -587,7 +616,7 @@ impl Reader {
         while let Some(res) = self.command_futures.try_join_next() {
             if let Ok((entry_id, context)) = res {
                 self.updater.save_command(entry_id, &context).await;
-                if let Some(entry) = self.entries.get(entry_id) {
+                if let Some(entry) = self.entries.get_mut(entry_id) {
                     entry.add_result(context);
                 }
             }
@@ -595,7 +624,11 @@ impl Reader {
     }
 
     /// Search for entries.
-    async fn update_entries(&mut self, search: DatabaseSearch) {
+    async fn update_entries(
+        &mut self,
+        search: DatabaseSearch,
+        offset: OffsetCursor,
+    ) {
         // Check for new update.
         if let Some(entries_fut) = &mut self.refresh {
             entries_fut.abort();
@@ -604,8 +637,10 @@ impl Reader {
 
         self.refresh = Some({
             let updater = self.updater.clone();
-            tokio::spawn(async move { updater.search(search, None).await })
+            let search = search.clone();
+            tokio::spawn(async move { updater.search(search, offset).await })
         });
+        self.interaction_state.previous_search = search;
     }
 
     async fn handle_command_mode_input(
@@ -684,23 +719,30 @@ impl Reader {
         match parsed_command.command {
             command_mode::Command::Quit => self.cancel_token.cancel(),
             command_mode::Command::SearchLatest => {
-                self.update_entries(DatabaseSearch::Latest).await
+                self.update_entries(
+                    DatabaseSearch::Latest,
+                    OffsetCursor::Latest,
+                )
+                .await
             }
             command_mode::Command::SearchAny(search) => {
                 if search.tag.is_some() {
-                    self.update_entries(DatabaseSearch::Tag(
-                        search.tag.unwrap(),
-                    ))
+                    self.update_entries(
+                        DatabaseSearch::Tag(search.tag.unwrap()),
+                        OffsetCursor::Latest,
+                    )
                     .await
                 } else if search.feed.is_some() {
-                    self.update_entries(DatabaseSearch::Feed(
-                        search.feed.unwrap(),
-                    ))
+                    self.update_entries(
+                        DatabaseSearch::Feed(search.feed.unwrap()),
+                        OffsetCursor::Latest,
+                    )
                     .await
                 } else {
-                    self.update_entries(DatabaseSearch::Search(
-                        search.text.unwrap(),
-                    ))
+                    self.update_entries(
+                        DatabaseSearch::Search(search.text.unwrap()),
+                        OffsetCursor::Latest,
+                    )
                     .await
                 }
             }

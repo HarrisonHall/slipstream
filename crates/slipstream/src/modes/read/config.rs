@@ -368,6 +368,12 @@ pub enum ReadCommandLiteral {
     /// Enter search mode.
     #[serde(alias = "search-mode")]
     SearchMode,
+    /// Page forwards.
+    #[serde(alias = "page-forwards", alias = "next")]
+    PageForwards,
+    /// Page backwards.
+    #[serde(alias = "page-backwards", alias = "prev", alias = "previous")]
+    PageBackwards,
     /// Run a specific command_mode command.
     #[serde(alias = "command")]
     Command(String),

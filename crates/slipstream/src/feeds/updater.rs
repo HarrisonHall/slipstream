@@ -109,19 +109,9 @@ impl Updater {
             }
             UpdaterRequest::EntriesSearch { tx, search, offset } => {
                 if let Some(entry_db) = &self.entry_db {
-                    tx.send(
-                        entry_db
-                            .get_entries(
-                                search,
-                                128,
-                                // config.global.limits.max(),
-                                offset.unwrap_or_else(|| {
-                                    slipfeed::DateTime::now()
-                                }),
-                            )
-                            .await,
-                    )
-                    .ok();
+                    // TODO: custom search count.
+                    tx.send(entry_db.get_entries(search, 128, offset).await)
+                        .ok();
                 };
             }
             UpdaterRequest::FeedFetch { tx, options } => {
@@ -132,7 +122,7 @@ impl Updater {
                                 .get_entries(
                                     DatabaseSearch::Latest,
                                     config.global.limits.max(),
-                                    slipfeed::DateTime::now(),
+                                    OffsetCursor::Latest,
                                 )
                                 .await;
                             let mut entries = DatabaseEntryList::new(
@@ -157,7 +147,7 @@ impl Updater {
                                 .get_entries(
                                     DatabaseSearch::Tag(tag),
                                     config.global.limits.max(),
-                                    slipfeed::DateTime::now(),
+                                    OffsetCursor::Latest,
                                 )
                                 .await;
                             let mut entries = DatabaseEntryList::new(
@@ -182,7 +172,7 @@ impl Updater {
                                     .get_entries(
                                         DatabaseSearch::Feed(feed.clone()),
                                         config.global.limits.max(),
-                                        slipfeed::DateTime::now(),
+                                        OffsetCursor::Latest,
                                     )
                                     .await;
                                 let mut entries = DatabaseEntryList::new(
@@ -262,7 +252,7 @@ enum UpdaterRequest {
     EntriesSearch {
         tx: oneshot::Sender<DatabaseEntryList>,
         search: DatabaseSearch,
-        offset: Option<slipfeed::DateTime>,
+        offset: OffsetCursor,
     },
     FeedFetch {
         tx: oneshot::Sender<DatabaseEntryList>,
@@ -305,7 +295,7 @@ impl UpdaterHandle {
     pub async fn search(
         &self,
         search: DatabaseSearch,
-        offset: Option<slipfeed::DateTime>,
+        offset: OffsetCursor,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
         self.send(UpdaterRequest::EntriesSearch { tx, search, offset })

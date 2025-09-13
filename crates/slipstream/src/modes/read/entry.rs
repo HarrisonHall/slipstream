@@ -285,13 +285,11 @@ impl<'a> Widget for EntryInfoWidget<'a> {
             .render(layouts[0], buf);
 
         if !self.0.content().is_empty() {
-            tracing::info!("Rendering: {}", self.0.content());
             Paragraph::new(tui_markdown::from_str(self.0.content()))
                 .left_aligned()
                 .wrap(Wrap { trim: false })
                 .render(layouts[1], buf);
         } else {
-            tracing::info!("Rendering: empty");
             Span::styled("---", Style::default().fg(Color::Gray))
                 .render(layouts[1], buf);
         }
@@ -337,18 +335,34 @@ impl DatabaseEntryList {
             self.lookup.insert(db_id, self.entries.len() - 1);
             return Ok(());
         }
-        bail!("Entry list at max length");
+        bail!("Entry list at max length ({}).", self.max_size);
     }
 
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
-    pub fn get(&mut self, db_id: EntryDbId) -> Option<&mut DatabaseEntry> {
+    #[allow(unused)]
+    pub fn get(&self, db_id: EntryDbId) -> Option<&DatabaseEntry> {
+        match self.lookup.get(&db_id) {
+            Some(idx) => Some(&self.entries[*idx]),
+            None => None,
+        }
+    }
+
+    pub fn get_mut(&mut self, db_id: EntryDbId) -> Option<&mut DatabaseEntry> {
         match self.lookup.get(&db_id) {
             Some(idx) => Some(&mut self.entries[*idx]),
             None => None,
         }
+    }
+
+    pub fn first(&self) -> Option<&DatabaseEntry> {
+        self.entries.first()
+    }
+
+    pub fn last(&self) -> Option<&DatabaseEntry> {
+        self.entries.last()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &DatabaseEntry> {

@@ -246,10 +246,10 @@ impl Database {
         &self,
         params: DatabaseSearch,
         max_length: usize,
-        offset: slipfeed::DateTime,
+        cursor: OffsetCursor,
     ) -> DatabaseEntryList {
         let mut set = DatabaseEntryList::new(max_length);
-        let where_clause: String = match params {
+        let search_clause: String = match params {
             DatabaseSearch::Latest => "TRUE = TRUE".into(),
             DatabaseSearch::Search(search) => {
                 let search = search.to_lowercase();
@@ -260,6 +260,15 @@ impl Database {
             DatabaseSearch::Tag(tag) => format!("tags.tag LIKE '%{tag}%'"),
             DatabaseSearch::Feed(feed) => {
                 format!("sources.source LIKE '%{feed}%'")
+            }
+        };
+        let cursor_clause: String = match cursor {
+            OffsetCursor::Latest => "TRUE = TRUE".into(),
+            OffsetCursor::Before(dt) => {
+                format!("entries.timestamp < unixepoch('{}')", dt.to_iso8601())
+            }
+            OffsetCursor::After(dt) => {
+                format!("entries.timestamp > unixepoch('{}')", dt.to_iso8601())
             }
         };
         let res = sqlx::query(&format!(
@@ -275,15 +284,13 @@ impl Database {
                 LEFT JOIN tags ON entries.id = tags.entry_id
                 LEFT JOIN commands ON entries.id = commands.entry_id
             WHERE
-                entries.timestamp < ? AND
-                {}
+                {} AND {}
             GROUP BY entries.id
             ORDER BY entries.timestamp DESC, entries.id DESC
             LIMIT ?
             ",
-            where_clause
+            cursor_clause, search_clause,
         ))
-        .bind(&offset.to_chrono())
         .bind(max_length as u32)
         .fetch_all(&self.pool)
         .await;
@@ -470,4 +477,11 @@ impl From<&slipfeed::Entry> for EntryV1 {
             other_links: value.other_links().clone(),
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum OffsetCursor {
+    Latest,
+    Before(slipfeed::DateTime),
+    After(slipfeed::DateTime),
 }

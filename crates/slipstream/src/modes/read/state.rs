@@ -32,6 +32,8 @@ pub struct InteractionState {
     pub focus: Focus,
     /// Current selected entry index.
     pub selection: usize,
+    /// Previous search.
+    pub previous_search: DatabaseSearch,
 }
 
 impl InteractionState {
@@ -54,6 +56,7 @@ impl Default for InteractionState {
         Self {
             focus: Focus::List,
             selection: 0,
+            previous_search: DatabaseSearch::Latest,
         }
     }
 }

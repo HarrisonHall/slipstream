@@ -47,6 +47,11 @@ impl DateTime {
         }
     }
 
+    /// Convert to ISO-8601 string.
+    pub fn to_iso8601(&self) -> String {
+        return self.0.format("%+").to_string();
+    }
+
     // pub fn from_std(&self, dt: std::time::Instant) -> Self {
     //     Self(match chrono::DateTime::<chrono::Utc>::from_timestamp_millis(dt.duration_since(std::time::Instant)))
     // }

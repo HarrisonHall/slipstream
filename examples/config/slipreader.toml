@@ -99,6 +99,8 @@ S-o = "!open-2"
 u = "update"
 C-d = "page-down"
 C-u = "page-up"
+S-l = "next"
+S-h = "prev"
 
 1 = "!read-1"
 C-1 = "!archive-1"
