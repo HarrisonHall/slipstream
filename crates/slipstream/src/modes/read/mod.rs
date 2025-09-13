@@ -14,6 +14,7 @@ mod state;
 pub use command::*;
 pub use config::*;
 pub use entry::*;
+use futures::FutureExt;
 pub use keyboard::*;
 pub use state::*;
 
@@ -731,6 +732,30 @@ impl Reader {
                 let tags: Vec<slipfeed::Tag> =
                     entry.entry.tags().iter().map(|t| t.clone()).collect();
                 self.updater.update_tags(entry.db_id, tags).await;
+            }
+            command_mode::Command::Command { command } => {
+                let command = self.config.read.get_custom_command(&command);
+                match command {
+                    ReadCommand::CustomCommandFull { name, command } => {
+                        self.entries[self.interaction_state.selection]
+                            .add_result(command::CommandResultContext::new(
+                                name.clone(),
+                            ));
+                        self.command_futures.spawn(Reader::run_shell_command(
+                            name.clone(),
+                            self.entries[self.interaction_state.selection]
+                                .clone(),
+                            (*command).clone(),
+                            self.terminal_state.command_width,
+                        ));
+                    }
+                    _ => {
+                        tracing::warn!(
+                            "Command mode commands do not support command: {command:?}."
+                        );
+                    }
+                }
+                // self.run_command(command).boxed().await;
             }
         };
 

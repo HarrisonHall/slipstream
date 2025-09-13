@@ -10,8 +10,7 @@ Feed fetcher, filterer, and aggregator.
 ## Crates
 
 - `slipfeed` - Feed fetcher, filterer, and aggregator library.
-- `slipreader` - CLI feed reader
-- `slipstream` - Simple CLI `slipfeed` server utilizing a simple
+- `slipstream` - Simple CLI `slipfeed` server and reader utilizing a simple
   [config](examples/config/slipstream.toml).
 
 ## Getting Started
@@ -21,9 +20,12 @@ Feed fetcher, filterer, and aggregator.
 `slipstream` is a command-line application for serving filtered/aggregated feeds
 from existing feeds a la Yahoo Pipes. A simple configuration file (e.g.
 [slipstream.toml](examples/config/slipstream.toml)) is used to define feeds,
-relationships, and filters. Running
-`slipstream --config <your-config.toml> --port <your-port>` will start a web
-server that exposes the following endpoints:
+relationships, and filters.
+
+#### Serve
+
+Running `slipstream --config <your-config.toml> serve --port <your-port>` will
+start a web server that exposes the following endpoints:
 
 - `/config` for viewing the config (toml).
 - `/all` (or `/`) for viewing all entries (html).
@@ -37,7 +39,23 @@ server that exposes the following endpoints:
 An example can be found at my personal website
 [feeds.hachha.dev](https://feeds.hachha.dev/).
 
-![slipstream screenshot](./crates/slipstream/src/web/content/example.png)
+![web screenshot](./examples/media/web.png)
+
+### Read
+
+Running `slipstream --config <your-config.toml> read` will launch a local tui.
+The slipstream reader supports the following features:
+
+- Custom commands
+- Custom keybindings
+- Custom colors
+- Responsive layout (horizontal and vertical)
+- Hooks
+
+Check out the example [config](./examples/config/slipreader.toml) to see
+additional configuration options.
+
+![cli screenshot](./examples/media/cli.png)
 
 ## Roadmap
 
@@ -48,18 +66,19 @@ be separate, but it has since been merged into `slipknot` (now named
 
 - `slipfeed`
   - [ ] Add other built-in feed implementations (e.g. activitypub)
-  - [ ] Allow custom user agents
 - `slipstream` (general)
   - [ ] Add more filters (regex/pomsky, allowlists, etc.)
   - [ ] OPML conversion support
   - [ ] Use sqlite for storing entries and feed definitions
-  - [ ] Support atom exports
 - `slipstream` (reader)
   - [ ] Support pagination (or make automatic)
   - [ ] Indicate pending updates
+  - [ ] Improve help menu
+- `slipstream` (api)
+  - [ ] Allow syncing tags to a slipstream server
+  - [ ] Add support for a shared secret in an http header
 
 ## Contributing
 
 Simple bug fixes and suggestions are welcome. At this time, more in-depth
-contributions will likely be rejected unless communicated and planned
-ahead-of-time.
+contributions will likely be rejected unless discussed ahead-of-time.

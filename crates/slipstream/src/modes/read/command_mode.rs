@@ -13,11 +13,16 @@ pub struct CommandParser {
 impl CommandParser {
     /// Parse a text command.
     pub fn parse_command(command: impl AsRef<str>) -> Result<Self> {
-        let mut command: String = command.as_ref().into();
+        let mut command: String = command.as_ref().trim().into();
 
         // Handle search mode:
         if command.starts_with("/") {
             command = "search ".to_string() + &command[1..];
+        }
+
+        // Handle custom command mode:
+        if command.starts_with("!") {
+            command = "command ".to_string() + &command[1..];
         }
 
         match CommandParser::try_parse_from(
@@ -52,6 +57,9 @@ pub enum Command {
     /// Toggle a tag.
     #[command(alias = "toggle-tag")]
     TagToggle { tag: String },
+    /// Run a user-defined command.
+    #[command(alias = "run")]
+    Command { command: String },
 }
 
 #[derive(Parser, Clone)]

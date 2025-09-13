@@ -70,7 +70,7 @@ tags = ["environment", "energy"]
 scroll = 1
 
 [read.tags]
-hidden = ["unread"]
+hidden = ["unread", "important"]
 
 [[read.tags.colors]]
 tag = "important"
