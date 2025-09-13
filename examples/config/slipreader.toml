@@ -58,6 +58,13 @@ max = 10
 url = "https://hachha.dev/blog.feed"
 tags = ["hacking", "tech"]
 
+[feeds.shimbun-science]
+url = "https://www.asahi.com/rss/asahi/science.rdf"
+tags = ["science"]
+
+[feeds.shimbun-env]
+url = "https://www.asahi.com/rss/asahi/eco.rdf"
+tags = ["environment", "energy"]
 
 [read]
 scroll = 1

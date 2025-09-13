@@ -221,10 +221,22 @@ impl StandardSyndication {
         let mut parsed = EntryBuilder::new();
         parsed
             .title(rss_entry.title().unwrap_or(""))
-            .date(
-                DateTime::try_from(rss_entry.pub_date().unwrap_or(""))
-                    .unwrap_or_else(|_| parse_time.clone()),
-            )
+            .date('date: {
+                if let Ok(dt) =
+                    DateTime::try_from(rss_entry.pub_date().unwrap_or(""))
+                {
+                    break 'date dt;
+                }
+                if let Some(dc) = rss_entry.dublin_core_ext() {
+                    for date in dc.dates() {
+                        if let Ok(dt) = DateTime::try_from(date) {
+                            break 'date dt;
+                        }
+                    }
+                }
+
+                parse_time.clone()
+            })
             .author(rss_entry.author().unwrap_or(""))
             .content(html2md::rewrite_html(
                 match rss_entry.description() {
@@ -242,6 +254,11 @@ impl StandardSyndication {
         let mut entry = parsed.build();
         for category in rss_entry.categories() {
             entry.add_tag(&Tag::new(category.name()));
+        }
+        if let Some(dc) = rss_entry.dublin_core_ext() {
+            for subject in dc.subjects() {
+                entry.add_tag(&Tag::new(subject));
+            }
         }
         return entry;
     }
