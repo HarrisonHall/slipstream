@@ -258,23 +258,25 @@ impl From<&ColorLiteral> for Color {
 pub struct CustomCommand {
     pub name: Arc<String>,
     pub command: Arc<Vec<String>>,
+    #[serde(default = "CustomCommand::default_save")]
+    pub save: bool,
+}
+
+impl CustomCommand {
+    fn default_save() -> bool {
+        true
+    }
 }
 
 impl From<CustomCommand> for ReadCommand {
     fn from(value: CustomCommand) -> Self {
-        ReadCommand::CustomCommandFull {
-            name: value.name.clone(),
-            command: value.command.clone(),
-        }
+        ReadCommand::CustomCommandFull(value.clone())
     }
 }
 
 impl From<&CustomCommand> for ReadCommand {
     fn from(value: &CustomCommand) -> Self {
-        ReadCommand::CustomCommandFull {
-            name: value.name.clone(),
-            command: value.command.clone(),
-        }
+        ReadCommand::CustomCommandFull(value.clone())
     }
 }
 
@@ -287,10 +289,7 @@ pub enum ReadCommand {
     /// Custom command name.
     CustomCommandRef(Arc<String>),
     /// Custom command definition.
-    CustomCommandFull {
-        name: Arc<String>,
-        command: Arc<Vec<String>>,
-    },
+    CustomCommandFull(CustomCommand),
 }
 
 impl<'de> Deserialize<'de> for ReadCommand {

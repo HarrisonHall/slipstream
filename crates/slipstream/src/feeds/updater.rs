@@ -467,7 +467,7 @@ impl UpdaterHandle {
         };
         self.send(UpdaterRequest::CommandUpdate {
             entry_id,
-            command: (*command.binding_name).clone(),
+            command: (*command.command.name).clone(),
             result: match success {
                 true => 0,
                 false => 1,

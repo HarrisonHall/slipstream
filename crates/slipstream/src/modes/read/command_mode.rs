@@ -60,6 +60,12 @@ pub enum Command {
     /// Run a user-defined command.
     #[command(alias = "run")]
     Command { command: String },
+    /// Page forwards.
+    #[command(alias = "next")]
+    PageForwards,
+    /// Page backwards.
+    #[command(alias = "prev", alias = "previous")]
+    PageBackwards,
 }
 
 #[derive(Parser, Clone)]

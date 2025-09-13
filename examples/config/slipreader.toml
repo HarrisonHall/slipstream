@@ -155,19 +155,24 @@ command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64
 [[read.commands]]
 name = "open"
 command = ["fish", "-c", "xdg-open {{link.url}}"]
+save = false
 
 [[read.commands]]
 name = "open-1"
 command = ["fish", "-c", "xdg-open {{link.url1}}"]
+save = false
 [[read.commands]]
 name = "open-2"
 command = ["fish", "-c", "xdg-open {{link.url2}}"]
+save = false
 [[read.commands]]
 name = "open-3"
 command = ["fish", "-c", "xdg-open {{link.url3}}"]
+save = false
 [[read.commands]]
 name = "open-4"
 command = ["fish", "-c", "xdg-open {{link.url4}}"]
+save = false
 
 # Archive.
 [[read.commands]]

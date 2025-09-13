@@ -338,7 +338,11 @@ impl Database {
                     if let Ok(commands) = &commands {
                         for command in &commands.0 {
                             entry.add_result(CommandResultContext {
-                                binding_name: Arc::new(command.0.clone()),
+                                command: CustomCommand {
+                                    name: Arc::new(command.0.clone()),
+                                    command: Arc::new(Vec::new()),
+                                    save: false,
+                                },
                                 result: CommandResult::Finished {
                                     output: Arc::new(command.1.clone()),
                                     success: true, // TODO!

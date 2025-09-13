@@ -93,12 +93,12 @@ impl DatabaseEntry {
     /// This replaces a previous result with the same name.
     pub fn add_result(&mut self, result: CommandResultContext) {
         for ctx in self.command_results.iter_mut() {
-            if ctx.binding_name == result.binding_name {
+            if ctx.command.name == result.command.name {
                 ctx.result = result.result;
                 return;
             }
         }
-        self.ran_commands.push(result.binding_name.clone());
+        self.ran_commands.push(result.command.name.clone());
         self.command_results.push(result);
     }
 }
@@ -113,6 +113,7 @@ impl Deref for DatabaseEntry {
 
 pub struct EntryViewWidget<'a> {
     entry: &'a mut DatabaseEntry,
+    config: &'a Config,
     interaction_state: &'a InteractionState,
     terminal_state: &'a TerminalState,
 }
@@ -120,11 +121,13 @@ pub struct EntryViewWidget<'a> {
 impl<'a> EntryViewWidget<'a> {
     pub fn new(
         entry: &'a mut DatabaseEntry,
+        config: &'a Config,
         interaction_state: &'a InteractionState,
         terminal_state: &'a TerminalState,
     ) -> Self {
         Self {
             entry,
+            config,
             interaction_state,
             terminal_state,
         }
@@ -186,7 +189,8 @@ impl<'a> Widget for EntryViewWidget<'a> {
         tabs.render(tab_layouts[0], buf);
         match self.entry.get_result() {
             None => {
-                EntryInfoWidget(self.entry).render(tab_layouts[1], buf);
+                EntryInfoWidget(self.entry, self.config)
+                    .render(tab_layouts[1], buf);
             }
             Some(selected_result) => {
                 selected_result.widget().render(tab_layouts[1], buf);
@@ -196,7 +200,7 @@ impl<'a> Widget for EntryViewWidget<'a> {
 }
 
 /// Widget for displaying entry info.
-struct EntryInfoWidget<'a>(&'a slipfeed::Entry);
+struct EntryInfoWidget<'a>(&'a slipfeed::Entry, &'a Config);
 
 impl<'a> Widget for EntryInfoWidget<'a> {
     fn render(self, area: Rect, buf: &mut Buffer)
@@ -239,6 +243,7 @@ impl<'a> Widget for EntryInfoWidget<'a> {
             .0
             .tags()
             .iter()
+            .filter(|t| !self.1.read.tags.hidden.contains(t.as_ref()))
             .map(|t| format!("<{t}>"))
             .collect::<Vec<String>>();
         tags.sort();

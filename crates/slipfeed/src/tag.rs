@@ -54,3 +54,15 @@ impl From<&str> for Tag {
         Tag(value.into())
     }
 }
+
+impl AsRef<String> for Tag {
+    fn as_ref(&self) -> &String {
+        &self.0
+    }
+}
+
+impl AsRef<str> for Tag {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}

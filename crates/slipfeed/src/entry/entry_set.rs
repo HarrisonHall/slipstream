@@ -103,14 +103,6 @@ impl<'a> Iterator for EntrySetIter<'a> {
             EntrySetIter::Feed { set, feed, next } => {
                 for entry in &set.entries[*next..] {
                     *next += 1;
-                    // for feed_ref in entry.feeds().iter() {
-                    //     if feed_ref.id == *feed {
-                    //         return Some(entry);
-                    //     }
-                    // }
-                    // if entry.feeds().contains(feed) {
-                    //     return Some(entry);
-                    // }
                     if entry.is_from_feed(*feed) {
                         return Some(entry);
                     }

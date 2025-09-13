@@ -290,14 +290,17 @@ impl Reader {
             ReadCommand::CustomCommandRef(name) => {
                 tracing::error!("Invalid command name: {}", name.as_str());
             }
-            ReadCommand::CustomCommandFull { name, command } => {
-                self.entries[self.interaction_state.selection].add_result(
-                    command::CommandResultContext::new(name.clone()),
-                );
+            ReadCommand::CustomCommandFull(custom_command) => {
+                if custom_command.save {
+                    self.entries[self.interaction_state.selection].add_result(
+                        command::CommandResultContext::new(
+                            custom_command.clone(),
+                        ),
+                    );
+                }
                 self.command_futures.spawn(Reader::run_shell_command(
-                    name.clone(),
+                    custom_command,
                     self.entries[self.interaction_state.selection].clone(),
-                    (*command).clone(),
                     self.terminal_state.command_width,
                 ));
             }
@@ -487,13 +490,12 @@ impl Reader {
     /// This replaces select substrings of the shell command with values from the
     /// entry.
     async fn run_shell_command(
-        binding_name: Arc<String>,
+        custom_command: CustomCommand,
         entry: DatabaseEntry,
-        shell_command: Vec<String>,
         width: u16,
     ) -> (EntryDbId, command::CommandResultContext) {
         // Build command.
-        let mut shell_command = shell_command;
+        let mut shell_command: Vec<String> = (*custom_command.command).clone();
 
         for command in shell_command.iter_mut() {
             // Add links.
@@ -563,7 +565,7 @@ impl Reader {
         subproc.args(&shell_command[1..]);
 
         // Run subprocess.
-        let mut ctx = CommandResultContext::new(binding_name.clone());
+        let mut ctx = CommandResultContext::new(custom_command.clone());
         match subproc.output().await {
             Ok(output) => {
                 let exit: i32 = output.status.code().unwrap_or(1);
@@ -615,9 +617,11 @@ impl Reader {
         // Check for loaded entries.
         while let Some(res) = self.command_futures.try_join_next() {
             if let Ok((entry_id, context)) = res {
-                self.updater.save_command(entry_id, &context).await;
-                if let Some(entry) = self.entries.get_mut(entry_id) {
-                    entry.add_result(context);
+                if context.command.save {
+                    self.updater.save_command(entry_id, &context).await;
+                    if let Some(entry) = self.entries.get_mut(entry_id) {
+                        entry.add_result(context);
+                    }
                 }
             }
         }
@@ -778,16 +782,19 @@ impl Reader {
             command_mode::Command::Command { command } => {
                 let command = self.config.read.get_custom_command(&command);
                 match command {
-                    ReadCommand::CustomCommandFull { name, command } => {
-                        self.entries[self.interaction_state.selection]
-                            .add_result(command::CommandResultContext::new(
-                                name.clone(),
-                            ));
+                    ReadCommand::CustomCommandFull(custom_command) => {
+                        if custom_command.save {
+                            self.entries[self.interaction_state.selection]
+                                .add_result(
+                                    command::CommandResultContext::new(
+                                        custom_command.clone(),
+                                    ),
+                                );
+                        }
                         self.command_futures.spawn(Reader::run_shell_command(
-                            name.clone(),
+                            custom_command,
                             self.entries[self.interaction_state.selection]
                                 .clone(),
-                            (*command).clone(),
                             self.terminal_state.command_width,
                         ));
                     }
@@ -797,7 +804,30 @@ impl Reader {
                         );
                     }
                 }
-                // self.run_command(command).boxed().await;
+            }
+            command_mode::Command::PageForwards => {
+                let offset = if let Some(entry) = self.entries.last() {
+                    OffsetCursor::Before(entry.date().clone())
+                } else {
+                    OffsetCursor::Latest
+                };
+                self.update_entries(
+                    self.interaction_state.previous_search.clone(),
+                    offset,
+                )
+                .await;
+            }
+            command_mode::Command::PageBackwards => {
+                let offset = if let Some(entry) = self.entries.first() {
+                    OffsetCursor::After(entry.date().clone())
+                } else {
+                    OffsetCursor::Latest
+                };
+                self.update_entries(
+                    self.interaction_state.previous_search.clone(),
+                    offset,
+                )
+                .await;
             }
         };
 
@@ -995,13 +1025,14 @@ impl<'a> Widget for ReaderWidget<'a> {
 
                 Line::from(vec![
                     Span::styled(
-                        format!("[{:<10}] ", &feed[..10.min(feed.len())]),
+                        format!("[{:<10}]", &feed[..10.min(feed.len())]),
                         if selected {
                             Style::new().bg(Color::Green).fg(Color::Black)
                         } else {
                             Style::new().fg(Color::Cyan)
                         },
                     ),
+                    Span::from(" "),
                     Span::styled(entry.title(), style),
                 ])
                 .style(if selected { style } else { Style::new() })
@@ -1015,6 +1046,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                 [self.reader.interaction_state.selection];
             EntryViewWidget::new(
                 entry,
+                &self.reader.config,
                 &self.reader.interaction_state,
                 &self.reader.terminal_state,
             )
