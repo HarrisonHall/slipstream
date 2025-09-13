@@ -21,8 +21,6 @@ pub const PAGE_UP: KeyEvent =
     KeyEvent::new(KeyCode::Char('k'), KeyModifiers::SHIFT);
 pub const MENU: KeyEvent = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
 pub const TAB: KeyEvent = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
-pub const IMPORTANT: KeyEvent =
-    KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE);
 pub const COMMAND_MODE: KeyEvent =
     KeyEvent::new(KeyCode::Char(':'), KeyModifiers::NONE);
 pub const SEARCH_MODE: KeyEvent =
@@ -174,5 +172,28 @@ impl<'de> Deserialize<'de> for BindingKey {
         Ok(Self {
             key: KeyEvent::new(code, modifier),
         })
+    }
+}
+
+pub struct MouseCapture;
+
+impl MouseCapture {
+    pub fn new() -> Result<Self> {
+        crossterm::execute!(
+            std::io::stdout(),
+            crossterm::event::EnableMouseCapture
+        )?;
+        return Ok(Self);
+    }
+}
+
+impl Drop for MouseCapture {
+    fn drop(&mut self) {
+        if let Err(e) = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::event::DisableMouseCapture
+        ) {
+            tracing::error!("Failed to restore terminal keyboard: {e}");
+        }
     }
 }

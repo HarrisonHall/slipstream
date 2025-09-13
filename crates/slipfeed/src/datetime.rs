@@ -47,6 +47,11 @@ impl DateTime {
         }
     }
 
+    /// Convert to ISO-8601 string.
+    pub fn to_iso8601(&self) -> String {
+        return self.0.format("%+").to_string();
+    }
+
     // pub fn from_std(&self, dt: std::time::Instant) -> Self {
     //     Self(match chrono::DateTime::<chrono::Utc>::from_timestamp_millis(dt.duration_since(std::time::Instant)))
     // }
@@ -68,7 +73,7 @@ impl TryFrom<&str> for DateTime {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let date = value;
 
-        // rfc3339
+        // rfc3339:
         if let Ok(parsed) =
             chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(
                 date.as_ref(),
@@ -76,7 +81,8 @@ impl TryFrom<&str> for DateTime {
         {
             return Ok(DateTime(parsed.to_utc()));
         }
-        // rfc2822
+
+        // rfc2822:
         if let Ok(parsed) =
             chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc2822(
                 date.as_ref(),
@@ -84,7 +90,9 @@ impl TryFrom<&str> for DateTime {
         {
             return Ok(DateTime(parsed.to_utc()));
         }
-        // iso8601 (at least, try)
+
+        // iso8601 and variants:
+
         if let Ok(parsed) = chrono::NaiveDateTime::parse_from_str(
             date.as_ref(),
             "%Y-%m-%dT%H:%M:%SZ",
@@ -94,6 +102,7 @@ impl TryFrom<&str> for DateTime {
                 chrono::Utc,
             )));
         }
+
         if let Ok(parsed) = chrono::NaiveDateTime::parse_from_str(
             date.as_ref(),
             "%Y-%m-%dT%H:%MZ",
@@ -103,6 +112,7 @@ impl TryFrom<&str> for DateTime {
                 chrono::Utc,
             )));
         }
+
         if let Ok(parsed) =
             chrono::NaiveDate::parse_from_str(date.as_ref(), "%Y-%m-%d")
         {

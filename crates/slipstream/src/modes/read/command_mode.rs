@@ -13,11 +13,16 @@ pub struct CommandParser {
 impl CommandParser {
     /// Parse a text command.
     pub fn parse_command(command: impl AsRef<str>) -> Result<Self> {
-        let mut command: String = command.as_ref().into();
+        let mut command: String = command.as_ref().trim().into();
 
         // Handle search mode:
         if command.starts_with("/") {
             command = "search ".to_string() + &command[1..];
+        }
+
+        // Handle custom command mode:
+        if command.starts_with("!") {
+            command = "command ".to_string() + &command[1..];
         }
 
         match CommandParser::try_parse_from(
@@ -49,22 +54,31 @@ pub enum Command {
     /// Remove a tag.
     #[command(alias = "untag", alias = "remove-tag")]
     TagRemove { tag: String },
+    /// Toggle a tag.
+    #[command(alias = "toggle-tag")]
+    TagToggle { tag: String },
+    /// Run a user-defined command.
+    #[command(alias = "run")]
+    Command { command: String },
+    /// Page forwards.
+    #[command(alias = "next")]
+    PageForwards,
+    /// Page backwards.
+    #[command(alias = "prev", alias = "previous")]
+    PageBackwards,
 }
 
 #[derive(Parser, Clone)]
 pub struct SearchContext {
-    /// Filter by important.
-    #[arg(short, long, default_value_t = false)]
-    pub important: bool,
-    /// Filter by unread.
-    #[arg(short, long, default_value_t = false)]
-    pub unread: bool,
     /// Filter by tag.
-    #[arg(short, long)]
-    pub tag: Option<String>,
+    #[arg(short, long, value_parser, num_args = 1.., value_delimiter = ' ')]
+    pub tag: Vec<String>,
     /// Filter by feed.
-    #[arg(short, long)]
-    pub feed: Option<String>,
+    #[arg(short, long, value_parser, num_args = 1.., value_delimiter = ' ')]
+    pub feed: Vec<String>,
+    /// Filter by command.
+    #[arg(short, long, value_parser, num_args = 1.., value_delimiter = ' ')]
+    pub command: Vec<String>,
     /// Search text.
     pub text: Option<String>,
 }

@@ -2,6 +2,8 @@
 
 use std::hash::Hash;
 
+use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
+
 use super::*;
 
 /// Id that represents a feed.
@@ -13,6 +15,18 @@ pub struct FeedId(pub usize);
 pub struct FeedRef {
     pub id: FeedId,
     pub name: Arc<String>,
+}
+
+impl PartialOrd for FeedRef {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        (*self.name).partial_cmp(&(*other.name))
+    }
+}
+
+impl Ord for FeedRef {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (*self.name).cmp(&(*other.name))
+    }
 }
 
 /// Attributes all feeds must have.
@@ -100,11 +114,153 @@ pub trait Feed: std::fmt::Debug + Send + Sync + 'static {
 #[derive(Clone, Debug)]
 pub struct StandardSyndication {
     url: String,
+    user_agent: Option<String>,
 }
 
 impl StandardSyndication {
-    pub fn new(url: impl Into<String>) -> Box<Self> {
-        Box::new(Self { url: url.into() })
+    pub fn new(
+        url: impl Into<String>,
+        user_agent: Option<String>,
+    ) -> Box<Self> {
+        return Box::new(Self {
+            url: url.into(),
+            user_agent,
+        });
+    }
+
+    fn parse(
+        &self,
+        body: &str,
+        parse_time: &DateTime,
+        tx: UnboundedSender<Entry>,
+    ) {
+        let mut parse_error = String::new();
+
+        // Try to parse as atom.
+        match body.parse::<atom_syndication::Feed>() {
+            Ok(atom_feed) => {
+                tracing::trace!("Parsed {:?} as atom", self);
+                for atom_entry in atom_feed.entries() {
+                    let entry = StandardSyndication::parse_atom(atom_entry);
+                    tx.send(entry).ok();
+                }
+                return;
+            }
+            Err(e) => {
+                parse_error.push_str(&format!("\n{}", e));
+            }
+        }
+
+        // Try to parse as rss.
+        match body.parse::<rss::Channel>() {
+            Ok(rss_feed) => {
+                tracing::trace!("Parsed {:?} as rss", self);
+                for rss_entry in rss_feed.items() {
+                    let entry =
+                        StandardSyndication::parse_rss(rss_entry, parse_time);
+                    tx.send(entry).ok();
+                }
+                return;
+            }
+            Err(e) => {
+                parse_error.push_str(&format!("\n{}", e));
+            }
+        }
+
+        tracing::warn!(
+            "Unable to parse feed `{:?}` as atom or rss:\n\t{}\nReasons:{}",
+            self,
+            body,
+            &parse_error
+        );
+    }
+
+    fn parse_atom(atom_entry: &atom_syndication::Entry) -> Entry {
+        let mut parsed = EntryBuilder::new();
+        parsed
+            .title(atom_entry.title().to_string())
+            .date(DateTime::from_chrono(atom_entry.updated().to_utc()))
+            .author(
+                atom_entry
+                    .authors()
+                    .iter()
+                    .fold("".to_string(), |acc, author| {
+                        format!("{} {}", acc, author.name()).to_string()
+                    })
+                    .trim(),
+            )
+            .content(match atom_entry.summary() {
+                Some(sum) => html2md::rewrite_html(&sum.value, false),
+                None => match atom_entry.content() {
+                    Some(content) => html2md::rewrite_html(
+                        content.value().unwrap_or(""),
+                        false,
+                    ),
+                    None => "".into(),
+                },
+            });
+        for (i, link) in atom_entry.links().iter().enumerate() {
+            if i == 0 {
+                parsed.source(&link.href);
+            } else {
+                parsed.other_link(Link::new_with_mime(
+                    &link.href,
+                    link.title().unwrap_or(""),
+                    link.mime_type().unwrap_or(""),
+                ));
+            }
+        }
+        let mut entry = parsed.build();
+        for category in atom_entry.categories() {
+            entry.add_tag(&Tag::new(String::from(category.term.clone())));
+        }
+        return entry;
+    }
+
+    fn parse_rss(rss_entry: &rss::Item, parse_time: &DateTime) -> Entry {
+        let mut parsed = EntryBuilder::new();
+        parsed
+            .title(rss_entry.title().unwrap_or(""))
+            .date('date: {
+                if let Ok(dt) =
+                    DateTime::try_from(rss_entry.pub_date().unwrap_or(""))
+                {
+                    break 'date dt;
+                }
+                if let Some(dc) = rss_entry.dublin_core_ext() {
+                    for date in dc.dates() {
+                        if let Ok(dt) = DateTime::try_from(date) {
+                            break 'date dt;
+                        }
+                    }
+                }
+
+                parse_time.clone()
+            })
+            .author(rss_entry.author().unwrap_or(""))
+            .content(html2md::rewrite_html(
+                match rss_entry.description() {
+                    Some(desc) => desc,
+                    None => rss_entry.content().unwrap_or(""),
+                },
+                false,
+            ));
+        if let Some(link) = rss_entry.link() {
+            parsed.source(link);
+        }
+        if let Some(comments) = rss_entry.comments() {
+            parsed.comments(comments);
+        }
+        let mut entry = parsed.build();
+        for category in rss_entry.categories() {
+            entry.add_tag(&Tag::new(category.name()));
+        }
+        if let Some(dc) = rss_entry.dublin_core_ext() {
+            for subject in dc.subjects() {
+                entry.add_tag(&Tag::new(subject));
+            }
+        }
+        return entry;
     }
 }
 
@@ -118,7 +274,12 @@ impl Hash for StandardSyndication {
 impl Feed for StandardSyndication {
     async fn update(&mut self, ctx: &UpdaterContext, attr: &FeedAttributes) {
         // Generate request.
-        let client_builder = reqwest::ClientBuilder::new();
+        let mut client_builder = reqwest::ClientBuilder::new();
+
+        if let Some(user_agent) = &self.user_agent {
+            client_builder = client_builder.user_agent(user_agent);
+        }
+
         let client = match client_builder.build() {
             Ok(client) => client,
             Err(e) => {
@@ -142,117 +303,35 @@ impl Feed for StandardSyndication {
         };
 
         // Execute request and parse.
+        let (tx, mut rx) = unbounded_channel();
         if let Ok(req_result) = client.execute(request).await {
             if let Ok(body) = req_result.text().await {
-                let body = body.as_str();
-                if let Ok(atom_feed) = body.parse::<atom_syndication::Feed>() {
-                    for atom_entry in atom_feed.entries() {
-                        let mut parsed = EntryBuilder::new();
-                        parsed
-                            .title(atom_entry.title().to_string())
-                            .date(DateTime::from_chrono(
-                                atom_entry.updated().to_utc(),
-                            ))
-                            .author(
-                                atom_entry
-                                    .authors()
-                                    .iter()
-                                    .fold("".to_string(), |acc, author| {
-                                        format!("{} {}", acc, author.name())
-                                            .to_string()
-                                    })
-                                    .trim(),
-                            )
-                            .content(match atom_entry.summary() {
-                                Some(sum) => &sum.value,
-                                None => match atom_entry.content() {
-                                    Some(content) => {
-                                        content.value().unwrap_or("")
-                                    }
-                                    None => "",
-                                },
-                            });
-                        for (i, link) in atom_entry.links().iter().enumerate() {
-                            if i == 0 {
-                                parsed.source(&link.href);
-                            } else {
-                                parsed.other_link(Link::new_with_mime(
-                                    &link.href,
-                                    link.title().unwrap_or(""),
-                                    link.mime_type().unwrap_or(""),
-                                ));
-                            }
-                        }
-                        let mut entry = parsed.build();
-                        for category in atom_entry.categories() {
-                            entry.add_tag(&Tag::new(String::from(
-                                category.term.clone(),
-                            )));
-                        }
-                        let too_old = *entry.date()
-                            < ctx.parse_time.clone() - attr.timeout.clone();
-                        if !too_old && attr.passes_filters(self, &entry) {
-                            ctx.sender
-                                .send((
-                                    entry.clone(),
-                                    FeedRef {
-                                        id: ctx.feed_id,
-                                        name: attr.display_name.clone(),
-                                    },
-                                ))
-                                .ok();
-                        }
-                    }
-                    return;
-                }
-                if let Ok(rss_feed) = body.parse::<rss::Channel>() {
-                    for rss_entry in rss_feed.items {
-                        let mut parsed = EntryBuilder::new();
-                        parsed
-                            .title(rss_entry.title().unwrap_or(""))
-                            .date(
-                                DateTime::try_from(
-                                    rss_entry.pub_date().unwrap_or(""),
-                                )
-                                .unwrap_or(ctx.parse_time.clone()),
-                            )
-                            .author(rss_entry.author().unwrap_or(""))
-                            .content(match rss_entry.description() {
-                                Some(desc) => desc,
-                                None => rss_entry.content().unwrap_or(""),
-                            });
-                        if let Some(link) = rss_entry.link() {
-                            parsed.source(link);
-                        }
-                        if let Some(comments) = rss_entry.comments() {
-                            parsed.comments(comments);
-                        }
-                        let mut entry = parsed.build();
-                        for category in rss_entry.categories() {
-                            entry.add_tag(&Tag::new(category.name()));
-                        }
-                        let too_old = *entry.date()
-                            < ctx.parse_time.clone() - attr.timeout.clone();
-                        if !too_old && attr.passes_filters(self, &entry) {
-                            ctx.sender
-                                .send((
-                                    entry.clone(),
-                                    FeedRef {
-                                        id: ctx.feed_id,
-                                        name: attr.display_name.clone(),
-                                    },
-                                ))
-                                .ok();
-                        }
-                    }
-                    return;
-                }
-                tracing::warn!(
-                    "Unable to parse feed {:?} as atom or rss:\n\t{}",
-                    self,
-                    body
-                );
+                self.parse(body.as_str(), &ctx.parse_time, tx);
             }
+        }
+
+        // Forward the matching entries.
+        while let Ok(entry) = rx.try_recv() {
+            let too_old =
+                *entry.date() < ctx.parse_time.clone() - attr.timeout.clone();
+            if too_old {
+                continue;
+            }
+
+            let passes_filters = attr.passes_filters(self, &entry);
+            if !passes_filters {
+                continue;
+            }
+
+            ctx.sender
+                .send((
+                    entry.clone(),
+                    FeedRef {
+                        id: ctx.feed_id,
+                        name: attr.display_name.clone(),
+                    },
+                ))
+                .ok();
         }
     }
 }

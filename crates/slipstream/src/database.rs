@@ -5,23 +5,33 @@ use super::*;
 use std::path::PathBuf;
 
 use resolve_path::PathResolveExt;
-use sqlx::{Connection, Row, SqliteConnection, sqlite::SqliteConnectOptions};
+use sqlx::{
+    Row, SqlitePool, sqlite::SqliteConnectOptions, sqlite::SqlitePoolOptions,
+};
 
 use crate::modes::DatabaseEntry;
 
 /// Slipfeed database abstraction.
 pub struct Database {
-    /// Path to the sqlite database.
+    /// Path to the sqlite database file.
+    /// This is ":memory:" if the database is unspecified.
     #[allow(unused)]
     path: String,
     /// Connection to the sqlite database.
-    conn: sqlx::SqliteConnection,
+    pool: SqlitePool,
 }
 
 impl Database {
+    /// Create a new database.
     pub async fn new(path: impl AsRef<str>) -> Result<Self> {
+        // Parse path and create parents if necessary. Additionally set connect
+        // options according to the specified path.
+        let options: SqliteConnectOptions;
         let path: String = match path.as_ref() {
-            ":memory:" => ":memory:".into(),
+            ":memory:" => {
+                options = SqliteConnectOptions::from_str(":memory:")?;
+                ":memory:".into()
+            }
             _ => {
                 let mut path: PathBuf = path.as_ref().into();
                 path = path.resolve().into_owned();
@@ -32,19 +42,30 @@ impl Database {
                         );
                     }
                 }
-                path.to_string_lossy().into_owned()
+                let path = path.to_string_lossy().into_owned();
+                options = SqliteConnectOptions::new()
+                    .filename(path.clone())
+                    .create_if_missing(true);
+                path
             }
         };
-        tracing::info!("Using database: {}", &path);
-        let options = SqliteConnectOptions::new()
-            .filename(path.clone())
-            .create_if_missing(true);
-        let mut conn = SqliteConnection::connect_with(&options).await.unwrap();
-        Database::initialize(&mut conn).await?;
-        Ok(Self { path, conn })
+
+        // Create pool at path.
+        tracing::debug!("Using database: {}", &path);
+        let pool = SqlitePoolOptions::new()
+            .min_connections(2)
+            .max_connections(4)
+            .connect_with(options)
+            .await?;
+
+        // Initialize database.
+        Database::initialize(&pool).await?;
+
+        Ok(Self { path, pool })
     }
 
-    async fn initialize(conn: &mut sqlx::SqliteConnection) -> Result<()> {
+    /// Initialize the database.
+    async fn initialize(pool: &SqlitePool) -> Result<()> {
         let res = sqlx::query(
             "
             CREATE TABLE IF NOT EXISTS entries(
@@ -61,11 +82,7 @@ impl Database {
                 author TEXT NOT NULL,
                 -- Entry source_id.
                 -- This is the source provided by the _original_ feed.
-                source_id TEXT DEFAULT NULL,
-                -- If the entry is marked important.
-                important INTEGER NOT NULL DEFAULT FALSE,
-                -- If the entry has been read.
-                read INTEGER NOT NULL DEFAULT FALSE
+                source_id TEXT DEFAULT NULL
             ) STRICT;
             CREATE INDEX IF NOT EXISTS entries_entry_idx ON entries(entry);
             CREATE INDEX IF NOT EXISTS entries_timestamp_idx ON entries(timestamp);
@@ -114,17 +131,19 @@ impl Database {
             CREATE INDEX IF NOT EXISTS commands_entry_id_idx ON commands(entry_id);
             ",
         )
-        .execute(conn)
+        .execute(pool)
         .await;
 
-        res?;
+        if let Err(e) = res {
+            bail!("Failed to initialize database: {e}");
+        }
 
         Ok(())
     }
 
     /// This inserts an entry into the database.
     pub async fn insert_slipfeed_entry(
-        &mut self,
+        &self,
         entry: &slipfeed::Entry,
     ) -> EntryDbId {
         let entry_v1 = EntryV1::from(entry);
@@ -136,7 +155,7 @@ impl Database {
             if id.0.is_none() {
                 id = sqlx::query_as("SELECT id FROM entries WHERE entry = ?")
                     .bind(sqlx::types::Json::from(&serialized_entry))
-                    .fetch_one(&mut self.conn)
+                    .fetch_one(&self.pool)
                     .await
                     .unwrap_or_else(|_| (None,));
             }
@@ -150,7 +169,7 @@ impl Database {
                 )
                 .bind(entry.title())
                 .bind(entry.author())
-                .fetch_one(&mut self.conn)
+                .fetch_one(&self.pool)
                 .await
                 .unwrap_or_else(|_| (None,));
             }
@@ -164,7 +183,7 @@ impl Database {
                 )
                 .bind(entry.author())
                 .bind(entry.source_id())
-                .fetch_one(&mut self.conn)
+                .fetch_one(&self.pool)
                 .await
                 .unwrap_or_else(|_| (None,));
             }
@@ -189,7 +208,7 @@ impl Database {
                         .bind(entry.author())
                         .bind(entry.content())
                         .bind(entry.source_id())
-                        .fetch_one(&mut self.conn)
+                        .fetch_one(&self.pool)
                         .await;
                     match id_res {
                         Ok(maybe_id) => match maybe_id.0 {
@@ -213,7 +232,7 @@ impl Database {
             let res = sqlx::query("INSERT INTO sources (entry_id, source) VALUES (?, ?) ON CONFLICT DO NOTHING")
                 .bind(entry_id)
                 .bind(&*feed.name)
-                .execute(&mut self.conn).await;
+                .execute(&self.pool).await;
             if let Err(e) = res {
                 tracing::error!("Failed to insert source: {}", e);
             }
@@ -224,7 +243,7 @@ impl Database {
             let res = sqlx::query("INSERT INTO tags (entry_id, tag) VALUES (?, ?) ON CONFLICT DO NOTHING")
                 .bind(entry_id)
                 .bind(String::from(tag))
-                .execute(&mut self.conn).await;
+                .execute(&self.pool).await;
             if let Err(e) = res {
                 tracing::error!("Failed to insert tag: {}", e);
             }
@@ -233,47 +252,43 @@ impl Database {
         return entry_id;
     }
 
-    pub async fn update_slipstream_entry(&mut self, entry: &mut DatabaseEntry) {
-        let data: (Option<bool>, Option<bool>) = sqlx::query_as(
-            "SELECT read, important FROM entries WHERE id = ? LIMIT 1",
-        )
-        .bind(entry.db_id)
-        .fetch_one(&mut self.conn)
-        .await
-        .unwrap_or_else(|_| (None, None));
-        match data {
-            (Some(read), Some(important)) => {
-                entry.has_been_read = read;
-                entry.important = important;
-            }
-            _ => {
-                tracing::error!("Failed to find entry {}", entry.db_id);
-                entry.has_been_read = false;
-                entry.important = false;
-            }
-        }
-    }
-
     pub async fn get_entries(
-        &mut self,
-        params: DatabaseSearch,
+        &self,
+        criteria: Vec<DatabaseSearch>,
         max_length: usize,
-        offset: slipfeed::DateTime,
+        cursor: OffsetCursor,
     ) -> DatabaseEntryList {
         let mut set = DatabaseEntryList::new(max_length);
-        let where_clause: String = match params {
-            DatabaseSearch::Latest => "TRUE = TRUE".into(),
-            DatabaseSearch::Unread => "entries.read = FALSE".into(),
-            DatabaseSearch::Important => "entries.important = TRUE".into(),
-            DatabaseSearch::Search(search) => {
-                let search = search.to_lowercase();
-                format!(
-                    "entries.title LIKE '%{search}%' OR entries.author LIKE '%{search}%' OR entries.content LIKE '%{search}%'"
-                )
+        let mut search_clause = vec!["TRUE = TRUE".to_string()];
+        for crit in &criteria {
+            match crit {
+                DatabaseSearch::Latest => {}
+                DatabaseSearch::Search(search) => {
+                    let search = search.to_lowercase();
+                    search_clause.push(format!(
+                        "entries.title LIKE '%{search}%' OR entries.author LIKE '%{search}%' OR entries.content LIKE '%{search}%'"
+                    ));
+                }
+                DatabaseSearch::Tag(tag) => {
+                    search_clause.push(format!("tags.tag LIKE '%{tag}%'"));
+                }
+                DatabaseSearch::Feed(feed) => {
+                    search_clause
+                        .push(format!("sources.source LIKE '%{feed}%'"));
+                }
+                DatabaseSearch::Command(command) => {
+                    search_clause
+                        .push(format!("commands.name LIKE '%{command}%'"));
+                }
+            };
+        }
+        let cursor_clause: String = match cursor {
+            OffsetCursor::Latest => "TRUE = TRUE".into(),
+            OffsetCursor::Before(dt) => {
+                format!("entries.timestamp < unixepoch('{}')", dt.to_iso8601())
             }
-            DatabaseSearch::Tag(tag) => format!("tags.tag LIKE '%{tag}%'"),
-            DatabaseSearch::Feed(feed) => {
-                format!("sources.source LIKE '%{feed}%'")
+            OffsetCursor::After(dt) => {
+                format!("entries.timestamp > unixepoch('{}')", dt.to_iso8601())
             }
         };
         let res = sqlx::query(&format!(
@@ -283,25 +298,22 @@ impl Database {
                 entries.entry,
                 json_group_array(sources.source) AS sources,
                 json_group_array(tags.tag) AS tags,
-                json_group_object(commands.name, commands.result) AS commands,
-                entries.read,
-                entries.important
+                json_group_object(commands.name, commands.result) AS commands
             FROM entries
                 LEFT JOIN sources ON entries.id = sources.entry_id
                 LEFT JOIN tags ON entries.id = tags.entry_id
                 LEFT JOIN commands ON entries.id = commands.entry_id
             WHERE
-                entries.timestamp < ? AND
-                {}
+                {} AND {}
             GROUP BY entries.id
             ORDER BY entries.timestamp DESC, entries.id DESC
             LIMIT ?
             ",
-            where_clause
+            cursor_clause,
+            search_clause.join(" AND "),
         ))
-        .bind(&offset.to_chrono())
         .bind(max_length as u32)
-        .fetch_all(&mut self.conn)
+        .fetch_all(&self.pool)
         .await;
         match res {
             Ok(rows) => {
@@ -347,7 +359,11 @@ impl Database {
                     if let Ok(commands) = &commands {
                         for command in &commands.0 {
                             entry.add_result(CommandResultContext {
-                                binding_name: Arc::new(command.0.clone()),
+                                command: CustomCommand {
+                                    name: Arc::new(command.0.clone()),
+                                    command: Arc::new(Vec::new()),
+                                    save: false,
+                                },
                                 result: CommandResult::Finished {
                                     output: Arc::new(command.1.clone()),
                                     success: true, // TODO!
@@ -358,8 +374,8 @@ impl Database {
                     }
 
                     // Parse flags.
-                    entry.has_been_read = row.get::<bool, usize>(5);
-                    entry.important = row.get::<bool, usize>(6);
+                    // entry.has_been_read = row.get::<bool, usize>(5);
+                    // entry.important = row.get::<bool, usize>(6);
 
                     set.add(entry).ok();
                 }
@@ -373,42 +389,14 @@ impl Database {
         set
     }
 
-    pub async fn toggle_important(
-        &mut self,
-        entry_id: EntryDbId,
-        important: bool,
-    ) {
-        let res = sqlx::query("UPDATE entries SET important = ? WHERE id = ?")
-            .bind(important)
-            .bind(entry_id)
-            .execute(&mut self.conn)
-            .await;
-
-        if let Err(e) = res {
-            tracing::error!("Failed to toggle important: {}", e);
-        }
-    }
-
-    pub async fn toggle_read(&mut self, entry_id: EntryDbId, read: bool) {
-        let res = sqlx::query("UPDATE entries SET read = ? WHERE id = ?")
-            .bind(read)
-            .bind(entry_id)
-            .execute(&mut self.conn)
-            .await;
-
-        if let Err(e) = res {
-            tracing::error!("Failed to toggle read: {}", e);
-        }
-    }
-
     pub async fn update_tags(
-        &mut self,
+        &self,
         entry_id: EntryDbId,
         tags: Vec<slipfeed::Tag>,
     ) {
         let res = sqlx::query("DELETE FROM tags WHERE entry_id = ?")
             .bind(entry_id)
-            .execute(&mut self.conn)
+            .execute(&self.pool)
             .await;
         if let Err(e) = res {
             tracing::error!("Failed to remove tags: {}", e);
@@ -419,7 +407,7 @@ impl Database {
                 sqlx::query("INSERT INTO tags (entry_id, tag) VALUES(?, ?)")
                     .bind(entry_id)
                     .bind(&String::from(tag))
-                    .execute(&mut self.conn)
+                    .execute(&self.pool)
                     .await;
 
             if let Err(e) = res {
@@ -429,7 +417,7 @@ impl Database {
     }
 
     pub async fn store_command_result(
-        &mut self,
+        &self,
         entry_id: EntryDbId,
         command: String,
         result: String,
@@ -440,7 +428,7 @@ impl Database {
             .bind(command)
             .bind(result)
             .bind(success)
-            .execute(&mut self.conn)
+            .execute(&self.pool)
             .await;
 
         if let Err(e) = res {
@@ -453,11 +441,10 @@ impl Database {
 #[derive(Debug, Clone)]
 pub enum DatabaseSearch {
     Latest,
-    Unread,
-    Important,
     Search(String),
     Tag(String),
     Feed(String),
+    Command(String),
 }
 
 /// Database identifier for entries.
@@ -516,4 +503,11 @@ impl From<&slipfeed::Entry> for EntryV1 {
             other_links: value.other_links().clone(),
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum OffsetCursor {
+    Latest,
+    Before(slipfeed::DateTime),
+    After(slipfeed::DateTime),
 }

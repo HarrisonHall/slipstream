@@ -2,18 +2,36 @@
 
 use super::*;
 
+mod color;
+mod command;
+mod tag;
+
+pub use color::*;
+pub use command::*;
+pub use tag::*;
+
 /// Read configuration.
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct ReadConfig {
+    /// Tags that are hidden.
+    #[serde(default)]
+    pub tags: TagConfig,
     /// Configured mappings for keys to commands.
     #[serde(default)]
     pub bindings: HashMap<BindingKey, ReadCommand>,
     /// Custom commands.
     #[serde(default)]
     pub commands: Vec<CustomCommand>,
+    /// How far to scroll.
+    #[serde(default = "ReadConfig::default_scroll")]
+    pub scroll: u8,
 }
 
 impl ReadConfig {
+    fn default_scroll() -> u8 {
+        2
+    }
+
     /// Map crossterm key to reader command.
     /// This prioritizes the configured key bindings, but falls back to the
     /// defaults. If a default is not preferred, the config should specific
@@ -52,8 +70,6 @@ impl ReadConfig {
             ReadCommand::Literal(ReadCommandLiteral::Swap)
         } else if *key == MENU {
             ReadCommand::Literal(ReadCommandLiteral::Menu)
-        } else if *key == IMPORTANT {
-            ReadCommand::Literal(ReadCommandLiteral::ToggleImportant)
         } else if *key == COMMAND_MODE {
             ReadCommand::Literal(ReadCommandLiteral::CommandMode)
         } else if *key == SEARCH_MODE {
@@ -77,92 +93,4 @@ impl ReadConfig {
         );
         ReadCommand::Literal(ReadCommandLiteral::None)
     }
-}
-
-/// Custom command configuration.
-/// Commands are a pair of name and the command list used in a subprocess.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CustomCommand {
-    pub name: Arc<String>,
-    pub command: Arc<Vec<String>>,
-}
-
-impl From<CustomCommand> for ReadCommand {
-    fn from(value: CustomCommand) -> Self {
-        ReadCommand::CustomCommandFull {
-            name: value.name.clone(),
-            command: value.command.clone(),
-        }
-    }
-}
-
-impl From<&CustomCommand> for ReadCommand {
-    fn from(value: &CustomCommand) -> Self {
-        ReadCommand::CustomCommandFull {
-            name: value.name.clone(),
-            command: value.command.clone(),
-        }
-    }
-}
-
-/// Read command variants.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum ReadCommand {
-    /// The built-in commands.
-    Literal(ReadCommandLiteral),
-    /// Custom command name.
-    CustomCommandRef(Arc<String>),
-    /// Custom command definition.
-    CustomCommandFull {
-        name: Arc<String>,
-        command: Arc<Vec<String>>,
-    },
-}
-
-/// Built-in commands.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ReadCommandLiteral {
-    /// Do nothing.
-    #[serde(alias = "none")]
-    None,
-    /// Quit the read mode.
-    #[serde(alias = "quit")]
-    Quit,
-    /// Update the feeds.
-    #[serde(alias = "update")]
-    Update,
-    /// Go down in the current context.
-    #[serde(alias = "down")]
-    Down,
-    /// Go up in the current context.
-    #[serde(alias = "up")]
-    Up,
-    /// Go left in the current context.
-    #[serde(alias = "left")]
-    Left,
-    /// Go right in the current context.
-    #[serde(alias = "right")]
-    Right,
-    /// Go far down in the current context.
-    #[serde(alias = "page-down")]
-    PageDown,
-    /// Go far up in the current context.
-    #[serde(alias = "page-up")]
-    PageUp,
-    /// Swap the current context.
-    #[serde(alias = "swap")]
-    Swap,
-    /// Toggle the menu.
-    #[serde(alias = "menu")]
-    Menu,
-    /// Enter command mode.
-    #[serde(alias = "command-mode")]
-    CommandMode,
-    /// Enter search mode.
-    #[serde(alias = "search-mode")]
-    SearchMode,
-    /// Toggle the selection important.
-    #[serde(alias = "important")]
-    ToggleImportant,
 }

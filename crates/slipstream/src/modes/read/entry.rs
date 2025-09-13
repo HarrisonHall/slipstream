@@ -2,7 +2,10 @@
 
 use std::ops::Deref;
 
-use ratatui::widgets::{Clear, Wrap};
+use ratatui::{
+    layout::Flex,
+    widgets::{Clear, Wrap},
+};
 
 use super::*;
 
@@ -20,10 +23,6 @@ pub struct DatabaseEntry {
     command_results: Vec<CommandResultContext>,
     /// List of commands that were ran.
     ran_commands: Vec<Arc<String>>,
-    /// Whether or not the entry has been read.
-    pub has_been_read: bool,
-    /// If the entry has been marked important.
-    pub important: bool,
 }
 
 impl DatabaseEntry {
@@ -35,8 +34,6 @@ impl DatabaseEntry {
             result_selection_index: 0,
             command_results: Vec::new(),
             ran_commands: Vec::new(),
-            has_been_read: false,
-            important: false,
         }
     }
 
@@ -52,7 +49,7 @@ impl DatabaseEntry {
     }
 
     /// Cycle the selected result.
-    pub fn scroll(&mut self, by: isize) {
+    pub fn scroll(&mut self, by: i16) {
         if self.result_selection_index == 0 {
             return;
         }
@@ -65,11 +62,8 @@ impl DatabaseEntry {
                 result.vertical_scroll =
                     result.vertical_scroll.saturating_add(by as usize);
             } else {
-                if result.vertical_scroll >= by.abs() as usize {
-                    result.vertical_scroll = result
-                        .vertical_scroll
-                        .saturating_sub(by.abs() as usize);
-                }
+                result.vertical_scroll =
+                    result.vertical_scroll.saturating_sub(by.abs() as usize);
             }
         }
     }
@@ -99,13 +93,21 @@ impl DatabaseEntry {
     /// This replaces a previous result with the same name.
     pub fn add_result(&mut self, result: CommandResultContext) {
         for ctx in self.command_results.iter_mut() {
-            if ctx.binding_name == result.binding_name {
+            if ctx.command.name == result.command.name {
                 ctx.result = result.result;
                 return;
             }
         }
-        self.ran_commands.push(result.binding_name.clone());
+        self.ran_commands.push(result.command.name.clone());
         self.command_results.push(result);
+    }
+}
+
+impl EntryExt for DatabaseEntry {
+    fn to_atom(&self, config: &Config) -> atom_syndication::Entry {
+        let mut atom_entry = self.entry.to_atom(config);
+        atom_entry.id = format!("{}", self.db_id);
+        return atom_entry;
     }
 }
 
@@ -119,12 +121,24 @@ impl Deref for DatabaseEntry {
 
 pub struct EntryViewWidget<'a> {
     entry: &'a mut DatabaseEntry,
-    focus: &'a Focus,
+    config: &'a Config,
+    interaction_state: &'a InteractionState,
+    terminal_state: &'a TerminalState,
 }
 
 impl<'a> EntryViewWidget<'a> {
-    pub fn new(entry: &'a mut DatabaseEntry, focus: &'a Focus) -> Self {
-        Self { entry, focus }
+    pub fn new(
+        entry: &'a mut DatabaseEntry,
+        config: &'a Config,
+        interaction_state: &'a InteractionState,
+        terminal_state: &'a TerminalState,
+    ) -> Self {
+        Self {
+            entry,
+            config,
+            interaction_state,
+            terminal_state,
+        }
     }
 }
 
@@ -134,12 +148,13 @@ impl<'a> Widget for EntryViewWidget<'a> {
         Self: Sized,
     {
         // Render outline.
-        let block = Block::bordered().title(self.entry.title().as_str()).fg(
-            match *self.focus {
-                Focus::Entry => Color::Green,
-                _ => Color::White,
-            },
-        );
+        let block =
+            Block::bordered()
+                .title(self.entry.title().as_str())
+                .fg(match self.interaction_state.focus {
+                    Focus::Entry => Color::Green,
+                    _ => Color::White,
+                });
         let inner_block = block.inner(area);
         block.render(area, buf);
 
@@ -148,23 +163,42 @@ impl<'a> Widget for EntryViewWidget<'a> {
             .direction(Direction::Vertical)
             .constraints(&[Constraint::Min(1), Constraint::Percentage(100)])
             .split(inner_block);
-        let commands = self.entry.get_commands();
-        ratatui::widgets::Tabs::new(
-            ["info"]
-                .iter()
-                .map(|info| *info)
-                .chain(commands.iter().map(|tab| (*tab).as_str()))
-                .map(|tab| tab.to_uppercase()),
-        )
-        .padding("", "")
-        .divider(" ")
-        // .bg(Color::Green)
-        .select(self.entry.result_selection_index)
-        .highlight_style((Color::Black, Color::Blue))
-        .render(tab_layouts[0], buf);
+        // let commands = self.entry.get_commands();
+        let commands = ["info"]
+            .iter()
+            .map(|info| *info)
+            .chain(self.entry.get_commands().iter().map(|tab| (*tab).as_str()));
+        {
+            let mut rect = tab_layouts[0];
+            let mut idx = self.entry.result_selection_index;
+            rect.height = 1;
+            for (i, command) in commands.enumerate() {
+                rect.width = command.len() as u16;
+                if self.terminal_state.last_frame_inputs.clicked(rect) {
+                    idx = i;
+                    break;
+                }
+                rect.x += rect.width + 1;
+            }
+            self.entry.result_selection_index = idx;
+        }
+
+        let commands = ["info"]
+            .iter()
+            .map(|info| *info)
+            .chain(self.entry.get_commands().iter().map(|tab| (*tab).as_str()));
+        let tabs =
+            ratatui::widgets::Tabs::new(commands.map(|tab| tab.to_uppercase()))
+                .padding("", "")
+                .divider(" ")
+                // .bg(Color::Green)
+                .select(self.entry.result_selection_index)
+                .highlight_style((Color::Black, Color::Blue));
+        tabs.render(tab_layouts[0], buf);
         match self.entry.get_result() {
             None => {
-                EntryInfoWidget(self.entry).render(tab_layouts[1], buf);
+                EntryInfoWidget(self.entry, self.config)
+                    .render(tab_layouts[1], buf);
             }
             Some(selected_result) => {
                 selected_result.widget().render(tab_layouts[1], buf);
@@ -174,7 +208,7 @@ impl<'a> Widget for EntryViewWidget<'a> {
 }
 
 /// Widget for displaying entry info.
-struct EntryInfoWidget<'a>(&'a slipfeed::Entry);
+struct EntryInfoWidget<'a>(&'a slipfeed::Entry, &'a Config);
 
 impl<'a> Widget for EntryInfoWidget<'a> {
     fn render(self, area: Rect, buf: &mut Buffer)
@@ -186,7 +220,12 @@ impl<'a> Widget for EntryInfoWidget<'a> {
 
         let layouts = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Fill(1), Constraint::Max(1)])
+            .constraints(vec![
+                Constraint::Max(5),
+                Constraint::Fill(1),
+                Constraint::Max(1),
+            ])
+            .flex(Flex::Legacy)
             .split(area);
 
         // All text lines.
@@ -212,6 +251,7 @@ impl<'a> Widget for EntryInfoWidget<'a> {
             .0
             .tags()
             .iter()
+            .filter(|t| !self.1.read.tags.hidden.contains(t.as_ref()))
             .map(|t| format!("<{t}>"))
             .collect::<Vec<String>>();
         tags.sort();
@@ -253,21 +293,19 @@ impl<'a> Widget for EntryInfoWidget<'a> {
             );
         }
 
-        top_lines.push(
-            Span::styled(
-                if !self.0.content().is_empty() {
-                    self.0.content().as_str()
-                } else {
-                    "---"
-                },
-                Style::default().fg(Color::White),
-            )
-            .into(),
-        );
-
         Paragraph::new(top_lines)
             .wrap(Wrap { trim: false })
             .render(layouts[0], buf);
+
+        if !self.0.content().is_empty() {
+            Paragraph::new(tui_markdown::from_str(self.0.content()))
+                .left_aligned()
+                .wrap(Wrap { trim: false })
+                .render(layouts[1], buf);
+        } else {
+            Span::styled("---", Style::default().fg(Color::Gray))
+                .render(layouts[1], buf);
+        }
 
         // Bottom text lines.
         let mut bottom_lines: Vec<Line> = Vec::new();
@@ -281,7 +319,7 @@ impl<'a> Widget for EntryInfoWidget<'a> {
             .right_aligned(),
         );
 
-        Paragraph::new(bottom_lines).render(layouts[1], buf);
+        Paragraph::new(bottom_lines).render(layouts[2], buf);
     }
 }
 
@@ -303,6 +341,7 @@ impl DatabaseEntryList {
         }
     }
 
+    /// Add an entry to the list.
     pub fn add(&mut self, entry: DatabaseEntry) -> Result<()> {
         if self.entries.len() < self.max_size {
             let db_id = entry.db_id;
@@ -310,28 +349,52 @@ impl DatabaseEntryList {
             self.lookup.insert(db_id, self.entries.len() - 1);
             return Ok(());
         }
-        bail!("Entry list at max length");
+        bail!("Entry list at max length ({}).", self.max_size);
     }
 
+    /// Get the length of the list.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
-    pub fn get(&mut self, db_id: EntryDbId) -> Option<&mut DatabaseEntry> {
+    /// Get an entry in the list, by id.
+    #[allow(unused)]
+    pub fn get(&self, db_id: EntryDbId) -> Option<&DatabaseEntry> {
+        match self.lookup.get(&db_id) {
+            Some(idx) => Some(&self.entries[*idx]),
+            None => None,
+        }
+    }
+
+    /// Get a mutable entry in the list, by id.
+    pub fn get_mut(&mut self, db_id: EntryDbId) -> Option<&mut DatabaseEntry> {
         match self.lookup.get(&db_id) {
             Some(idx) => Some(&mut self.entries[*idx]),
             None => None,
         }
     }
 
+    /// Get the first entry in the list.
+    pub fn first(&self) -> Option<&DatabaseEntry> {
+        self.entries.first()
+    }
+
+    /// Get the last entry in the list.
+    pub fn last(&self) -> Option<&DatabaseEntry> {
+        self.entries.last()
+    }
+
+    /// Iterate the list.
     pub fn iter(&self) -> impl Iterator<Item = &DatabaseEntry> {
         self.entries.iter()
     }
 
+    /// Iterate the list's slipfeed entries.
     pub fn iter_entries(&self) -> impl Iterator<Item = &slipfeed::Entry> {
         self.entries.iter().map(|e| &e.entry)
     }
 
+    /// Turn list into an atom syndication.
     pub fn syndicate(&self, name: impl AsRef<str>, config: &Config) -> String {
         let mut syn = atom::FeedBuilder::default();
         syn.title(name.as_ref())

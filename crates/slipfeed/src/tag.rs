@@ -19,6 +19,18 @@ impl std::fmt::Display for Tag {
     }
 }
 
+impl PartialOrd for Tag {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+impl Ord for Tag {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
 impl From<Tag> for String {
     fn from(value: Tag) -> String {
         value.0
@@ -40,5 +52,17 @@ impl From<String> for Tag {
 impl From<&str> for Tag {
     fn from(value: &str) -> Self {
         Tag(value.into())
+    }
+}
+
+impl AsRef<String> for Tag {
+    fn as_ref(&self) -> &String {
+        &self.0
+    }
+}
+
+impl AsRef<str> for Tag {
+    fn as_ref(&self) -> &str {
+        &self.0
     }
 }

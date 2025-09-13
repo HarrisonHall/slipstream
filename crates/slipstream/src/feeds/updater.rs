@@ -2,7 +2,6 @@
 
 use super::*;
 
-use futures::FutureExt;
 use tokio::sync::oneshot;
 
 /// Run the slipstream updater.
@@ -11,30 +10,29 @@ pub async fn update(
     config: Arc<Config>,
     cancel_token: CancellationToken,
 ) -> Result<()> {
-    // We don't want to cancel the updater's updater update future.
-    let mut updater_fut = {
+    // We don't want to cancel the updater's updater update future working on other
+    // jobs. We convert this loop into a task and only cancel on quit.
+    let updater_task = tokio::task::spawn({
         let internal_updater = updater.updater.clone();
+        let entry_db = updater.entry_db.clone();
         async move {
-            let mut updater = internal_updater.write().await;
-            updater.update().await
+            loop {
+                let entries = {
+                    let mut slipfeed_updater = internal_updater.write().await;
+                    slipfeed_updater.update().await
+                };
+                for entry in entries.as_slice() {
+                    if let Some(entry_db) = &entry_db {
+                        entry_db.insert_slipfeed_entry(entry).await;
+                    }
+                }
+            }
         }
-        .boxed()
-    };
+    });
 
     // Continue updating and responding to requests until cancelled.
     'update: loop {
         tokio::select! {
-            entries = &mut updater_fut => {
-                updater.handle_update_entry_db(entries).await;
-                updater_fut = {
-                    let internal_updater = updater.updater.clone();
-                    async move {
-                        let mut updater = internal_updater.write().await;
-                        updater.update().await
-                    }
-                    .boxed()
-                };
-            },
             command = updater.to_updater_receiver.recv() => {
                 if let Some(command) = command {
                     updater.handle_command(command, &config).await;
@@ -43,6 +41,8 @@ pub async fn update(
             _ = cancel_token.cancelled() => break 'update,
         }
     }
+
+    updater_task.abort();
 
     Ok(())
 }
@@ -61,7 +61,7 @@ pub struct Updater {
     pub all_filters: Vec<slipfeed::Filter>,
     /// The entry database.
     /// This allows persistance between slipstream sessions.
-    pub entry_db: Option<Database>,
+    pub entry_db: Option<Arc<Database>>,
     /// Handle's sender.
     to_updater_sender: Sender<UpdaterRequest>,
     /// Updater's receiver.
@@ -76,45 +76,18 @@ impl Updater {
         })
     }
 
-    /// Update entry_db with entries from updater.
-    async fn handle_update_entry_db(&mut self, entries: slipfeed::EntrySet) {
-        if let Some(entry_db) = &mut self.entry_db {
-            for entry in entries.as_slice() {
-                entry_db.insert_slipfeed_entry(entry).await;
-            }
-        }
-    }
-
     /// Handle command.
     async fn handle_command(
-        &mut self,
+        &self,
         command: UpdaterRequest,
         config: &Arc<Config>,
     ) {
         match command {
-            UpdaterRequest::EntryUpdate {
-                entry_id,
-                important,
-                read,
-                tags,
-            } => {
-                if let Some(entry_db) = &mut self.entry_db {
-                    if let Some(important) = important {
-                        entry_db.toggle_important(entry_id, important).await;
-                    }
-                    if let Some(read) = read {
-                        entry_db.toggle_read(entry_id, read).await;
-                    }
+            UpdaterRequest::EntryUpdate { entry_id, tags } => {
+                if let Some(entry_db) = &self.entry_db {
                     if let Some(tags) = tags {
                         entry_db.update_tags(entry_id, tags).await;
                     }
-                }
-            }
-            UpdaterRequest::EntryFetch { tx, entry } => {
-                let mut entry = entry;
-                if let Some(entry_db) = &mut self.entry_db {
-                    entry_db.update_slipstream_entry(&mut entry).await;
-                    tx.send(entry).ok();
                 }
             }
             UpdaterRequest::CommandUpdate {
@@ -123,7 +96,7 @@ impl Updater {
                 result,
                 output,
             } => {
-                if let Some(entry_db) = &mut self.entry_db {
+                if let Some(entry_db) = &self.entry_db {
                     entry_db
                         .store_command_result(
                             entry_id,
@@ -134,32 +107,26 @@ impl Updater {
                         .await;
                 }
             }
-            UpdaterRequest::EntriesSearch { tx, search, offset } => {
-                if let Some(entry_db) = &mut self.entry_db {
-                    tx.send(
-                        entry_db
-                            .get_entries(
-                                search,
-                                128,
-                                // config.global.limits.max(),
-                                offset.unwrap_or_else(|| {
-                                    slipfeed::DateTime::now()
-                                }),
-                            )
-                            .await,
-                    )
-                    .ok();
+            UpdaterRequest::EntriesSearch {
+                tx,
+                criteria,
+                offset,
+            } => {
+                if let Some(entry_db) = &self.entry_db {
+                    // TODO: custom search count.
+                    tx.send(entry_db.get_entries(criteria, 128, offset).await)
+                        .ok();
                 };
             }
             UpdaterRequest::FeedFetch { tx, options } => {
-                if let Some(entry_db) = &mut self.entry_db {
+                if let Some(entry_db) = &self.entry_db {
                     let entries = match options {
                         FeedFetchOptions::All => {
                             let unfiltered_entries = entry_db
                                 .get_entries(
-                                    DatabaseSearch::Latest,
+                                    vec![DatabaseSearch::Latest],
                                     config.global.limits.max(),
-                                    slipfeed::DateTime::now(),
+                                    OffsetCursor::Latest,
                                 )
                                 .await;
                             let mut entries = DatabaseEntryList::new(
@@ -182,9 +149,9 @@ impl Updater {
                         FeedFetchOptions::Tag(tag) => {
                             let unfiltered_entries = entry_db
                                 .get_entries(
-                                    DatabaseSearch::Tag(tag),
+                                    vec![DatabaseSearch::Tag(tag)],
                                     config.global.limits.max(),
-                                    slipfeed::DateTime::now(),
+                                    OffsetCursor::Latest,
                                 )
                                 .await;
                             let mut entries = DatabaseEntryList::new(
@@ -207,9 +174,11 @@ impl Updater {
                             {
                                 let unfiltered_entries = entry_db
                                     .get_entries(
-                                        DatabaseSearch::Feed(feed.clone()),
+                                        vec![DatabaseSearch::Feed(
+                                            feed.clone(),
+                                        )],
                                         config.global.limits.max(),
-                                        slipfeed::DateTime::now(),
+                                        OffsetCursor::Latest,
                                     )
                                     .await;
                                 let mut entries = DatabaseEntryList::new(
@@ -282,20 +251,14 @@ impl Default for Updater {
 /// Message used to communicate with the database handler.
 #[derive(Debug)]
 enum UpdaterRequest {
-    EntryFetch {
-        tx: oneshot::Sender<DatabaseEntry>,
-        entry: DatabaseEntry,
-    },
     EntryUpdate {
         entry_id: EntryDbId,
-        important: Option<bool>,
-        read: Option<bool>,
         tags: Option<Vec<slipfeed::Tag>>,
     },
     EntriesSearch {
         tx: oneshot::Sender<DatabaseEntryList>,
-        search: DatabaseSearch,
-        offset: Option<slipfeed::DateTime>,
+        criteria: Vec<DatabaseSearch>,
+        offset: OffsetCursor,
     },
     FeedFetch {
         tx: oneshot::Sender<DatabaseEntryList>,
@@ -337,12 +300,16 @@ impl UpdaterHandle {
     /// Search for entries from a feed.
     pub async fn search(
         &self,
-        search: DatabaseSearch,
-        offset: Option<slipfeed::DateTime>,
+        criteria: Vec<DatabaseSearch>,
+        offset: OffsetCursor,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::EntriesSearch { tx, search, offset })
-            .await;
+        self.send(UpdaterRequest::EntriesSearch {
+            tx,
+            criteria,
+            offset,
+        })
+        .await;
         match rx.await {
             Ok(data) => data,
             Err(e) => {
@@ -484,27 +451,6 @@ impl UpdaterHandle {
         }
     }
 
-    pub async fn toggle_read(&self, entry_id: EntryDbId, read: bool) {
-        self.send(UpdaterRequest::EntryUpdate {
-            entry_id,
-            important: None,
-            read: Some(read),
-            tags: None,
-        })
-        .await;
-    }
-
-    /// Toggle the important attribute.
-    pub async fn toggle_important(&self, entry_id: EntryDbId, important: bool) {
-        self.send(UpdaterRequest::EntryUpdate {
-            entry_id,
-            important: Some(important),
-            read: None,
-            tags: None,
-        })
-        .await;
-    }
-
     pub async fn update_tags(
         &self,
         entry_id: EntryDbId,
@@ -512,8 +458,6 @@ impl UpdaterHandle {
     ) {
         self.send(UpdaterRequest::EntryUpdate {
             entry_id,
-            important: None,
-            read: None,
             tags: Some(tags),
         })
         .await;
@@ -533,7 +477,7 @@ impl UpdaterHandle {
         };
         self.send(UpdaterRequest::CommandUpdate {
             entry_id,
-            command: (*command.binding_name).clone(),
+            command: (*command.command.name).clone(),
             result: match success {
                 true => 0,
                 false => 1,
@@ -541,23 +485,5 @@ impl UpdaterHandle {
             output,
         })
         .await;
-    }
-
-    /// Update the view for an entry.
-    pub async fn update_view(&self, entry: &mut DatabaseEntry) {
-        let (tx, rx) = oneshot::channel::<DatabaseEntry>();
-        self.send(UpdaterRequest::EntryFetch {
-            tx,
-            entry: entry.clone(),
-        })
-        .await;
-        match rx.await {
-            Ok(data) => {
-                *entry = data;
-            }
-            Err(e) => {
-                tracing::error!("Failed to update_view: {}", e);
-            }
-        };
     }
 }

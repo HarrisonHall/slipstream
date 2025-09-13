@@ -132,20 +132,27 @@ struct MinEntry {
     author: String,
     sources: String,
     source: slipfeed::Link,
+    content: String,
     comments: slipfeed::Link,
     links: Vec<slipfeed::Link>,
+    tags: Vec<String>,
 }
 
 impl From<&slipfeed::Entry> for MinEntry {
     fn from(value: &slipfeed::Entry) -> Self {
+        let md_parser = pulldown_cmark::Parser::new(value.content());
+        let mut content = String::new();
+        pulldown_cmark::html::push_html(&mut content, md_parser);
         Self {
             title: value.title().clone(),
             date: format!("{}", value.date()),
             author: value.author().clone(),
             sources: String::default(),
             source: value.source().clone(),
+            content,
             comments: value.comments().clone(),
             links: value.other_links().clone(),
+            tags: value.tags().iter().map(|t| t.to_string()).collect(),
         }
     }
 }

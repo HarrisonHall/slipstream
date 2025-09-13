@@ -1,4 +1,5 @@
-///! Shell commands io storage.
+//! Shell commands and storage.
+
 use super::*;
 
 const RUNNING_TEXT: &'static str = "Running...";
@@ -17,15 +18,15 @@ pub enum CommandResult {
 /// Context of a completed shell command.
 #[derive(Debug, Clone)]
 pub struct CommandResultContext {
-    pub binding_name: Arc<String>,
+    pub command: CustomCommand,
     pub result: CommandResult,
     pub vertical_scroll: usize,
 }
 
 impl CommandResultContext {
-    pub fn new(binding_name: Arc<String>) -> Self {
+    pub fn new(custom_command: CustomCommand) -> Self {
         Self {
-            binding_name,
+            command: custom_command,
             result: CommandResult::Running,
             vertical_scroll: 0,
         }

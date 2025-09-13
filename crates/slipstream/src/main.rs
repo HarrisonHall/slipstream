@@ -48,7 +48,10 @@ const DEFAULT_UPDATE_SEC: u16 = 120;
 async fn main() -> Result<()> {
     // Initial setup.
     let cli = Cli::parse();
-    let config = Arc::new(cli.parse_config().expect("Unable to parse config."));
+    let config = Arc::new(match cli.parse_config() {
+        Ok(config) => config,
+        Err(e) => bail!("Failed to parse config:\n{e}"),
+    });
     setup_logging(&cli, &config);
 
     let cancel_token = CancellationToken::new();
