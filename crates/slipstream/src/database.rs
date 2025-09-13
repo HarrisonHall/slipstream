@@ -5,7 +5,9 @@ use super::*;
 use std::path::PathBuf;
 
 use resolve_path::PathResolveExt;
-use sqlx::{Connection, Row, SqliteConnection, sqlite::SqliteConnectOptions};
+use sqlx::{
+    Row, SqlitePool, sqlite::SqliteConnectOptions, sqlite::SqlitePoolOptions,
+};
 
 use crate::modes::DatabaseEntry;
 
@@ -15,11 +17,12 @@ pub struct Database {
     #[allow(unused)]
     path: String,
     /// Connection to the sqlite database.
-    conn: sqlx::SqliteConnection,
+    pool: SqlitePool,
 }
 
 impl Database {
     pub async fn new(path: impl AsRef<str>) -> Result<Self> {
+        // Parse path and create parents if necessary.
         let path: String = match path.as_ref() {
             ":memory:" => ":memory:".into(),
             _ => {
@@ -35,16 +38,26 @@ impl Database {
                 path.to_string_lossy().into_owned()
             }
         };
+
+        // Create pool at path.
         tracing::info!("Using database: {}", &path);
-        let options = SqliteConnectOptions::new()
-            .filename(path.clone())
-            .create_if_missing(true);
-        let mut conn = SqliteConnection::connect_with(&options).await.unwrap();
-        Database::initialize(&mut conn).await?;
-        Ok(Self { path, conn })
+        let pool = SqlitePoolOptions::new()
+            .min_connections(2)
+            .max_connections(4)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(path.clone())
+                    .create_if_missing(true),
+            )
+            .await?;
+
+        // Initialize database.
+        Database::initialize(&pool).await?;
+
+        Ok(Self { path, pool })
     }
 
-    async fn initialize(conn: &mut sqlx::SqliteConnection) -> Result<()> {
+    async fn initialize(pool: &SqlitePool) -> Result<()> {
         let res = sqlx::query(
             "
             CREATE TABLE IF NOT EXISTS entries(
@@ -110,7 +123,7 @@ impl Database {
             CREATE INDEX IF NOT EXISTS commands_entry_id_idx ON commands(entry_id);
             ",
         )
-        .execute(conn)
+        .execute(pool)
         .await;
 
         res?;
@@ -120,7 +133,7 @@ impl Database {
 
     /// This inserts an entry into the database.
     pub async fn insert_slipfeed_entry(
-        &mut self,
+        &self,
         entry: &slipfeed::Entry,
     ) -> EntryDbId {
         let entry_v1 = EntryV1::from(entry);
@@ -132,7 +145,7 @@ impl Database {
             if id.0.is_none() {
                 id = sqlx::query_as("SELECT id FROM entries WHERE entry = ?")
                     .bind(sqlx::types::Json::from(&serialized_entry))
-                    .fetch_one(&mut self.conn)
+                    .fetch_one(&self.pool)
                     .await
                     .unwrap_or_else(|_| (None,));
             }
@@ -146,7 +159,7 @@ impl Database {
                 )
                 .bind(entry.title())
                 .bind(entry.author())
-                .fetch_one(&mut self.conn)
+                .fetch_one(&self.pool)
                 .await
                 .unwrap_or_else(|_| (None,));
             }
@@ -160,7 +173,7 @@ impl Database {
                 )
                 .bind(entry.author())
                 .bind(entry.source_id())
-                .fetch_one(&mut self.conn)
+                .fetch_one(&self.pool)
                 .await
                 .unwrap_or_else(|_| (None,));
             }
@@ -185,7 +198,7 @@ impl Database {
                         .bind(entry.author())
                         .bind(entry.content())
                         .bind(entry.source_id())
-                        .fetch_one(&mut self.conn)
+                        .fetch_one(&self.pool)
                         .await;
                     match id_res {
                         Ok(maybe_id) => match maybe_id.0 {
@@ -209,7 +222,7 @@ impl Database {
             let res = sqlx::query("INSERT INTO sources (entry_id, source) VALUES (?, ?) ON CONFLICT DO NOTHING")
                 .bind(entry_id)
                 .bind(&*feed.name)
-                .execute(&mut self.conn).await;
+                .execute(&self.pool).await;
             if let Err(e) = res {
                 tracing::error!("Failed to insert source: {}", e);
             }
@@ -220,7 +233,7 @@ impl Database {
             let res = sqlx::query("INSERT INTO tags (entry_id, tag) VALUES (?, ?) ON CONFLICT DO NOTHING")
                 .bind(entry_id)
                 .bind(String::from(tag))
-                .execute(&mut self.conn).await;
+                .execute(&self.pool).await;
             if let Err(e) = res {
                 tracing::error!("Failed to insert tag: {}", e);
             }
@@ -230,7 +243,7 @@ impl Database {
     }
 
     pub async fn get_entries(
-        &mut self,
+        &self,
         params: DatabaseSearch,
         max_length: usize,
         offset: slipfeed::DateTime,
@@ -272,7 +285,7 @@ impl Database {
         ))
         .bind(&offset.to_chrono())
         .bind(max_length as u32)
-        .fetch_all(&mut self.conn)
+        .fetch_all(&self.pool)
         .await;
         match res {
             Ok(rows) => {
@@ -345,13 +358,13 @@ impl Database {
     }
 
     pub async fn update_tags(
-        &mut self,
+        &self,
         entry_id: EntryDbId,
         tags: Vec<slipfeed::Tag>,
     ) {
         let res = sqlx::query("DELETE FROM tags WHERE entry_id = ?")
             .bind(entry_id)
-            .execute(&mut self.conn)
+            .execute(&self.pool)
             .await;
         if let Err(e) = res {
             tracing::error!("Failed to remove tags: {}", e);
@@ -362,7 +375,7 @@ impl Database {
                 sqlx::query("INSERT INTO tags (entry_id, tag) VALUES(?, ?)")
                     .bind(entry_id)
                     .bind(&String::from(tag))
-                    .execute(&mut self.conn)
+                    .execute(&self.pool)
                     .await;
 
             if let Err(e) = res {
@@ -372,7 +385,7 @@ impl Database {
     }
 
     pub async fn store_command_result(
-        &mut self,
+        &self,
         entry_id: EntryDbId,
         command: String,
         result: String,
@@ -383,7 +396,7 @@ impl Database {
             .bind(command)
             .bind(result)
             .bind(success)
-            .execute(&mut self.conn)
+            .execute(&self.pool)
             .await;
 
         if let Err(e) = res {

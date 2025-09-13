@@ -170,6 +170,15 @@ impl Reader {
 
 // Draw logic.
 impl Reader {
+    /// Get the selected entry.
+    fn get_selected_entry_mut(&mut self) -> Option<&mut DatabaseEntry> {
+        if self.interaction_state.selection < self.entries.len() {
+            return Some(&mut self.entries[self.interaction_state.selection]);
+        }
+
+        return None;
+    }
+
     /// Check the size.
     /// If the buffer size is too small, this returns false and renders a notification.
     fn check_size_or_render(&mut self, buf: &mut Buffer) -> bool {
@@ -238,13 +247,37 @@ impl Reader {
 
         // Handle queued input.
         if self.terminal_state.last_frame_inputs.scrolled_up() {
-            self.interaction_state
-                .scroll(-(self.config.read.scroll as i16), &self.entries);
+            match self.interaction_state.focus {
+                Focus::List => {
+                    self.interaction_state.scroll(
+                        -(self.config.read.scroll as i16),
+                        &self.entries,
+                    );
+                }
+                Focus::Entry => {
+                    let scroll = -(self.config.read.scroll as isize);
+                    if let Some(entry) = self.get_selected_entry_mut() {
+                        entry.scroll(scroll);
+                    }
+                }
+                _ => {}
+            }
         }
         if self.terminal_state.last_frame_inputs.scrolled_down() {
-            self.interaction_state
-                .scroll(self.config.read.scroll as i16, &self.entries);
-        };
+            match self.interaction_state.focus {
+                Focus::List => {
+                    self.interaction_state
+                        .scroll(self.config.read.scroll as i16, &self.entries);
+                }
+                Focus::Entry => {
+                    let scroll = self.config.read.scroll as isize;
+                    if let Some(entry) = self.get_selected_entry_mut() {
+                        entry.scroll(scroll);
+                    }
+                }
+                _ => {}
+            }
+        }
 
         Ok(())
     }
@@ -359,10 +392,8 @@ impl Reader {
                         }
                     }
                     Focus::Entry => {
-                        if self.interaction_state.selection < self.entries.len()
-                        {
-                            self.entries[self.interaction_state.selection]
-                                .scroll(20);
+                        if let Some(entry) = self.get_selected_entry_mut() {
+                            entry.scroll(20);
                         }
                     }
                     Focus::Menu { .. } => {}
@@ -383,9 +414,8 @@ impl Reader {
                     }
                 }
                 Focus::Entry => {
-                    if self.interaction_state.selection < self.entries.len() {
-                        self.entries[self.interaction_state.selection]
-                            .scroll(-20);
+                    if let Some(entry) = self.get_selected_entry_mut() {
+                        entry.scroll(-20);
                     }
                 }
                 Focus::Menu { .. } => {}

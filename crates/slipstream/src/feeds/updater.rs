@@ -2,7 +2,6 @@
 
 use super::*;
 
-use futures::FutureExt;
 use tokio::sync::oneshot;
 
 /// Run the slipstream updater.
@@ -11,30 +10,29 @@ pub async fn update(
     config: Arc<Config>,
     cancel_token: CancellationToken,
 ) -> Result<()> {
-    // We don't want to cancel the updater's updater update future.
-    let mut updater_fut = {
+    // We don't want to cancel the updater's updater update future working on other
+    // jobs. We convert this loop into a task and only cancel on quit.
+    let updater_task = tokio::task::spawn({
         let internal_updater = updater.updater.clone();
+        let entry_db = updater.entry_db.clone();
         async move {
-            let mut updater = internal_updater.write().await;
-            updater.update().await
+            loop {
+                let entries = {
+                    let mut slipfeed_updater = internal_updater.write().await;
+                    slipfeed_updater.update().await
+                };
+                for entry in entries.as_slice() {
+                    if let Some(entry_db) = &entry_db {
+                        entry_db.insert_slipfeed_entry(entry).await;
+                    }
+                }
+            }
         }
-        .boxed()
-    };
+    });
 
     // Continue updating and responding to requests until cancelled.
     'update: loop {
         tokio::select! {
-            entries = &mut updater_fut => {
-                updater.handle_update_entry_db(entries).await;
-                updater_fut = {
-                    let internal_updater = updater.updater.clone();
-                    async move {
-                        let mut updater = internal_updater.write().await;
-                        updater.update().await
-                    }
-                    .boxed()
-                };
-            },
             command = updater.to_updater_receiver.recv() => {
                 if let Some(command) = command {
                     updater.handle_command(command, &config).await;
@@ -43,6 +41,8 @@ pub async fn update(
             _ = cancel_token.cancelled() => break 'update,
         }
     }
+
+    updater_task.abort();
 
     Ok(())
 }
@@ -61,7 +61,7 @@ pub struct Updater {
     pub all_filters: Vec<slipfeed::Filter>,
     /// The entry database.
     /// This allows persistance between slipstream sessions.
-    pub entry_db: Option<Database>,
+    pub entry_db: Option<Arc<Database>>,
     /// Handle's sender.
     to_updater_sender: Sender<UpdaterRequest>,
     /// Updater's receiver.
@@ -76,24 +76,15 @@ impl Updater {
         })
     }
 
-    /// Update entry_db with entries from updater.
-    async fn handle_update_entry_db(&mut self, entries: slipfeed::EntrySet) {
-        if let Some(entry_db) = &mut self.entry_db {
-            for entry in entries.as_slice() {
-                entry_db.insert_slipfeed_entry(entry).await;
-            }
-        }
-    }
-
     /// Handle command.
     async fn handle_command(
-        &mut self,
+        &self,
         command: UpdaterRequest,
         config: &Arc<Config>,
     ) {
         match command {
             UpdaterRequest::EntryUpdate { entry_id, tags } => {
-                if let Some(entry_db) = &mut self.entry_db {
+                if let Some(entry_db) = &self.entry_db {
                     if let Some(tags) = tags {
                         entry_db.update_tags(entry_id, tags).await;
                     }
@@ -105,7 +96,7 @@ impl Updater {
                 result,
                 output,
             } => {
-                if let Some(entry_db) = &mut self.entry_db {
+                if let Some(entry_db) = &self.entry_db {
                     entry_db
                         .store_command_result(
                             entry_id,
@@ -117,7 +108,7 @@ impl Updater {
                 }
             }
             UpdaterRequest::EntriesSearch { tx, search, offset } => {
-                if let Some(entry_db) = &mut self.entry_db {
+                if let Some(entry_db) = &self.entry_db {
                     tx.send(
                         entry_db
                             .get_entries(
@@ -134,7 +125,7 @@ impl Updater {
                 };
             }
             UpdaterRequest::FeedFetch { tx, options } => {
-                if let Some(entry_db) = &mut self.entry_db {
+                if let Some(entry_db) = &self.entry_db {
                     let entries = match options {
                         FeedFetchOptions::All => {
                             let unfiltered_entries = entry_db

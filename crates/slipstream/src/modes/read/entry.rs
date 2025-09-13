@@ -62,11 +62,8 @@ impl DatabaseEntry {
                 result.vertical_scroll =
                     result.vertical_scroll.saturating_add(by as usize);
             } else {
-                if result.vertical_scroll >= by.abs() as usize {
-                    result.vertical_scroll = result
-                        .vertical_scroll
-                        .saturating_sub(by.abs() as usize);
-                }
+                result.vertical_scroll =
+                    result.vertical_scroll.saturating_sub(by.abs() as usize);
             }
         }
     }

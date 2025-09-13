@@ -73,7 +73,7 @@ impl Config {
             }),
             self.storage.unwrap_or(1024) as usize,
         )));
-        updater.entry_db = Some(entry_db);
+        updater.entry_db = Some(Arc::new(entry_db));
 
         if let Some(feeds) = &self.feeds {
             let world = AggregateWorld::new();
