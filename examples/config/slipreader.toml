@@ -60,6 +60,7 @@ tags = ["hacking", "tech"]
 
 
 [read]
+scroll = 1
 
 [read.tags]
 hidden = ["unread"]
@@ -74,7 +75,7 @@ color = { fg = "yellow" }
 
 [[read.tags.colors]]
 tag = "hacking"
-color = { underline = "cyan" }
+color = { underline = "light-cyan" }
 
 [read.hooks]
 fetch = []

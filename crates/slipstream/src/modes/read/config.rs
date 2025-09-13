@@ -14,9 +14,16 @@ pub struct ReadConfig {
     /// Custom commands.
     #[serde(default)]
     pub commands: Vec<CustomCommand>,
+    /// How far to scroll.
+    #[serde(default = "ReadConfig::default_scroll")]
+    pub scroll: u8,
 }
 
 impl ReadConfig {
+    fn default_scroll() -> u8 {
+        3
+    }
+
     /// Map crossterm key to reader command.
     /// This prioritizes the configured key bindings, but falls back to the
     /// defaults. If a default is not preferred, the config should specific
@@ -149,33 +156,98 @@ impl From<ColorConfig> for Style {
 pub enum ColorLiteral {
     #[serde(alias = "black")]
     Black,
-    #[serde(alias = "white")]
-    White,
     #[serde(alias = "red")]
     Red,
-    #[serde(alias = "blue")]
-    Blue,
-    #[serde(alias = "lightblue", alias = "light-blue")]
-    LightBlue,
-    #[serde(alias = "cyan")]
-    Cyan,
     #[serde(alias = "green")]
     Green,
     #[serde(alias = "yellow")]
     Yellow,
+    #[serde(alias = "blue")]
+    Blue,
+    #[serde(alias = "magenta")]
+    Magenta,
+    #[serde(alias = "cyan")]
+    Cyan,
+    #[serde(alias = "white")]
+    White,
+    #[serde(
+        alias = "brightblack",
+        alias = "bright-black",
+        alias = "lightblack",
+        alias = "light-black",
+        alias = "gray"
+    )]
+    BrightBlack,
+    #[serde(
+        alias = "brightred",
+        alias = "bright-red",
+        alias = "lightred",
+        alias = "light-red"
+    )]
+    BrightRed,
+    #[serde(
+        alias = "brightgreen",
+        alias = "bright-green",
+        alias = "lightgreen",
+        alias = "light-green"
+    )]
+    BrightGreen,
+    #[serde(
+        alias = "brightyellow",
+        alias = "bright-yellow",
+        alias = "lightyellow",
+        alias = "light-yellow"
+    )]
+    BrightYellow,
+    #[serde(
+        alias = "brightblue",
+        alias = "bright-blue",
+        alias = "lightblue",
+        alias = "light-blue"
+    )]
+    BrightBlue,
+    #[serde(
+        alias = "brightmagenta",
+        alias = "bright-magenta",
+        alias = "lightmagenta",
+        alias = "light-magenta"
+    )]
+    BrightMagenta,
+    #[serde(
+        alias = "brightcyan",
+        alias = "bright-cyan",
+        alias = "lightcyan",
+        alias = "light-cyan"
+    )]
+    BrightCyan,
+    #[serde(
+        alias = "brightwhite",
+        alias = "bright-white",
+        alias = "lightwhite",
+        alias = "light-white"
+    )]
+    BrightWhite,
 }
 
 impl From<&ColorLiteral> for Color {
     fn from(value: &ColorLiteral) -> Self {
         match *value {
             ColorLiteral::Black => Color::Black,
-            ColorLiteral::White => Color::White,
             ColorLiteral::Red => Color::Red,
-            ColorLiteral::Blue => Color::Blue,
-            ColorLiteral::LightBlue => Color::LightBlue,
-            ColorLiteral::Cyan => Color::Cyan,
             ColorLiteral::Green => Color::Green,
             ColorLiteral::Yellow => Color::Yellow,
+            ColorLiteral::Blue => Color::Blue,
+            ColorLiteral::Magenta => Color::Magenta,
+            ColorLiteral::Cyan => Color::Cyan,
+            ColorLiteral::White => Color::Gray,
+            ColorLiteral::BrightBlack => Color::DarkGray,
+            ColorLiteral::BrightRed => Color::LightRed,
+            ColorLiteral::BrightGreen => Color::LightGreen,
+            ColorLiteral::BrightYellow => Color::LightYellow,
+            ColorLiteral::BrightBlue => Color::LightBlue,
+            ColorLiteral::BrightMagenta => Color::LightMagenta,
+            ColorLiteral::BrightCyan => Color::LightCyan,
+            ColorLiteral::BrightWhite => Color::White,
         }
     }
 }

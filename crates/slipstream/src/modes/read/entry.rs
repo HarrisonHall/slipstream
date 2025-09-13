@@ -116,12 +116,21 @@ impl Deref for DatabaseEntry {
 
 pub struct EntryViewWidget<'a> {
     entry: &'a mut DatabaseEntry,
-    focus: &'a Focus,
+    interaction_state: &'a InteractionState,
+    terminal_state: &'a TerminalState,
 }
 
 impl<'a> EntryViewWidget<'a> {
-    pub fn new(entry: &'a mut DatabaseEntry, focus: &'a Focus) -> Self {
-        Self { entry, focus }
+    pub fn new(
+        entry: &'a mut DatabaseEntry,
+        interaction_state: &'a InteractionState,
+        terminal_state: &'a TerminalState,
+    ) -> Self {
+        Self {
+            entry,
+            interaction_state,
+            terminal_state,
+        }
     }
 }
 
@@ -131,12 +140,13 @@ impl<'a> Widget for EntryViewWidget<'a> {
         Self: Sized,
     {
         // Render outline.
-        let block = Block::bordered().title(self.entry.title().as_str()).fg(
-            match *self.focus {
-                Focus::Entry => Color::Green,
-                _ => Color::White,
-            },
-        );
+        let block =
+            Block::bordered()
+                .title(self.entry.title().as_str())
+                .fg(match self.interaction_state.focus {
+                    Focus::Entry => Color::Green,
+                    _ => Color::White,
+                });
         let inner_block = block.inner(area);
         block.render(area, buf);
 
@@ -145,20 +155,38 @@ impl<'a> Widget for EntryViewWidget<'a> {
             .direction(Direction::Vertical)
             .constraints(&[Constraint::Min(1), Constraint::Percentage(100)])
             .split(inner_block);
-        let commands = self.entry.get_commands();
-        ratatui::widgets::Tabs::new(
-            ["info"]
-                .iter()
-                .map(|info| *info)
-                .chain(commands.iter().map(|tab| (*tab).as_str()))
-                .map(|tab| tab.to_uppercase()),
-        )
-        .padding("", "")
-        .divider(" ")
-        // .bg(Color::Green)
-        .select(self.entry.result_selection_index)
-        .highlight_style((Color::Black, Color::Blue))
-        .render(tab_layouts[0], buf);
+        // let commands = self.entry.get_commands();
+        let commands = ["info"]
+            .iter()
+            .map(|info| *info)
+            .chain(self.entry.get_commands().iter().map(|tab| (*tab).as_str()));
+        {
+            let mut rect = tab_layouts[0];
+            let mut idx = self.entry.result_selection_index;
+            rect.height = 1;
+            for (i, command) in commands.enumerate() {
+                rect.width = command.len() as u16;
+                if self.terminal_state.last_frame_inputs.clicked(rect) {
+                    idx = i;
+                    break;
+                }
+                rect.x += rect.width + 1;
+            }
+            self.entry.result_selection_index = idx;
+        }
+
+        let commands = ["info"]
+            .iter()
+            .map(|info| *info)
+            .chain(self.entry.get_commands().iter().map(|tab| (*tab).as_str()));
+        let tabs =
+            ratatui::widgets::Tabs::new(commands.map(|tab| tab.to_uppercase()))
+                .padding("", "")
+                .divider(" ")
+                // .bg(Color::Green)
+                .select(self.entry.result_selection_index)
+                .highlight_style((Color::Black, Color::Blue));
+        tabs.render(tab_layouts[0], buf);
         match self.entry.get_result() {
             None => {
                 EntryInfoWidget(self.entry).render(tab_layouts[1], buf);
@@ -184,7 +212,7 @@ impl<'a> Widget for EntryInfoWidget<'a> {
         let layouts = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![
-                Constraint::Min(3),
+                Constraint::Max(5),
                 Constraint::Fill(1),
                 Constraint::Max(1),
             ])
@@ -254,18 +282,6 @@ impl<'a> Widget for EntryInfoWidget<'a> {
                 .into(),
             );
         }
-
-        // top_lines.push(
-        //     Span::styled(
-        //         if !self.0.content().is_empty() {
-        //             self.0.content().as_str()
-        //         } else {
-        //             "---"
-        //         },
-        //         Style::default().fg(Color::White),
-        //     )
-        //     .into(),
-        // );
 
         Paragraph::new(top_lines)
             .wrap(Wrap { trim: false })

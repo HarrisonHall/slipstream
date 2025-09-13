@@ -11,6 +11,8 @@ pub struct TerminalState {
     pub size: (u16, u16),
     /// Command width.
     pub command_width: u16,
+    /// Inputs from the previous render.
+    pub last_frame_inputs: LastFrameInputs,
 }
 
 impl Default for TerminalState {
@@ -20,6 +22,7 @@ impl Default for TerminalState {
             has_focus: true,
             size: (0, 0),
             command_width: MIN_HORIZONTAL_WIDTH,
+            last_frame_inputs: LastFrameInputs::new(),
         }
     }
 }
@@ -29,6 +32,21 @@ pub struct InteractionState {
     pub focus: Focus,
     /// Current selected entry index.
     pub selection: usize,
+}
+
+impl InteractionState {
+    pub fn scroll(&mut self, amount: i16, entries: &DatabaseEntryList) {
+        if amount > 0 {
+            let max_index = entries.len().saturating_sub(1);
+            self.selection = self
+                .selection
+                .saturating_add(amount as usize)
+                .min(max_index);
+        } else {
+            self.selection =
+                self.selection.saturating_sub(amount.abs() as usize);
+        }
+    }
 }
 
 impl Default for InteractionState {
@@ -72,4 +90,64 @@ impl Focus {
             _ => Focus::Menu { scroll: 0 },
         }
     }
+}
+
+pub struct LastFrameInputs {
+    click: Option<(u16, u16)>,
+    scroll: Option<ScrollDirection>,
+}
+
+impl LastFrameInputs {
+    pub fn new() -> Self {
+        Self {
+            click: None,
+            scroll: None,
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.click = None;
+        self.scroll = None;
+    }
+
+    pub fn handle_event(&mut self, event: crossterm::event::MouseEvent) {
+        match event.kind {
+            event::MouseEventKind::Down(_button) => {
+                self.click = Some((event.column, event.row));
+            }
+            event::MouseEventKind::ScrollDown => {
+                self.scroll = Some(ScrollDirection::Down);
+            }
+            event::MouseEventKind::ScrollUp => {
+                self.scroll = Some(ScrollDirection::Up);
+            }
+            _ => {}
+        };
+    }
+
+    pub fn scrolled_up(&self) -> bool {
+        if let Some(ScrollDirection::Up) = self.scroll {
+            return true;
+        }
+        return false;
+    }
+
+    pub fn scrolled_down(&self) -> bool {
+        if let Some(ScrollDirection::Down) = self.scroll {
+            return true;
+        }
+        return false;
+    }
+
+    pub fn clicked(&self, area: Rect) -> bool {
+        if let Some((x, y)) = self.click {
+            return area.contains(ratatui::layout::Position { x, y });
+        }
+        return false;
+    }
+}
+
+enum ScrollDirection {
+    Up,
+    Down,
 }

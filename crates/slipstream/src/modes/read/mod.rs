@@ -59,6 +59,8 @@ pub async fn read(
 
     // Show reader.
     let mut terminal = ratatui::init();
+    let _kb_cap = MouseCapture::new()?;
+
     let mut reader = Reader::new(config, updater, cancel_token)?;
 
     // Update reader on load.
@@ -146,6 +148,7 @@ impl Reader {
             })?;
 
             // Poll input.
+            self.terminal_state.last_frame_inputs.clear();
             if self.handle_input().await.is_err() {
                 self.cancel_token.cancel();
                 break 'reader Ok(());
@@ -218,7 +221,11 @@ impl Reader {
                             }
                         }
                     }
-                    Event::Mouse(event) => tracing::debug!("Mouse {:?}", event),
+                    Event::Mouse(event) => {
+                        self.terminal_state
+                            .last_frame_inputs
+                            .handle_event(event);
+                    }
                     Event::Resize(width, height) => {
                         self.terminal_state.size = (width, height);
                     }
@@ -228,6 +235,17 @@ impl Reader {
                 break;
             }
         }
+
+        // Handle queued input.
+        if self.terminal_state.last_frame_inputs.scrolled_up() {
+            self.interaction_state
+                .scroll(-(self.config.read.scroll as i16), &self.entries);
+        }
+        if self.terminal_state.last_frame_inputs.scrolled_down() {
+            self.interaction_state
+                .scroll(self.config.read.scroll as i16, &self.entries);
+        };
+
         Ok(())
     }
 
@@ -761,6 +779,24 @@ impl<'a> Widget for ReaderWidget<'a> {
                     .max(0) as usize;
         }
 
+        // Update focus based on mouse.
+        if self
+            .reader
+            .terminal_state
+            .last_frame_inputs
+            .clicked(list_layout)
+        {
+            self.reader.interaction_state.focus = Focus::List;
+        }
+        if self
+            .reader
+            .terminal_state
+            .last_frame_inputs
+            .clicked(entry_layout)
+        {
+            self.reader.interaction_state.focus = Focus::Entry;
+        }
+
         // Show slipstream header.
         match &self.reader.interaction_state.focus {
             Focus::Command { command, message } => match message {
@@ -800,8 +836,7 @@ impl<'a> Widget for ReaderWidget<'a> {
         }
 
         // Show titles.
-        let formatted_entries = self
-            .reader
+        self.reader
             .entries
             .iter()
             .enumerate()
@@ -811,15 +846,18 @@ impl<'a> Widget for ReaderWidget<'a> {
                         < self.reader.terminal_state.window
                             + list_layout.height as usize
             })
-            .map(|(i, e)| {
+            .enumerate()
+            .for_each(|(line_num, (entry_num, entry))| {
                 let feed: String = 'feed: {
-                    for feed_ref in e.feeds().iter() {
+                    for feed_ref in entry.feeds().iter() {
                         break 'feed (*feed_ref.name).clone();
                     }
                     "???".to_owned()
                 };
+
                 let selected: bool =
-                    i == self.reader.interaction_state.selection;
+                    entry_num == self.reader.interaction_state.selection;
+
                 let style = if selected {
                     if self.reader.terminal_state.has_focus {
                         match self.reader.interaction_state.focus {
@@ -834,35 +872,56 @@ impl<'a> Widget for ReaderWidget<'a> {
                 } else {
                     let mut style = Style::new();
                     for color_rule in &self.reader.config.read.tags.colors {
-                        if color_rule.matches(e) {
+                        if color_rule.matches(entry) {
                             style = color_rule.style();
                             break;
                         }
                     }
                     style
                 };
-                return Line::from(vec![
+
+                let line_layout = Rect {
+                    x: list_layout.x,
+                    y: list_layout.y + (line_num as u16),
+                    width: list_layout.width,
+                    height: 1,
+                };
+
+                if self
+                    .reader
+                    .terminal_state
+                    .last_frame_inputs
+                    .clicked(line_layout)
+                {
+                    self.reader.interaction_state.selection = entry_num;
+                }
+
+                Line::from(vec![
                     Span::styled(
                         format!("[{:<10}] ", &feed[..10.min(feed.len())]),
                         if selected {
-                            style
+                            Style::new().bg(Color::Green).fg(Color::Black)
                         } else {
                             Style::new().fg(Color::Cyan)
                         },
                     ),
-                    Span::styled(e.title(), style),
+                    Span::styled(entry.title(), style),
                 ])
-                .style(style);
+                .style(if selected { style } else { Style::new() })
+                .render(line_layout, buf);
             });
-        ratatui::widgets::List::new(formatted_entries).render(list_layout, buf);
 
         // Render the selection:
         self.reader.terminal_state.command_width = entry_layout.width - 6;
         if self.reader.interaction_state.selection < self.reader.entries.len() {
             let entry = &mut self.reader.entries
                 [self.reader.interaction_state.selection];
-            EntryViewWidget::new(entry, &self.reader.interaction_state.focus)
-                .render(entry_layout, buf);
+            EntryViewWidget::new(
+                entry,
+                &self.reader.interaction_state,
+                &self.reader.terminal_state,
+            )
+            .render(entry_layout, buf);
         }
     }
 }

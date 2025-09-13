@@ -174,3 +174,26 @@ impl<'de> Deserialize<'de> for BindingKey {
         })
     }
 }
+
+pub struct MouseCapture;
+
+impl MouseCapture {
+    pub fn new() -> Result<Self> {
+        crossterm::execute!(
+            std::io::stdout(),
+            crossterm::event::EnableMouseCapture
+        )?;
+        return Ok(Self);
+    }
+}
+
+impl Drop for MouseCapture {
+    fn drop(&mut self) {
+        if let Err(e) = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::event::DisableMouseCapture
+        ) {
+            tracing::error!("Failed to restore terminal keyboard: {e}");
+        }
+    }
+}
