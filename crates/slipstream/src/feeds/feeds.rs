@@ -61,7 +61,7 @@ impl EntryExt for slipfeed::Entry {
             src: None,
             content_type: Some("text".into()),
         });
-        if config.show_source_in_title {
+        if config.serve.show_source_in_title {
             if self.feeds().len() > 0 {
                 entry.title(format!(
                     "[{}] {}",
@@ -112,6 +112,7 @@ impl EntryExt for slipfeed::Entry {
                     .build(),
             );
         }
+        entry.id("...");
         entry.build()
     }
 }

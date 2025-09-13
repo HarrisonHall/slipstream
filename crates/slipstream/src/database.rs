@@ -13,7 +13,8 @@ use crate::modes::DatabaseEntry;
 
 /// Slipfeed database abstraction.
 pub struct Database {
-    /// Path to the sqlite database.
+    /// Path to the sqlite database file.
+    /// This is ":memory:" if the database is unspecified.
     #[allow(unused)]
     path: String,
     /// Connection to the sqlite database.
@@ -21,10 +22,16 @@ pub struct Database {
 }
 
 impl Database {
+    /// Create a new database.
     pub async fn new(path: impl AsRef<str>) -> Result<Self> {
-        // Parse path and create parents if necessary.
+        // Parse path and create parents if necessary. Additionally set connect
+        // options according to the specified path.
+        let options: SqliteConnectOptions;
         let path: String = match path.as_ref() {
-            ":memory:" => ":memory:".into(),
+            ":memory:" => {
+                options = SqliteConnectOptions::from_str(":memory:")?;
+                ":memory:".into()
+            }
             _ => {
                 let mut path: PathBuf = path.as_ref().into();
                 path = path.resolve().into_owned();
@@ -35,20 +42,20 @@ impl Database {
                         );
                     }
                 }
-                path.to_string_lossy().into_owned()
+                let path = path.to_string_lossy().into_owned();
+                options = SqliteConnectOptions::new()
+                    .filename(path.clone())
+                    .create_if_missing(true);
+                path
             }
         };
 
         // Create pool at path.
-        tracing::info!("Using database: {}", &path);
+        tracing::debug!("Using database: {}", &path);
         let pool = SqlitePoolOptions::new()
             .min_connections(2)
             .max_connections(4)
-            .connect_with(
-                SqliteConnectOptions::new()
-                    .filename(path.clone())
-                    .create_if_missing(true),
-            )
+            .connect_with(options)
             .await?;
 
         // Initialize database.
@@ -57,6 +64,7 @@ impl Database {
         Ok(Self { path, pool })
     }
 
+    /// Initialize the database.
     async fn initialize(pool: &SqlitePool) -> Result<()> {
         let res = sqlx::query(
             "
@@ -126,7 +134,9 @@ impl Database {
         .execute(pool)
         .await;
 
-        res?;
+        if let Err(e) = res {
+            bail!("Failed to initialize database: {e}");
+        }
 
         Ok(())
     }
@@ -244,24 +254,34 @@ impl Database {
 
     pub async fn get_entries(
         &self,
-        params: DatabaseSearch,
+        criteria: Vec<DatabaseSearch>,
         max_length: usize,
         cursor: OffsetCursor,
     ) -> DatabaseEntryList {
         let mut set = DatabaseEntryList::new(max_length);
-        let search_clause: String = match params {
-            DatabaseSearch::Latest => "TRUE = TRUE".into(),
-            DatabaseSearch::Search(search) => {
-                let search = search.to_lowercase();
-                format!(
-                    "entries.title LIKE '%{search}%' OR entries.author LIKE '%{search}%' OR entries.content LIKE '%{search}%'"
-                )
-            }
-            DatabaseSearch::Tag(tag) => format!("tags.tag LIKE '%{tag}%'"),
-            DatabaseSearch::Feed(feed) => {
-                format!("sources.source LIKE '%{feed}%'")
-            }
-        };
+        let mut search_clause = vec!["TRUE = TRUE".to_string()];
+        for crit in &criteria {
+            match crit {
+                DatabaseSearch::Latest => {}
+                DatabaseSearch::Search(search) => {
+                    let search = search.to_lowercase();
+                    search_clause.push(format!(
+                        "entries.title LIKE '%{search}%' OR entries.author LIKE '%{search}%' OR entries.content LIKE '%{search}%'"
+                    ));
+                }
+                DatabaseSearch::Tag(tag) => {
+                    search_clause.push(format!("tags.tag LIKE '%{tag}%'"));
+                }
+                DatabaseSearch::Feed(feed) => {
+                    search_clause
+                        .push(format!("sources.source LIKE '%{feed}%'"));
+                }
+                DatabaseSearch::Command(command) => {
+                    search_clause
+                        .push(format!("commands.name LIKE '%{command}%'"));
+                }
+            };
+        }
         let cursor_clause: String = match cursor {
             OffsetCursor::Latest => "TRUE = TRUE".into(),
             OffsetCursor::Before(dt) => {
@@ -289,7 +309,8 @@ impl Database {
             ORDER BY entries.timestamp DESC, entries.id DESC
             LIMIT ?
             ",
-            cursor_clause, search_clause,
+            cursor_clause,
+            search_clause.join(" AND "),
         ))
         .bind(max_length as u32)
         .fetch_all(&self.pool)
@@ -423,6 +444,7 @@ pub enum DatabaseSearch {
     Search(String),
     Tag(String),
     Feed(String),
+    Command(String),
 }
 
 /// Database identifier for entries.

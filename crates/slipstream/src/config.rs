@@ -11,28 +11,18 @@ pub struct Config {
     pub freq: Option<std::time::Duration>,
     /// Log file.
     pub log: Option<String>,
-    /// Port.
-    pub port: Option<u16>,
     /// Maximum entry storage size.
     pub storage: Option<u16>,
     /// Database cache file.
     pub database: Option<String>,
-    /// Cache duration.
-    #[serde(default, with = "humantime_serde::option")]
-    pub cache: Option<std::time::Duration>,
     /// Global configuration.
     #[serde(default)]
     pub global: GlobalConfig,
-    /// All configuration.
-    pub all: Option<GlobalConfig>,
     /// Feed configuration.
     pub feeds: Option<HashMap<String, FeedDefinition>>,
-    // Additional configuration.
-    /// Put source into served title.
-    #[serde(default = "Config::default_show_source_in_title")]
-    pub show_source_in_title: bool,
-    /// Location for archives.
-    pub archive_path: Option<String>,
+    // Serve configuration.
+    #[serde(default)]
+    pub serve: ServeConfig,
     // Read configuration.
     #[serde(default)]
     pub read: ReadConfig,
@@ -43,15 +33,11 @@ impl Default for Config {
         Self {
             freq: None,
             feeds: None,
-            port: None,
             storage: None,
             database: None,
-            cache: None,
             global: GlobalConfig::default(),
-            all: None,
             log: None,
-            show_source_in_title: true,
-            archive_path: None,
+            serve: ServeConfig::default(),
             read: ReadConfig::default(),
         }
     }
@@ -131,7 +117,7 @@ impl Config {
             .extend(self.global.filters.get_filters());
 
         // Add all filters.
-        if let Some(all_config) = self.all.as_ref() {
+        if let Some(all_config) = self.serve.all.as_ref() {
             updater.all_filters.extend(all_config.filters.get_filters());
         }
 
@@ -144,10 +130,6 @@ impl Config {
             return feeds.get(feed);
         }
         None
-    }
-
-    fn default_show_source_in_title() -> bool {
-        false
     }
 }
 

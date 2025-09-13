@@ -49,7 +49,7 @@ impl DatabaseEntry {
     }
 
     /// Cycle the selected result.
-    pub fn scroll(&mut self, by: isize) {
+    pub fn scroll(&mut self, by: i16) {
         if self.result_selection_index == 0 {
             return;
         }
@@ -100,6 +100,14 @@ impl DatabaseEntry {
         }
         self.ran_commands.push(result.command.name.clone());
         self.command_results.push(result);
+    }
+}
+
+impl EntryExt for DatabaseEntry {
+    fn to_atom(&self, config: &Config) -> atom_syndication::Entry {
+        let mut atom_entry = self.entry.to_atom(config);
+        atom_entry.id = format!("{}", self.db_id);
+        return atom_entry;
     }
 }
 
@@ -333,6 +341,7 @@ impl DatabaseEntryList {
         }
     }
 
+    /// Add an entry to the list.
     pub fn add(&mut self, entry: DatabaseEntry) -> Result<()> {
         if self.entries.len() < self.max_size {
             let db_id = entry.db_id;
@@ -343,10 +352,12 @@ impl DatabaseEntryList {
         bail!("Entry list at max length ({}).", self.max_size);
     }
 
+    /// Get the length of the list.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
+    /// Get an entry in the list, by id.
     #[allow(unused)]
     pub fn get(&self, db_id: EntryDbId) -> Option<&DatabaseEntry> {
         match self.lookup.get(&db_id) {
@@ -355,6 +366,7 @@ impl DatabaseEntryList {
         }
     }
 
+    /// Get a mutable entry in the list, by id.
     pub fn get_mut(&mut self, db_id: EntryDbId) -> Option<&mut DatabaseEntry> {
         match self.lookup.get(&db_id) {
             Some(idx) => Some(&mut self.entries[*idx]),
@@ -362,22 +374,27 @@ impl DatabaseEntryList {
         }
     }
 
+    /// Get the first entry in the list.
     pub fn first(&self) -> Option<&DatabaseEntry> {
         self.entries.first()
     }
 
+    /// Get the last entry in the list.
     pub fn last(&self) -> Option<&DatabaseEntry> {
         self.entries.last()
     }
 
+    /// Iterate the list.
     pub fn iter(&self) -> impl Iterator<Item = &DatabaseEntry> {
         self.entries.iter()
     }
 
+    /// Iterate the list's slipfeed entries.
     pub fn iter_entries(&self) -> impl Iterator<Item = &slipfeed::Entry> {
         self.entries.iter().map(|e| &e.entry)
     }
 
+    /// Turn list into an atom syndication.
     pub fn syndicate(&self, name: impl AsRef<str>, config: &Config) -> String {
         let mut syn = atom::FeedBuilder::default();
         syn.title(name.as_ref())

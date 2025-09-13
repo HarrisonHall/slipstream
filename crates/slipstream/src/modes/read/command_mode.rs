@@ -70,18 +70,15 @@ pub enum Command {
 
 #[derive(Parser, Clone)]
 pub struct SearchContext {
-    // /// Filter by important.
-    // #[arg(short, long, default_value_t = false)]
-    // pub important: bool,
-    // /// Filter by unread.
-    // #[arg(short, long, default_value_t = false)]
-    // pub unread: bool,
     /// Filter by tag.
-    #[arg(short, long)]
-    pub tag: Option<String>,
+    #[arg(short, long, value_parser, num_args = 1.., value_delimiter = ' ')]
+    pub tag: Vec<String>,
     /// Filter by feed.
-    #[arg(short, long)]
-    pub feed: Option<String>,
+    #[arg(short, long, value_parser, num_args = 1.., value_delimiter = ' ')]
+    pub feed: Vec<String>,
+    /// Filter by command.
+    #[arg(short, long, value_parser, num_args = 1.., value_delimiter = ' ')]
+    pub command: Vec<String>,
     /// Search text.
     pub text: Option<String>,
 }

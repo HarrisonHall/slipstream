@@ -4,8 +4,10 @@ use super::*;
 
 use axum::extract::State;
 
+mod config;
 mod web;
 
+pub use config::*;
 use web::*;
 
 /// Serve slipstream over http.
@@ -16,7 +18,7 @@ pub async fn serve(
     cancel_token: CancellationToken,
 ) -> Result<()> {
     // Create caches.
-    let duration = slipfeed::Duration::from_seconds(match config.cache {
+    let duration = slipfeed::Duration::from_seconds(match config.serve.cache {
         Some(freq) => freq.as_secs(),
         None => 120,
     });
@@ -42,7 +44,7 @@ pub async fn serve(
             cache,
             html,
         }));
-    let port = port.unwrap_or(config.port.unwrap_or(DEFAULT_PORT));
+    let port = port.unwrap_or(config.serve.port.unwrap_or(DEFAULT_PORT));
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
         .await
         .expect(&format!("Unable to bind to port {}", port));

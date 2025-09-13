@@ -40,10 +40,10 @@ type Terminal = DefaultTerminal;
 const SCROLL_WINDOW: usize = 3;
 /// How often to refresh the screen without input.
 const REFRESH_DELTA: f32 = 0.25;
-/// Minimum time to poll the terminal for queued inputs.
-const MAX_INPUT_PER_TICK: usize = 1;
+/// Minimum height of the screen.
+const MIN_VER_HEIGHT: u16 = 20;
 /// The minimum terminal width to support horizontal mode.
-const MIN_HORIZONTAL_WIDTH: u16 = 120;
+const MIN_HOR_WIDTH: u16 = 120;
 /// The C-c quit key event.
 const CONTROL_C: KeyEvent =
     KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
@@ -65,7 +65,7 @@ pub async fn read(
 
     // Update reader on load.
     reader
-        .update_entries(DatabaseSearch::Latest, OffsetCursor::Latest)
+        .update_entries(vec![DatabaseSearch::Latest], OffsetCursor::Latest)
         .await;
 
     // Run loop.
@@ -184,7 +184,7 @@ impl Reader {
     /// Check the size.
     /// If the buffer size is too small, this returns false and renders a notification.
     fn check_size_or_render(&mut self, buf: &mut Buffer) -> bool {
-        if self.terminal_state.size.0 < 20
+        if self.terminal_state.size.0 < MIN_VER_HEIGHT
             || self.terminal_state.size.1 < (2 * SCROLL_WINDOW as u16) + 5
         {
             let area = buf.area;
@@ -208,56 +208,47 @@ impl Reader {
     /// Handle input.
     /// Quits on error.
     async fn handle_input(&mut self) -> Result<()> {
-        for i in 0..MAX_INPUT_PER_TICK {
-            let poll_time = if i == 0 { REFRESH_DELTA } else { 0.1 };
-            if terminal_input_ready(poll_time).await {
-                // It's guaranteed that the `read()` won't block when the `poll()`
-                // function returns `true`.
-                match event::read()? {
-                    Event::FocusGained => self.terminal_state.has_focus = true,
-                    Event::FocusLost => self.terminal_state.has_focus = false,
-                    Event::Key(key) => {
-                        if key == CONTROL_C {
-                            self.cancel_token.cancel();
-                            return Ok(());
+        // Wait for input for REFRESH_DELTA.
+        if terminal_input_ready(REFRESH_DELTA).await {
+            // It's guaranteed that the `read()` won't block when the `poll()`
+            // function returns `true`.
+            match event::read()? {
+                Event::FocusGained => self.terminal_state.has_focus = true,
+                Event::FocusLost => self.terminal_state.has_focus = false,
+                Event::Key(key) => {
+                    if key == CONTROL_C {
+                        self.cancel_token.cancel();
+                        return Ok(());
+                    }
+                    match &self.interaction_state.focus {
+                        Focus::Command { .. } => {
+                            self.handle_command_mode_input(&key).await?;
                         }
-                        match &self.interaction_state.focus {
-                            Focus::Command { .. } => {
-                                self.handle_command_mode_input(&key).await?;
-                            }
-                            _ => {
-                                let command =
-                                    self.config.read.get_key_command(&key);
-                                self.run_command(command).await?;
-                            }
+                        _ => {
+                            let command =
+                                self.config.read.get_key_command(&key);
+                            self.run_command(command).await?;
                         }
                     }
-                    Event::Mouse(event) => {
-                        self.terminal_state
-                            .last_frame_inputs
-                            .handle_event(event);
-                    }
-                    Event::Resize(width, height) => {
-                        self.terminal_state.size = (width, height);
-                    }
-                    _ => {}
                 }
-            } else {
-                break;
+                Event::Mouse(event) => {
+                    self.terminal_state.last_frame_inputs.handle_event(event);
+                }
+                Event::Resize(width, height) => {
+                    self.terminal_state.size = (width, height);
+                }
+                _ => {}
             }
         }
 
         // Handle queued input.
         if self.terminal_state.last_frame_inputs.scrolled_up() {
+            let scroll = -(self.config.read.scroll as i16);
             match self.interaction_state.focus {
                 Focus::List => {
-                    self.interaction_state.scroll(
-                        -(self.config.read.scroll as i16),
-                        &self.entries,
-                    );
+                    self.interaction_state.scroll(scroll, &self.entries);
                 }
                 Focus::Entry => {
-                    let scroll = -(self.config.read.scroll as isize);
                     if let Some(entry) = self.get_selected_entry_mut() {
                         entry.scroll(scroll);
                     }
@@ -266,13 +257,12 @@ impl Reader {
             }
         }
         if self.terminal_state.last_frame_inputs.scrolled_down() {
+            let scroll = self.config.read.scroll as i16;
             match self.interaction_state.focus {
                 Focus::List => {
-                    self.interaction_state
-                        .scroll(self.config.read.scroll as i16, &self.entries);
+                    self.interaction_state.scroll(scroll, &self.entries);
                 }
                 Focus::Entry => {
-                    let scroll = self.config.read.scroll as isize;
                     if let Some(entry) = self.get_selected_entry_mut() {
                         entry.scroll(scroll);
                     }
@@ -328,7 +318,7 @@ impl Reader {
             }
             ReadCommandLiteral::Update => {
                 self.update_entries(
-                    DatabaseSearch::Latest,
+                    vec![DatabaseSearch::Latest],
                     OffsetCursor::Latest,
                 )
                 .await;
@@ -387,22 +377,16 @@ impl Reader {
             ReadCommandLiteral::PageDown => {
                 match self.interaction_state.focus {
                     Focus::List => {
-                        let entry_count = self.entries.len() as isize;
-                        let page_down = self.terminal_state.size.1 as isize
-                            - (2 * SCROLL_WINDOW) as isize;
-                        if self.interaction_state.selection as isize + page_down
-                            < entry_count
-                        {
-                            self.interaction_state.selection +=
-                                page_down as usize;
-                        } else {
-                            self.interaction_state.selection =
-                                (entry_count - 1).max(0) as usize;
-                        }
+                        self.interaction_state.scroll(
+                            self.terminal_state.get_paging_lines(),
+                            &self.entries,
+                        );
                     }
                     Focus::Entry => {
+                        let paging_lines =
+                            self.terminal_state.get_paging_lines();
                         if let Some(entry) = self.get_selected_entry_mut() {
-                            entry.scroll(20);
+                            entry.scroll(paging_lines);
                         }
                     }
                     Focus::Menu { .. } => {}
@@ -411,20 +395,15 @@ impl Reader {
             }
             ReadCommandLiteral::PageUp => match self.interaction_state.focus {
                 Focus::List => {
-                    let entry_count = self.entries.len() as isize;
-                    let page_up = self.terminal_state.size.1 as isize
-                        - (2 * SCROLL_WINDOW) as isize;
-                    if self.interaction_state.selection as isize - page_up >= 0
-                    {
-                        self.interaction_state.selection -=
-                            page_up.min(entry_count) as usize;
-                    } else {
-                        self.interaction_state.selection = 0;
-                    }
+                    self.interaction_state.scroll(
+                        -self.terminal_state.get_paging_lines(),
+                        &self.entries,
+                    );
                 }
                 Focus::Entry => {
+                    let paging_lines = -self.terminal_state.get_paging_lines();
                     if let Some(entry) = self.get_selected_entry_mut() {
-                        entry.scroll(-20);
+                        entry.scroll(paging_lines);
                     }
                 }
                 Focus::Menu { .. } => {}
@@ -581,6 +560,7 @@ impl Reader {
                         })
                     }
                 };
+                tracing::info!("Command:\n{:?}", &custom_command.command);
                 tracing::info!("Output:\n{}", output);
                 ctx.update(Arc::new(output), exit == 0);
                 (entry.db_id, ctx)
@@ -630,7 +610,7 @@ impl Reader {
     /// Search for entries.
     async fn update_entries(
         &mut self,
-        search: DatabaseSearch,
+        criteria: Vec<DatabaseSearch>,
         offset: OffsetCursor,
     ) {
         // Check for new update.
@@ -641,10 +621,10 @@ impl Reader {
 
         self.refresh = Some({
             let updater = self.updater.clone();
-            let search = search.clone();
-            tokio::spawn(async move { updater.search(search, offset).await })
+            let criteria = criteria.clone();
+            tokio::spawn(async move { updater.search(criteria, offset).await })
         });
-        self.interaction_state.previous_search = search;
+        self.interaction_state.previous_search = criteria;
     }
 
     async fn handle_command_mode_input(
@@ -724,31 +704,26 @@ impl Reader {
             command_mode::Command::Quit => self.cancel_token.cancel(),
             command_mode::Command::SearchLatest => {
                 self.update_entries(
-                    DatabaseSearch::Latest,
+                    vec![DatabaseSearch::Latest],
                     OffsetCursor::Latest,
                 )
                 .await
             }
             command_mode::Command::SearchAny(search) => {
-                if search.tag.is_some() {
-                    self.update_entries(
-                        DatabaseSearch::Tag(search.tag.unwrap()),
-                        OffsetCursor::Latest,
-                    )
-                    .await
-                } else if search.feed.is_some() {
-                    self.update_entries(
-                        DatabaseSearch::Feed(search.feed.unwrap()),
-                        OffsetCursor::Latest,
-                    )
-                    .await
-                } else {
-                    self.update_entries(
-                        DatabaseSearch::Search(search.text.unwrap()),
-                        OffsetCursor::Latest,
-                    )
-                    .await
+                let mut criteria: Vec<DatabaseSearch> = Vec::new();
+                for tag in &search.tag {
+                    criteria.push(DatabaseSearch::Tag(tag.clone()));
                 }
+                for feed in &search.feed {
+                    criteria.push(DatabaseSearch::Feed(feed.clone()));
+                }
+                for cmd in &search.command {
+                    criteria.push(DatabaseSearch::Command(cmd.clone()));
+                }
+                if let Some(text) = &search.text {
+                    criteria.push(DatabaseSearch::Search(text.clone()));
+                }
+                self.update_entries(criteria, OffsetCursor::Latest).await
             }
             command_mode::Command::TagAdd { tag } => {
                 if self.interaction_state.selection < self.entries.len() {
@@ -857,7 +832,7 @@ impl<'a> Widget for ReaderWidget<'a> {
         let title_layout;
         let list_layout;
         let entry_layout;
-        if area.width > MIN_HORIZONTAL_WIDTH {
+        if area.width > MIN_HOR_WIDTH {
             let vert_layouts = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints(&[Constraint::Min(1), Constraint::Percentage(100)])
@@ -1000,8 +975,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                     let mut style = Style::new();
                     for color_rule in &self.reader.config.read.tags.colors {
                         if color_rule.matches(entry) {
-                            style = color_rule.style();
-                            break;
+                            color_rule.apply_style(&mut style);
                         }
                     }
                     style

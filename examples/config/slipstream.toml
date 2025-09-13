@@ -2,10 +2,6 @@
 
 # Root settings for the updater.
 freq = "5min"
-cache = "2min"
-
-# Other options.
-show_source_in_title = true
 
 # Settings that apply to **everything**.
 [global]
@@ -27,10 +23,16 @@ max = 512
 # Oldest entry stored.
 oldest = "1month"
 
-# Settings that apply to the all feed.
-[all]
+# Serve options.
+[serve]
+port = 3000
+show_source_in_title = true
+cache = "2min"
 
-[all.filters]
+# Settings that apply to the all feed.
+[serve.all]
+
+[serve.all.filters]
 exclude-title-words = [
   "release",
 ]

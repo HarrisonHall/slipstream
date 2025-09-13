@@ -15,13 +15,25 @@ pub struct TerminalState {
     pub last_frame_inputs: LastFrameInputs,
 }
 
+impl TerminalState {
+    pub fn get_paging_lines(&self) -> i16 {
+        if self.size.0 > MIN_HOR_WIDTH {
+            // Handle horizontal paging.
+            return self.size.1 as i16 - (2 * SCROLL_WINDOW) as i16;
+        } else {
+            // Handle vertical paging.
+            return (self.size.1 / 2) as i16 - (2 * SCROLL_WINDOW) as i16;
+        }
+    }
+}
+
 impl Default for TerminalState {
     fn default() -> Self {
         Self {
             window: 0,
             has_focus: true,
             size: (0, 0),
-            command_width: MIN_HORIZONTAL_WIDTH,
+            command_width: MIN_HOR_WIDTH,
             last_frame_inputs: LastFrameInputs::new(),
         }
     }
@@ -33,7 +45,7 @@ pub struct InteractionState {
     /// Current selected entry index.
     pub selection: usize,
     /// Previous search.
-    pub previous_search: DatabaseSearch,
+    pub previous_search: Vec<DatabaseSearch>,
 }
 
 impl InteractionState {
@@ -56,7 +68,7 @@ impl Default for InteractionState {
         Self {
             focus: Focus::List,
             selection: 0,
-            previous_search: DatabaseSearch::Latest,
+            previous_search: Vec::new(),
         }
     }
 }

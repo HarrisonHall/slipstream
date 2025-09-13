@@ -107,10 +107,14 @@ impl Updater {
                         .await;
                 }
             }
-            UpdaterRequest::EntriesSearch { tx, search, offset } => {
+            UpdaterRequest::EntriesSearch {
+                tx,
+                criteria,
+                offset,
+            } => {
                 if let Some(entry_db) = &self.entry_db {
                     // TODO: custom search count.
-                    tx.send(entry_db.get_entries(search, 128, offset).await)
+                    tx.send(entry_db.get_entries(criteria, 128, offset).await)
                         .ok();
                 };
             }
@@ -120,7 +124,7 @@ impl Updater {
                         FeedFetchOptions::All => {
                             let unfiltered_entries = entry_db
                                 .get_entries(
-                                    DatabaseSearch::Latest,
+                                    vec![DatabaseSearch::Latest],
                                     config.global.limits.max(),
                                     OffsetCursor::Latest,
                                 )
@@ -145,7 +149,7 @@ impl Updater {
                         FeedFetchOptions::Tag(tag) => {
                             let unfiltered_entries = entry_db
                                 .get_entries(
-                                    DatabaseSearch::Tag(tag),
+                                    vec![DatabaseSearch::Tag(tag)],
                                     config.global.limits.max(),
                                     OffsetCursor::Latest,
                                 )
@@ -170,7 +174,9 @@ impl Updater {
                             {
                                 let unfiltered_entries = entry_db
                                     .get_entries(
-                                        DatabaseSearch::Feed(feed.clone()),
+                                        vec![DatabaseSearch::Feed(
+                                            feed.clone(),
+                                        )],
                                         config.global.limits.max(),
                                         OffsetCursor::Latest,
                                     )
@@ -251,7 +257,7 @@ enum UpdaterRequest {
     },
     EntriesSearch {
         tx: oneshot::Sender<DatabaseEntryList>,
-        search: DatabaseSearch,
+        criteria: Vec<DatabaseSearch>,
         offset: OffsetCursor,
     },
     FeedFetch {
@@ -294,12 +300,16 @@ impl UpdaterHandle {
     /// Search for entries from a feed.
     pub async fn search(
         &self,
-        search: DatabaseSearch,
+        criteria: Vec<DatabaseSearch>,
         offset: OffsetCursor,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::EntriesSearch { tx, search, offset })
-            .await;
+        self.send(UpdaterRequest::EntriesSearch {
+            tx,
+            criteria,
+            offset,
+        })
+        .await;
         match rx.await {
             Ok(data) => data,
             Err(e) => {

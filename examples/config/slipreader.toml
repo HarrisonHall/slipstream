@@ -2,7 +2,6 @@
 
 # Root settings for the updater.
 freq = "5min"
-cache = "2min"
 database = "slip.db"
 
 # Settings that apply to **everything**.
@@ -23,15 +22,6 @@ exclude-content-words = [
 max = 512
 # Oldest entry stored.
 oldest = "1month"
-
-# Settings that apply to the all feed.
-[all]
-
-[all.filters]
-exclude-title-words = [
-  "release",
-]
-exclude-tags = ["rust"]
 
 # Feed definitions.
 [feeds]
@@ -60,11 +50,11 @@ tags = ["hacking", "tech"]
 
 [feeds.shimbun-science]
 url = "https://www.asahi.com/rss/asahi/science.rdf"
-tags = ["science"]
+tags = ["science", "japanese"]
 
 [feeds.shimbun-env]
 url = "https://www.asahi.com/rss/asahi/eco.rdf"
-tags = ["environment", "energy"]
+tags = ["environment", "energy", "japanese"]
 
 [read]
 scroll = 1
@@ -84,9 +74,14 @@ color = { fg = "yellow" }
 tag = "hacking"
 color = { underline = "light-cyan" }
 
+[[read.tags.colors]]
+tag = "japanese"
+color = { underline = "red" }
+
 [read.hooks]
 fetch = []
 insert = [":add-tag unread"]
+update = []
 read = [":remove-tag unread"]
 
 [read.bindings]
@@ -154,24 +149,24 @@ command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64
 # Open the url.
 [[read.commands]]
 name = "open"
-command = ["fish", "-c", "xdg-open {{link.url}}"]
+command = ["fish", "-c", "xdg-open \"{{link.url}}\""]
 save = false
 
 [[read.commands]]
 name = "open-1"
-command = ["fish", "-c", "xdg-open {{link.url1}}"]
+command = ["fish", "-c", "xdg-open \"{{link.url1}}\""]
 save = false
 [[read.commands]]
 name = "open-2"
-command = ["fish", "-c", "xdg-open {{link.url2}}"]
+command = ["fish", "-c", "xdg-open \"{{link.url2}}\""]
 save = false
 [[read.commands]]
 name = "open-3"
-command = ["fish", "-c", "xdg-open {{link.url3}}"]
+command = ["fish", "-c", "xdg-open \"{{link.url3}}\""]
 save = false
 [[read.commands]]
 name = "open-4"
-command = ["fish", "-c", "xdg-open {{link.url4}}"]
+command = ["fish", "-c", "xdg-open \"{{link.url4}}\""]
 save = false
 
 # Archive.
@@ -185,20 +180,19 @@ command = [
       --no-js \
       --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" \
       --output ~/media/articles/{{link.name-}}.html \
-      {{link.url}}
+      "{{link.url}}" \
   """,
 ]
 
 [[read.commands]]
 name = "archive-1"
-command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html {{link.url1}}""",]
+command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html "{link.url1}}"""",]
 [[read.commands]]
 name = "archive-2"
-command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html {{link.url2}}""",]
+command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html "{{link.url2}}"""",]
 [[read.commands]]
 name = "archive-3"
-command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html {{link.url3}}""",]
+command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html "{{link.url3}}"""",]
 [[read.commands]]
 name = "archive-4"
-command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html {{link.url4}}""",]
-
+command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html "{{link.url4}}"""",]
