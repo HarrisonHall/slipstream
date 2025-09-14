@@ -9,7 +9,7 @@ pub struct Tag(String);
 impl Tag {
     /// Generate a new tag.
     pub fn new(from: impl Into<String>) -> Self {
-        Self(from.into())
+        Self(String::from(from.into()).to_lowercase())
     }
 }
 
@@ -45,13 +45,13 @@ impl From<&Tag> for String {
 
 impl From<String> for Tag {
     fn from(value: String) -> Self {
-        Tag(value)
+        Tag(value.to_lowercase())
     }
 }
 
 impl From<&str> for Tag {
     fn from(value: &str) -> Self {
-        Tag(value.into())
+        Tag(String::from(value).to_lowercase())
     }
 }
 

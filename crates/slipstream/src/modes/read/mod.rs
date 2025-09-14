@@ -275,12 +275,12 @@ impl Reader {
     }
 
     /// Run command.
-    async fn run_command(&mut self, command: ReadCommand) -> Result<()> {
+    async fn run_command(&mut self, command: Commandish) -> Result<()> {
         match command {
-            ReadCommand::CustomCommandRef(name) => {
+            Commandish::CustomCommandRef(name) => {
                 tracing::error!("Invalid command name: {}", name.as_str());
             }
-            ReadCommand::CustomCommandFull(custom_command) => {
+            Commandish::CustomCommandFull(custom_command) => {
                 if custom_command.save {
                     self.entries[self.interaction_state.selection].add_result(
                         command::CommandResultContext::new(
@@ -294,7 +294,7 @@ impl Reader {
                     self.terminal_state.command_width,
                 ));
             }
-            ReadCommand::Literal(command) => {
+            Commandish::Literal(command) => {
                 self.run_command_literal(command).await?
             }
         }
@@ -757,7 +757,7 @@ impl Reader {
             command_mode::Command::Command { command } => {
                 let command = self.config.read.get_custom_command(&command);
                 match command {
-                    ReadCommand::CustomCommandFull(custom_command) => {
+                    Commandish::CustomCommandFull(custom_command) => {
                         if custom_command.save {
                             self.entries[self.interaction_state.selection]
                                 .add_result(

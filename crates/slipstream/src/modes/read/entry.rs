@@ -252,7 +252,7 @@ impl<'a> Widget for EntryInfoWidget<'a> {
             .tags()
             .iter()
             .filter(|t| !self.1.read.tags.hidden.contains(t.as_ref()))
-            .map(|t| format!("<{t}>"))
+            .map(|t| format!("#{t}"))
             .collect::<Vec<String>>();
         tags.sort();
         top_lines.push(Line::styled(
