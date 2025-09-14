@@ -29,6 +29,8 @@
       }
       .tag {
         color: rgb(255, 191, 0);
+        background: rgb(22, 16, 3);
+        margin: 0.2em;
       }
     </style>
   </head>
@@ -59,7 +61,7 @@
             <p>
               {{#each tags}}
               <span>
-                <code class="tag">&lt;{{this}}&gt;</code>
+                <code class="tag">#{{this}}</code>
               </span>
               {{/each}}
             </p>
