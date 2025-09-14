@@ -2,15 +2,23 @@
 
 use super::*;
 
+/// Slipstream cli parsing.
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 pub struct Cli {
+    /// Configuration file.
     #[arg(short, long, value_name = "FILE")]
     pub config: Option<PathBuf>,
+    /// Launch in debug. This lowers in the log level to debug. In read mode, this
+    /// additionally logs to the cli, which is disabled by default.
     #[arg(short, long, action)]
     pub debug: bool,
+    /// Display logs and log at the trace level.
+    #[arg(short, long, action)]
+    pub verbose: bool,
+    /// The command mode for slipstream.
     #[command(subcommand)]
-    pub command: Mode,
+    pub command: CommandMode,
 }
 
 impl Cli {
@@ -70,11 +78,15 @@ impl Cli {
     }
 }
 
+/// Slipstream command mode.
 #[derive(Subcommand)]
-pub enum Mode {
+pub enum CommandMode {
+    /// Serve feeds as static webpages and atom exports.
     Serve {
+        /// TODO
         #[arg(short, long, value_name = "PORT")]
         port: Option<u16>,
     },
+    /// Read feeds in a local tui.
     Read {},
 }

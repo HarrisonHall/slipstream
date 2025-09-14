@@ -18,7 +18,7 @@ pub struct ReadConfig {
     pub tags: TagConfig,
     /// Configured mappings for keys to commands.
     #[serde(default)]
-    pub bindings: HashMap<BindingKey, ReadCommand>,
+    pub bindings: HashMap<BindingKey, Commandish>,
     /// Custom commands.
     #[serde(default)]
     pub commands: Vec<CustomCommand>,
@@ -36,13 +36,13 @@ impl ReadConfig {
     /// This prioritizes the configured key bindings, but falls back to the
     /// defaults. If a default is not preferred, the config should specific
     /// a mapping of the key to "none".
-    pub fn get_key_command(&self, key: &KeyEvent) -> ReadCommand {
+    pub fn get_key_command(&self, key: &KeyEvent) -> Commandish {
         tracing::trace!("Key press: {:?}", key);
 
         for (binding, command) in self.bindings.iter() {
             if *key == binding.into() {
                 return match &*command {
-                    ReadCommand::CustomCommandRef(name) => {
+                    Commandish::CustomCommandRef(name) => {
                         self.get_custom_command(name.as_str())
                     }
                     _ => command.clone(),
@@ -51,36 +51,36 @@ impl ReadConfig {
         }
 
         if *key == UPDATE {
-            ReadCommand::Literal(ReadCommandLiteral::Update)
+            Commandish::Literal(ReadCommandLiteral::Update)
         } else if *key == QUIT {
-            ReadCommand::Literal(ReadCommandLiteral::Quit)
+            Commandish::Literal(ReadCommandLiteral::Quit)
         } else if *key == DOWN {
-            ReadCommand::Literal(ReadCommandLiteral::Down)
+            Commandish::Literal(ReadCommandLiteral::Down)
         } else if *key == UP {
-            ReadCommand::Literal(ReadCommandLiteral::Up)
+            Commandish::Literal(ReadCommandLiteral::Up)
         } else if *key == LEFT {
-            ReadCommand::Literal(ReadCommandLiteral::Left)
+            Commandish::Literal(ReadCommandLiteral::Left)
         } else if *key == RIGHT {
-            ReadCommand::Literal(ReadCommandLiteral::Right)
+            Commandish::Literal(ReadCommandLiteral::Right)
         } else if *key == PAGE_DOWN {
-            ReadCommand::Literal(ReadCommandLiteral::PageDown)
+            Commandish::Literal(ReadCommandLiteral::PageDown)
         } else if *key == PAGE_UP {
-            ReadCommand::Literal(ReadCommandLiteral::PageUp)
+            Commandish::Literal(ReadCommandLiteral::PageUp)
         } else if *key == TAB {
-            ReadCommand::Literal(ReadCommandLiteral::Swap)
+            Commandish::Literal(ReadCommandLiteral::Swap)
         } else if *key == MENU {
-            ReadCommand::Literal(ReadCommandLiteral::Menu)
+            Commandish::Literal(ReadCommandLiteral::Menu)
         } else if *key == COMMAND_MODE {
-            ReadCommand::Literal(ReadCommandLiteral::CommandMode)
+            Commandish::Literal(ReadCommandLiteral::CommandMode)
         } else if *key == SEARCH_MODE {
-            ReadCommand::Literal(ReadCommandLiteral::SearchMode)
+            Commandish::Literal(ReadCommandLiteral::SearchMode)
         } else {
-            ReadCommand::Literal(ReadCommandLiteral::None)
+            Commandish::Literal(ReadCommandLiteral::None)
         }
     }
 
     /// Get custom command associated with a command name.
-    pub fn get_custom_command(&self, name: impl AsRef<str>) -> ReadCommand {
+    pub fn get_custom_command(&self, name: impl AsRef<str>) -> Commandish {
         for command in &self.commands {
             if *command.name == name.as_ref() {
                 return command.into();
@@ -91,6 +91,6 @@ impl ReadConfig {
             "Failed to get custom command by name: {}",
             name.as_ref()
         );
-        ReadCommand::Literal(ReadCommandLiteral::None)
+        Commandish::Literal(ReadCommandLiteral::None)
     }
 }

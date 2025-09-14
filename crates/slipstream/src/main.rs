@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
         Ok(config) => config,
         Err(e) => bail!("Failed to parse config:\n{e}"),
     });
-    setup_logging(&cli, &config);
+    setup_logging(&cli, &config)?;
 
     let cancel_token = CancellationToken::new();
     let mut tasks = JoinSet::new();
@@ -64,13 +64,13 @@ async fn main() -> Result<()> {
 
     // Run the command:
     match cli.command {
-        Mode::Serve { port } => tasks.spawn(serve(
+        CommandMode::Serve { port } => tasks.spawn(serve(
             port,
             config.clone(),
             updater_handle,
             cancel_token.clone(),
         )),
-        Mode::Read {} => tasks.spawn(read(
+        CommandMode::Read {} => tasks.spawn(read(
             config.clone(),
             updater_handle,
             cancel_token.clone(),

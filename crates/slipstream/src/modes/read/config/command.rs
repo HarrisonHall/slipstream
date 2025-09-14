@@ -18,22 +18,22 @@ impl CustomCommand {
     }
 }
 
-impl From<CustomCommand> for ReadCommand {
+impl From<CustomCommand> for Commandish {
     fn from(value: CustomCommand) -> Self {
-        ReadCommand::CustomCommandFull(value.clone())
+        Commandish::CustomCommandFull(value.clone())
     }
 }
 
-impl From<&CustomCommand> for ReadCommand {
+impl From<&CustomCommand> for Commandish {
     fn from(value: &CustomCommand) -> Self {
-        ReadCommand::CustomCommandFull(value.clone())
+        Commandish::CustomCommandFull(value.clone())
     }
 }
 
 /// Read command variants.
 #[derive(Clone, Debug, Serialize)]
 #[serde(untagged)]
-pub enum ReadCommand {
+pub enum Commandish {
     /// The built-in commands.
     Literal(ReadCommandLiteral),
     /// Custom command name.
@@ -42,7 +42,7 @@ pub enum ReadCommand {
     CustomCommandFull(CustomCommand),
 }
 
-impl<'de> Deserialize<'de> for ReadCommand {
+impl<'de> Deserialize<'de> for Commandish {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -50,13 +50,13 @@ impl<'de> Deserialize<'de> for ReadCommand {
         let text = String::deserialize(deserializer)?;
 
         if text.starts_with(":") {
-            return Ok(ReadCommand::Literal(ReadCommandLiteral::Command(
+            return Ok(Commandish::Literal(ReadCommandLiteral::Command(
                 text[1..].trim().into(),
             )));
         }
 
         if text.starts_with("!") {
-            return Ok(ReadCommand::CustomCommandRef(Arc::new(
+            return Ok(Commandish::CustomCommandRef(Arc::new(
                 text[1..].trim().into(),
             )));
         }
@@ -69,7 +69,7 @@ impl<'de> Deserialize<'de> for ReadCommand {
             }
         };
         return match ReadCommandLiteral::deserialize(de) {
-            Ok(literal) => Ok(ReadCommand::Literal(literal)),
+            Ok(literal) => Ok(Commandish::Literal(literal)),
             Err(e) => Err(<D::Error as serde::de::Error>::custom(e)),
         };
     }
