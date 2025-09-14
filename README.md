@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/harrisonhall/slipstream" align="center">
-    <img alt="slipstream" src="./crates/slipstream/src/modes/serve/web/content/favicon.png" width="100" />
+    <img alt="slipstream" src="./crates/slipstream-cli/src/modes/serve/web/content/favicon.png" width="100" />
   </a>
 </p>
 <h1 align="center">slipstream</h1>
