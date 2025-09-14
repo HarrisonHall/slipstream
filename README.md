@@ -9,9 +9,10 @@ Feed fetcher, filterer, and aggregator.
 
 ## Crates
 
-- `slipfeed` - Feed fetcher, filterer, and aggregator library.
-- `slipstream` - Simple CLI `slipfeed` server and reader utilizing a simple
+- `slipstream-cli` - Simple CLI `slipfeed` server and reader utilizing a simple
   [config](examples/config/slipstream.toml).
+- `slipstream-feeds` (`slipfeed`) - Feed fetcher, filterer, and aggregator
+  library.
 
 ## Getting Started
 

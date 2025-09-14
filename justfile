@@ -16,19 +16,19 @@ install:
 
 # Run debug slipreader.
 debug-slipreader:
-    cargo run --bin slipstream -- --debug -c ./examples/config/slipreader.toml read
+    cargo run --bin slipstream-cli -- --debug -c ./examples/config/slipreader.toml read
 
 # Run debug slipreader with local config.
 debug-slipreader-local:
-    cargo run --bin slipstream -- --debug -c ~/.config/slipstream/slipreader.toml read
+    cargo run --bin slipstream-cli -- --debug -c ~/.config/slipstream/slipreader.toml read
 
 # Run debug slipstream.
 debug-slipstream:
-    cargo run --bin slipstream -- --debug -c ./examples/config/slipstream.toml serve
+    cargo run --bin slipstream-cli -- --debug -c ./examples/config/slipstream.toml serve
 
 # Run debug slipstream with local config.
 debug-slipstream-local:
-    cargo run --bin slipstream -- --debug -c ~/.config/slipstream/slipstream.toml serve
+    cargo run --bin slipstream-cli -- --debug -c ~/.config/slipstream/slipstream.toml serve
 
 # Build static release for many versions of linux via musl.
 build-many:
@@ -37,14 +37,14 @@ build-many:
     # cargo build --package slipstream --target x86_64-unknown-linux-gnu --release
     # patchelf --set-interpreter /usr/lib64/ld-linux-x86-64.so.2 target/x86_64-unknown-linux-gnu/release/slipstream
     # patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 target/x86_64-unknown-linux-gnu/release/slipstream
-    cargo zigbuild --package slipstream --target x86_64-unknown-linux-gnu.2.32 --release
+    cargo zigbuild --package slipstream-cli --target x86_64-unknown-linux-gnu.2.32 --release
 
 # Build static release for many versions of linux via musl.
 [private]
 build-many-correct:
     # This does not work with the current release.
     # Req: rustup component add rust-std-x86_64-unknown-linux-musl
-    cargo build --package slipstream --target x86_64-unknown-linux-musl --release
+    cargo build --package slipstream-cli --target x86_64-unknown-linux-musl --release
 
 # Test the repo.
 test:

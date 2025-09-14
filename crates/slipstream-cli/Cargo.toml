@@ -1,18 +1,20 @@
 [package]
-name = "slipstream"
+name = "slipstream-cli"
 description = "Simple CLI `slipfeed` server, with web support and a TUI reader."
 version = "2.2.0"
-edition = "2024"
-authors = ["hachha <hachha@hachha.dev>"]
-keywords = ["rss", "atom", "feed"]
-categories = []
-repository = "https://github.com/harrisonhall/slipstream"
-readme = "README.md"
-rust-version = "1.85.0"
-
+edition.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license-file.workspace = true
+readme.workspace = true
+rust-version.workspace = true
 
 [[bin]]
 name = "slipstream"
+path = "src/main.rs"
 
 [dependencies]
 ansi-to-tui = "7.0.0"
@@ -44,4 +46,4 @@ tokio-util = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-slipfeed = { path = "../slipfeed" }
+slipstream-feeds = { path = "../slipstream-feeds", version = "0.2.5" }

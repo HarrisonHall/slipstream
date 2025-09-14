@@ -2762,25 +2762,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "slipfeed"
-version = "0.2.5"
-dependencies = [
- "async-trait",
- "atom_syndication",
- "chrono",
- "fast_html2md",
- "futures",
- "reqwest",
- "resolve-path",
- "rss",
- "serde",
- "sqlx",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "slipstream"
+name = "slipstream-cli"
 version = "2.2.0"
 dependencies = [
  "ansi-to-tui",
@@ -2803,7 +2785,7 @@ dependencies = [
  "rust-embed",
  "serde",
  "shellexpand",
- "slipfeed",
+ "slipstream-feeds",
  "sqlx",
  "tokio",
  "tokio-util",
@@ -2811,6 +2793,24 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tui-markdown",
+]
+
+[[package]]
+name = "slipstream-feeds"
+version = "0.2.5"
+dependencies = [
+ "async-trait",
+ "atom_syndication",
+ "chrono",
+ "fast_html2md",
+ "futures",
+ "reqwest",
+ "resolve-path",
+ "rss",
+ "serde",
+ "sqlx",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

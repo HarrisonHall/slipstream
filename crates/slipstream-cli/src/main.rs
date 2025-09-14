@@ -15,6 +15,7 @@ use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
+use slipstream_feeds::{self as slipfeed};
 
 mod cli;
 mod config;
