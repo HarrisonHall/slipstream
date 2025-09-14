@@ -133,13 +133,17 @@ impl Config {
     }
 }
 
-/// Global configuration.
+/// Global feed configuration.
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct GlobalConfig {
+    /// Global filters. These apply to all feeds in the entire system.
     #[serde(default)]
     pub filters: Filters,
+    /// Global options. These can be overriden by other feeds.
     #[serde(default)]
     pub limits: FeedOptions,
+    /// The user agent used for StandardSyndication HTTP requests.
+    /// Without specifying, no user agent is used.
     #[serde(default, alias = "user-agent")]
     pub user_agent: Option<String>,
 }

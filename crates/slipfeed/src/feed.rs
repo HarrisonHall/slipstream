@@ -13,7 +13,9 @@ pub struct FeedId(pub usize);
 /// Reference to a feed.
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeedRef {
+    /// Id of the originating feed.
     pub id: FeedId,
+    /// Name of the originating feed.
     pub name: Arc<String>,
 }
 

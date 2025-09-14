@@ -223,10 +223,13 @@ where
 }
 
 /// Setup logging.
-pub fn setup_logging(cli: &Cli, config: &Config) {
-    let level = match cli.debug {
+pub fn setup_logging(cli: &Cli, config: &Config) -> Result<()> {
+    let level = match cli.verbose {
         true => Level::TRACE,
-        false => Level::INFO,
+        false => match cli.debug {
+            true => Level::DEBUG,
+            false => Level::INFO,
+        },
     };
     let filter = tracing_subscriber::filter::Targets::new()
         .with_default(LevelFilter::OFF)
@@ -234,13 +237,29 @@ pub fn setup_logging(cli: &Cli, config: &Config) {
         .with_target("slipfeed", level);
 
     // CLI layer (to stderr).
-    let cli = tracing_subscriber::fmt::layer()
-        .event_format(CliFormatter)
-        .with_writer(get_logger)
-        .with_filter(filter.clone());
+    let cli_logger = match cli.command {
+        CommandMode::Serve { .. } => Some(
+            tracing_subscriber::fmt::layer()
+                .event_format(CliFormatter)
+                .with_writer(get_logger)
+                .with_filter(filter.clone()),
+        ),
+        CommandMode::Read { .. } => {
+            if cli.debug || cli.verbose {
+                Some(
+                    tracing_subscriber::fmt::layer()
+                        .event_format(CliFormatter)
+                        .with_writer(get_logger)
+                        .with_filter(filter.clone()),
+                )
+            } else {
+                None
+            }
+        }
+    };
 
     // File layer.
-    let file = match config.log.as_ref() {
+    let file_logger = match config.log.as_ref() {
         Some(log_file) => {
             let filename = shellexpand::full(log_file)
                 .expect(&format!("Unable to expand log file {}", log_file))
@@ -269,8 +288,14 @@ pub fn setup_logging(cli: &Cli, config: &Config) {
     };
 
     // Log file formatting.
-    let subscriber =
-        tracing_subscriber::Registry::default().with(cli).with(file);
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Unable to initialize logging.");
+    let subscriber = tracing_subscriber::Registry::default()
+        .with(cli_logger)
+        .with(file_logger);
+
+    // Set this logger as global.
+    if let Err(_) = tracing::subscriber::set_global_default(subscriber) {
+        bail!("Unable to initialize logging.");
+    }
+
+    Ok(())
 }
