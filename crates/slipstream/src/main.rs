@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
         Ok(config) => config,
         Err(e) => bail!("Failed to parse config:\n{e}"),
     });
-    setup_logging(&cli, &config);
+    setup_logging(&cli, &config)?;
 
     let cancel_token = CancellationToken::new();
     let mut tasks = JoinSet::new();
