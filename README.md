@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/harrisonhall/slipstream" align="center">
-    <img alt="slipstream" src="./crates/slipstream-cli/src/modes/serve/web/content/favicon.png" width="100" />
+    <img alt="slipstream" src="https://github.com/HarrisonHall/slipstream/blob/main/crates/slipstream-cli/src/modes/serve/web/content/favicon.png" width="100" />
   </a>
 </p>
 <h1 align="center">slipstream</h1>
@@ -10,7 +10,7 @@ Feed fetcher, filterer, and aggregator.
 ## Crates
 
 - `slipstream-cli` - Simple CLI `slipfeed` server and reader utilizing a simple
-  [config](examples/config/slipstream.toml).
+  [config](https://github.com/HarrisonHall/slipstream/blob/main/examples/config/slipstream.toml).
 - `slipstream-feeds` (`slipfeed`) - Feed fetcher, filterer, and aggregator
   library.
 
@@ -20,8 +20,12 @@ Feed fetcher, filterer, and aggregator.
 
 `slipstream` is a command-line application for serving filtered/aggregated feeds
 from existing feeds a la Yahoo Pipes. A simple configuration file (e.g.
-[slipstream.toml](examples/config/slipstream.toml)) is used to define feeds,
-relationships, and filters.
+[slipstream.toml](https://github.com/HarrisonHall/slipstream/blob/main/examples/config/slipstream.toml))
+is used to define feeds, relationships, and filters.
+
+#### Installation
+
+`cargo install slipstream-cli`
 
 #### Serve
 
@@ -40,7 +44,7 @@ start a web server that exposes the following endpoints:
 An example can be found at my personal website
 [feeds.hachha.dev](https://feeds.hachha.dev/).
 
-![web screenshot](./examples/media/web.png)
+![web screenshot](https://github.com/HarrisonHall/slipstream/blob/main/examples/media/web.png)
 
 ### Read
 
@@ -53,10 +57,11 @@ The slipstream reader supports the following features:
 - Responsive layout (horizontal and vertical)
 - Hooks
 
-Check out the example [config](./examples/config/slipreader.toml) to see
-additional configuration options.
+Check out the example
+[config](https://github.com/HarrisonHall/slipstream/blob/main/examples/config/slipreader.toml)
+to see additional configuration options.
 
-![cli screenshot](./examples/media/cli.png)
+![cli screenshot](https://github.com/HarrisonHall/slipstream/blob/main/examples/media/cli.png)
 
 ## Roadmap
 
@@ -71,8 +76,11 @@ be separate, but it has since been merged into `slipknot` (now named
   - [ ] Add more filters (regex/pomsky, allowlists, etc.)
   - [ ] OPML conversion support
   - [ ] Use sqlite for storing entries and feed definitions
-- `slipstream` (reader)
-  - [ ] Support pagination (or make automatic)
+  - [ ] Support hooks
+- `slipsteam` (serve)
+  - [ ] Track updated `updated_at` in database
+  - [ ] Respect IF_MODIFIED_SINCE in headers
+- `slipstream` (read)
   - [ ] Indicate pending updates
   - [ ] Improve help menu
 - `slipstream` (api)

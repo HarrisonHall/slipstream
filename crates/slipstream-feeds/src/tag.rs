@@ -3,6 +3,7 @@
 use super::*;
 
 /// Tags for feeds.
+/// Tags are lower-case identifiers that can be fuzzy-matched.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Tag(String);
 

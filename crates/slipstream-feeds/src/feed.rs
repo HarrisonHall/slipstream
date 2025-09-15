@@ -8,7 +8,14 @@ use super::*;
 
 /// Id that represents a feed.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FeedId(pub usize);
+pub struct FeedId(pub(crate) usize);
+
+impl FeedId {
+    /// Create a new feed id.
+    pub fn new(id: usize) -> Self {
+        Self(id)
+    }
+}
 
 /// Reference to a feed.
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,8 +77,8 @@ impl FeedAttributes {
     }
 
     /// Get tags for a feed.
-    pub fn get_tags<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Tag> + 'a> {
-        return Box::new(self.tags.iter());
+    pub fn get_tags(&self) -> std::collections::hash_set::Iter<tag::Tag> {
+        return self.tags.iter();
     }
 
     /// Check if entry passes filters.
@@ -115,11 +122,15 @@ pub trait Feed: std::fmt::Debug + Send + Sync + 'static {
 /// A reference to an RSS/Atom feed.
 #[derive(Clone, Debug)]
 pub struct StandardSyndication {
+    /// The url of the feed.
     url: String,
+    /// The user agent used to fetch the feed.
+    /// If this is not set, no user agent is used.
     user_agent: Option<String>,
 }
 
 impl StandardSyndication {
+    /// Create a new standard syndication.
     pub fn new(
         url: impl Into<String>,
         user_agent: Option<String>,
@@ -130,6 +141,7 @@ impl StandardSyndication {
         });
     }
 
+    /// Parse a feed from the body text.
     fn parse(
         &self,
         body: &str,
@@ -177,6 +189,7 @@ impl StandardSyndication {
         );
     }
 
+    /// Parse an atom entry.
     fn parse_atom(atom_entry: &atom_syndication::Entry) -> Entry {
         let mut parsed = EntryBuilder::new();
         parsed
@@ -219,6 +232,7 @@ impl StandardSyndication {
         return entry;
     }
 
+    /// Parse an rss entry.
     fn parse_rss(rss_entry: &rss::Item, parse_time: &DateTime) -> Entry {
         let mut parsed = EntryBuilder::new();
         parsed

@@ -159,14 +159,17 @@ impl std::ops::Add<Duration> for DateTime {
     }
 }
 
+/// Duration generalization for conversion between libraries.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Duration(chrono::Duration);
 
 impl Duration {
+    /// Create a duration from seconds.
     pub fn from_seconds(sec: u64) -> Self {
         Self(chrono::Duration::seconds(sec as i64))
     }
 
+    /// Convert duration to std.
     pub fn to_std(&self) -> std::time::Duration {
         match self.0.to_std() {
             Ok(dur) => dur,
@@ -174,14 +177,17 @@ impl Duration {
         }
     }
 
+    /// Convert duration to chrono.
     pub fn to_chrono(&self) -> chrono::Duration {
         self.0.clone()
     }
 
+    /// Convert duration to tokio.
     pub fn to_tokio(&self) -> tokio::time::Duration {
         tokio::time::Duration::from_secs(self.0.num_seconds() as u64)
     }
 
+    /// Create duration from std.
     pub fn from_std(dur: std::time::Duration) -> Self {
         Self(match chrono::Duration::from_std(dur) {
             Ok(dur) => dur,
@@ -189,17 +195,20 @@ impl Duration {
         })
     }
 
+    /// Create duration from chrono.
     pub fn from_chrono(dur: chrono::Duration) -> Self {
         Self(dur)
     }
 
+    /// Create duration from tokio.
     pub fn from_tokio(dur: tokio::time::Duration) -> Self {
         Self(chrono::Duration::seconds(dur.as_secs() as i64))
     }
 }
 
-/// Trait for formatting time as the
+/// Trait for formatting time as expected in the If-Modified-Since standard header.
 pub trait IfModifiedSinceHeader {
+    /// Create a timestamp following the If-Modified-Since header format.
     fn if_modified_since_time(&self) -> String;
 }
 
