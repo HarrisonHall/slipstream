@@ -336,7 +336,8 @@ impl Database {
                     for source in sources.0 {
                         if let Some(source) = source.0 {
                             entry.entry.add_feed(slipfeed::FeedRef {
-                                id: slipfeed::FeedId(0),
+                                // TODO: Get the accurate feed id, if it still exists.
+                                id: slipfeed::FeedId::new(0),
                                 name: Arc::new(source.clone()),
                             });
                         }

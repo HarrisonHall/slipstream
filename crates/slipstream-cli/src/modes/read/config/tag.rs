@@ -20,7 +20,7 @@ pub struct TagColor {
 
 impl TagColor {
     pub fn matches(&self, entry: &slipfeed::Entry) -> bool {
-        entry.has_tag_loose(&self.tag)
+        entry.has_tag_fuzzy(&self.tag)
     }
 
     #[allow(unused)]

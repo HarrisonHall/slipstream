@@ -11,12 +11,17 @@ struct FeedInfo {
     last_update: Option<DateTime>,
 }
 
-/// Object passed to feeds.
+/// Object passed to feeds on update.
+/// This provides meta-information to the feed.
 #[derive(Clone)]
 pub struct UpdaterContext {
+    /// The feed id.
     pub feed_id: FeedId,
+    /// The parse time.
     pub parse_time: DateTime,
+    /// The last time the feed had been updated.
     pub last_update: Option<DateTime>,
+    /// A sender for parsed entries.
     pub sender: tokio::sync::mpsc::UnboundedSender<(Entry, FeedRef)>,
 }
 

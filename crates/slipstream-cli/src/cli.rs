@@ -83,7 +83,7 @@ impl Cli {
 pub enum CommandMode {
     /// Serve feeds as static webpages and atom exports.
     Serve {
-        /// TODO
+        /// Set the host port (default=3000).
         #[arg(short, long, value_name = "PORT")]
         port: Option<u16>,
     },

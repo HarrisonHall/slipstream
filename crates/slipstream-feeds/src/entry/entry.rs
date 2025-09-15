@@ -71,14 +71,17 @@ impl Entry {
         &self.other_links
     }
 
+    /// Get the feeds.
     pub fn feeds(&self) -> &BTreeSet<FeedRef> {
         &self.feeds
     }
 
+    /// Add a feed.
     pub fn add_feed(&mut self, feed: FeedRef) {
         self.feeds.insert(feed);
     }
 
+    /// Check if entry is from a feed.
     pub fn is_from_feed(&self, feed: FeedId) -> bool {
         for feed_ref in self.feeds().iter() {
             if feed_ref.id == feed {
@@ -88,23 +91,28 @@ impl Entry {
         false
     }
 
+    /// Get the tags.
     pub fn tags(&self) -> &BTreeSet<Tag> {
         &self.tags
     }
 
+    /// Add a tag.
     pub fn add_tag(&mut self, tag: &Tag) {
         self.tags.insert(tag.clone());
     }
 
+    /// Remove a tag.
     pub fn remove_tag(&mut self, tag: &Tag) {
         self.tags.remove(tag);
     }
 
+    /// Check if a tag exists.
     pub fn has_tag(&self, tag: &Tag) -> bool {
         self.tags.contains(tag)
     }
 
-    pub fn has_tag_loose(&self, tag: impl AsRef<str>) -> bool {
+    /// Check if a tag exists, fuzzily.
+    pub fn has_tag_fuzzy(&self, tag: impl AsRef<str>) -> bool {
         for other_tag in &self.tags {
             if other_tag
                 .to_string()
@@ -117,6 +125,7 @@ impl Entry {
         return false;
     }
 
+    /// Get the source id.
     pub fn source_id(&self) -> Option<&str> {
         match &self.source_id {
             Some(id) => Some(id.as_str()),
@@ -248,6 +257,7 @@ pub struct EntryBuilder {
 }
 
 impl EntryBuilder {
+    /// Create a new builder.
     pub fn new() -> Self {
         Self {
             title: None,
@@ -261,26 +271,31 @@ impl EntryBuilder {
         }
     }
 
+    /// Set the title.
     pub fn title(&mut self, title: impl Into<String>) -> &mut Self {
         self.title = Some(title.into());
         self
     }
 
+    /// Set the date.
     pub fn date(&mut self, date: DateTime) -> &mut Self {
         self.date = Some(EntryDate::Published(date));
         self
     }
 
+    /// Set the author.
     pub fn author(&mut self, author: impl Into<String>) -> &mut Self {
         self.author = Some(author.into());
         self
     }
 
+    /// Set the content.
     pub fn content(&mut self, content: impl Into<String>) -> &mut Self {
         self.content = Some(content.into());
         self
     }
 
+    /// Set the source link.
     pub fn source(&mut self, url: impl Into<String>) -> &mut Self {
         self.source = Some(Link {
             url: url.into(),
@@ -290,6 +305,7 @@ impl EntryBuilder {
         self
     }
 
+    /// Set the comments link.
     pub fn comments(&mut self, url: impl Into<String>) -> &mut Self {
         self.comments = Some(Link {
             url: url.into(),
@@ -299,16 +315,19 @@ impl EntryBuilder {
         self
     }
 
+    /// Add an additional link.
     pub fn other_link(&mut self, link: Link) -> &mut Self {
         self.other_links.push(link);
         self
     }
 
+    /// Set the source id.
     pub fn source_id(&mut self, source_id: impl Into<String>) -> &mut Self {
         self.source_id = Some(source_id.into());
         self
     }
 
+    /// Build into an entry.
     pub fn build(&self) -> Entry {
         Entry {
             title: self.title.clone().unwrap_or_else(|| "".to_string()),
@@ -342,14 +361,19 @@ impl From<EntryBuilder> for Entry {
     }
 }
 
+/// A link to resource.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Link {
+    /// The link's url.
     pub url: String,
+    /// The link's title.
     pub title: String,
+    /// The link's mime-type.
     pub mime_type: Option<String>,
 }
 
 impl Link {
+    /// Create a new link with a title.
     pub fn new(url: impl Into<String>, title: impl Into<String>) -> Self {
         Self {
             url: url.into(),
@@ -358,6 +382,7 @@ impl Link {
         }
     }
 
+    /// Create a new link with a title and mime-type.
     pub fn new_with_mime(
         url: impl Into<String>,
         title: impl Into<String>,
