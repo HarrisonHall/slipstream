@@ -3092,6 +3092,7 @@ dependencies = [
  "rust-embed",
  "serde",
  "shellexpand",
+ "shlex",
  "slipstream-feeds",
  "sqlx",
  "tokio",

@@ -65,21 +65,16 @@ to see additional configuration options.
 
 ## Roadmap
 
-While the `slipfeed` and `slipstream` APIs may not be stable, they are
-essentially complete as-is. `slipstream` development was originally intended to
-be separate, but it has since been merged into `slipknot` (now named
-`slipstream`).
+While the `slipstream-feed` and `slipstream-cli` APIs may not be stable, they
+are essentially complete as-is.
 
-- `slipfeed`
-  - [ ] Add other built-in feed implementations (e.g. activitypub)
 - `slipstream` (general)
   - [ ] Add more filters (regex/pomsky, allowlists, etc.)
   - [ ] OPML conversion support
-  - [ ] Use sqlite for storing entries and feed definitions
   - [ ] Support hooks
 - `slipsteam` (serve)
   - [ ] Track updated `updated_at` in database
-  - [ ] Respect IF_MODIFIED_SINCE in headers
+  - [ ] Respect IF_MODIFIED_SINCE in headers (incoming)
 - `slipstream` (read)
   - [ ] Indicate pending updates
   - [ ] Improve help menu

@@ -25,14 +25,12 @@ impl CommandParser {
             command = "command ".to_string() + &command[1..];
         }
 
-        match CommandParser::try_parse_from(
-            ["__PARSER__"]
-                .iter()
-                .map(|i| (*i))
-                .chain(command.split(" ")),
-        ) {
-            Ok(command) => Ok(command),
-            Err(e) => bail!("{}", e),
+        match shlex::split(&format!("__PARSER__ {}", &command)) {
+            Some(split) => match CommandParser::try_parse_from(split) {
+                Ok(command) => Ok(command),
+                Err(e) => bail!("{}", e),
+            },
+            None => bail!("Failed to split command."),
         }
     }
 }
