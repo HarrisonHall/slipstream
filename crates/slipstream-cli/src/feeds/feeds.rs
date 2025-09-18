@@ -34,8 +34,52 @@ impl FeedDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RawFeed {
-    Raw { url: String },
-    Aggregate { feeds: Vec<String> },
+    Raw {
+        url: String,
+    },
+    Aggregate {
+        feeds: Vec<String>,
+    },
+    MastodonStatuses {
+        mastodon: String,
+        #[serde(alias = "type")]
+        feed_type: MastodonFeedType,
+        token: Option<String>,
+    },
+    MastodonUserStatuses {
+        mastodon: String,
+        #[serde(alias = "type")]
+        user: String,
+        token: Option<String>,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum MastodonFeedType {
+    #[serde(alias = "public-timeline", alias = "public")]
+    PublicTimeline,
+    #[serde(alias = "home-timeline", alias = "home", alias = "timeline")]
+    HomeTimeline,
+    // #[serde(alias = "user", alias = "user-status", alias = "user-statuses")]
+    // UserStatuses(String),
+}
+
+impl From<&MastodonFeedType> for slipstream_feeds::MastodonFeedType {
+    fn from(value: &MastodonFeedType) -> Self {
+        match value {
+            MastodonFeedType::PublicTimeline => {
+                slipstream_feeds::MastodonFeedType::PublicTimeline
+            }
+            MastodonFeedType::HomeTimeline => {
+                slipstream_feeds::MastodonFeedType::HomeTimeline
+            }
+            // MastodonFeedType::UserStatuses(user) => {
+            //     slipstream_feeds::MastodonFeedType::UserStatuses {
+            //         user: user.clone(),
+            //     }
+            // }
+        }
+    }
 }
 
 pub trait EntryExt {

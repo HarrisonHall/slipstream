@@ -1,3 +1,5 @@
+use chrono::TimeZone;
+
 ///! Best-effort DateTime handling generalization for parsing feeds and handling
 ///! conversions between std, chrono, and tokio.
 use super::*;
@@ -59,6 +61,12 @@ impl DateTime {
     /// Convert from chrono::DateTime.
     pub fn from_chrono(dt: chrono::DateTime<chrono::Utc>) -> Self {
         Self(dt)
+    }
+
+    /// Convert from unix timestamp (s).
+    pub fn from_unix_timestamp_s(timestamp: u64) -> Self {
+        // TODO: Alternative to unwrap?
+        Self(chrono::Utc.timestamp_opt(timestamp as i64, 0).unwrap())
     }
 }
 
@@ -167,6 +175,16 @@ impl Duration {
     /// Create a duration from seconds.
     pub fn from_seconds(sec: u64) -> Self {
         Self(chrono::Duration::seconds(sec as i64))
+    }
+
+    /// Create a duration from hours.
+    pub fn from_hours(hours: u64) -> Self {
+        Self(chrono::Duration::hours(hours as i64))
+    }
+
+    /// Create a duration from days.
+    pub fn from_days(days: u64) -> Self {
+        Self(chrono::Duration::days(days as i64))
     }
 
     /// Convert duration to std.

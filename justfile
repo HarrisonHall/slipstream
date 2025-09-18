@@ -16,19 +16,19 @@ install:
 
 # Run debug slipreader.
 debug-slipreader:
-    cargo run --bin slipstream-cli -- --debug -c ./examples/config/slipreader.toml read
+    cargo run --bin slipstream -- --debug -c ./examples/config/slipreader.toml read
 
 # Run debug slipreader with local config.
 debug-slipreader-local:
-    cargo run --bin slipstream-cli -- --debug -c ~/.config/slipstream/slipreader.toml read
+    cargo run --bin slipstream -- --debug -c ~/.config/slipstream/slipreader.toml read
 
 # Run debug slipstream.
 debug-slipstream:
-    cargo run --bin slipstream-cli -- --debug -c ./examples/config/slipstream.toml serve
+    cargo run --bin slipstream -- --debug -c ./examples/config/slipstream.toml serve
 
 # Run debug slipstream with local config.
 debug-slipstream-local:
-    cargo run --bin slipstream-cli -- --debug -c ~/.config/slipstream/slipstream.toml serve
+    cargo run --bin slipstream -- --debug -c ~/.config/slipstream/slipstream.toml serve
 
 # Build static release for many versions of linux via musl.
 build-many:
@@ -48,4 +48,4 @@ build-many-correct:
 
 # Test the repo.
 test:
-    cargo test
+    RUST_LOG=info cargo test -- --nocapture

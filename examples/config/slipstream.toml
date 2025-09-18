@@ -2,6 +2,7 @@
 
 # Root settings for the updater.
 freq = "5min"
+workers = 2
 
 # Settings that apply to **everything**.
 [global]
@@ -58,4 +59,12 @@ include-substrings = ["llvm", "compilation", "binary", "optimization"]
 [feeds.nhk]
 url = "https://www3.nhk.or.jp/rss/news/cat0.xml"
 tags = ["news", "japanese"]
+max = 5
+
+[feeds.mastodon-bevy]
+mastodon = "https://mastodon.social"
+user = "Bevy"
+token = "jq7OF0HyUcRlzzwlKSMRLfeP2CSSJFh29w5zeBnq8D8"
+# id = ""
+tags = ["social"]
 max = 5
