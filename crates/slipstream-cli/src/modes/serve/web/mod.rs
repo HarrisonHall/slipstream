@@ -60,7 +60,7 @@ impl HtmlServer {
         uri: impl AsRef<str>,
         entries: impl Future<Output = DatabaseEntryList>,
         _updater: Arc<UpdaterHandle>,
-        _config: Arc<Config>,
+        config: Arc<Config>,
     ) -> String {
         let now = slipfeed::DateTime::now();
 
@@ -83,7 +83,7 @@ impl HtmlServer {
                     .iter_entries()
                     .map(|e| {
                         let mut sources = Vec::<String>::new();
-                        let mut min = MinEntry::from(e);
+                        let mut min = MinEntry::from_entry(e, config.as_ref());
                         for source in e.feeds() {
                             sources.push((*source.name).clone());
                         }
@@ -138,14 +138,14 @@ struct MinEntry {
     tags: Vec<String>,
 }
 
-impl From<&slipfeed::Entry> for MinEntry {
-    fn from(value: &slipfeed::Entry) -> Self {
+impl MinEntry {
+    fn from_entry(value: &slipfeed::Entry, config: &Config) -> Self {
         let md_parser = pulldown_cmark::Parser::new(value.content());
         let mut content = String::new();
         pulldown_cmark::html::push_html(&mut content, md_parser);
         Self {
             title: value.title().clone(),
-            date: format!("{}", value.date()),
+            date: config.timezone.format(value.date()),
             author: value.author().clone(),
             sources: String::default(),
             source: value.source().clone(),

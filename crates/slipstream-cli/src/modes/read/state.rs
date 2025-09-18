@@ -16,13 +16,14 @@ pub struct TerminalState {
 }
 
 impl TerminalState {
-    pub fn get_paging_lines(&self) -> i16 {
+    pub fn get_paging_lines(&self, config: &Config) -> i16 {
         if self.size.0 > MIN_HOR_WIDTH {
             // Handle horizontal paging.
-            return self.size.1 as i16 - (2 * SCROLL_WINDOW) as i16;
+            return self.size.1 as i16 - (2 * config.read.scroll_buffer) as i16;
         } else {
             // Handle vertical paging.
-            return (self.size.1 / 2) as i16 - (2 * SCROLL_WINDOW) as i16;
+            return (self.size.1 / 2) as i16
+                - (2 * config.read.scroll_buffer) as i16;
         }
     }
 }

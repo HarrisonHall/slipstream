@@ -313,7 +313,7 @@ impl<'a> Widget for EntryInfoWidget<'a> {
         // Add date:
         bottom_lines.push(
             Line::from(Span::styled(
-                format!("{}", self.0.date()),
+                self.1.timezone.format(self.0.date()),
                 Style::default(),
             ))
             .right_aligned(),

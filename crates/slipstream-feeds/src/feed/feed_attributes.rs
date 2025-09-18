@@ -16,6 +16,10 @@ pub struct FeedAttributes {
     pub tags: HashSet<Tag>,
     /// Filters for the feed.
     pub filters: Vec<Filter>,
+    /// Whether to keep empty entries (no title).
+    pub keep_empty: bool,
+    /// Whether to apply tags from the source.
+    pub apply_tags: bool,
 }
 
 impl FeedAttributes {
@@ -27,6 +31,8 @@ impl FeedAttributes {
             freq: None,
             tags: HashSet::new(),
             filters: Vec::new(),
+            keep_empty: false,
+            apply_tags: true,
         }
     }
 

@@ -13,6 +13,12 @@ pub struct FeedOptions {
     /// Oldest duration.
     #[serde(default, with = "humantime_serde::option")]
     oldest: Option<std::time::Duration>,
+    /// Whether to keep empty entries (no title).
+    #[serde(default = "FeedOptions::default_keep_empty", alias = "keep-empty")]
+    keep_empty: bool,
+    /// Whether to apply tags from the source.
+    #[serde(default = "FeedOptions::default_apply_tags", alias = "apply-tags")]
+    apply_tags: bool,
 }
 
 impl FeedOptions {
@@ -34,6 +40,14 @@ impl FeedOptions {
         }
     }
 
+    pub fn keep_empty(&self) -> bool {
+        self.keep_empty
+    }
+
+    pub fn apply_tags(&self) -> bool {
+        self.apply_tags
+    }
+
     pub fn too_old(&self, dt: &slipfeed::DateTime) -> bool {
         slipfeed::DateTime::now() > dt.clone() + self.oldest()
     }
@@ -45,6 +59,14 @@ impl FeedOptions {
     fn default_oldest() -> slipfeed::Duration {
         slipfeed::Duration::from_seconds(5040000)
     }
+
+    fn default_keep_empty() -> bool {
+        false
+    }
+
+    fn default_apply_tags() -> bool {
+        true
+    }
 }
 
 impl Default for FeedOptions {
@@ -53,6 +75,8 @@ impl Default for FeedOptions {
             max: None,
             freq: None,
             oldest: None,
+            keep_empty: Self::default_keep_empty(),
+            apply_tags: Self::default_apply_tags(),
         }
     }
 }
