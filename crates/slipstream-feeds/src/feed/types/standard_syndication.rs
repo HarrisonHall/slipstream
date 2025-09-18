@@ -28,7 +28,8 @@ impl StandardSyndication {
     fn parse(
         &self,
         body: &str,
-        parse_time: &DateTime,
+        ctx: &UpdaterContext,
+        attr: &FeedAttributes,
         tx: UnboundedSender<Entry>,
     ) {
         let mut parse_error = String::new();
@@ -38,7 +39,11 @@ impl StandardSyndication {
             Ok(atom_feed) => {
                 tracing::trace!("Parsed {:?} as atom", self);
                 for atom_entry in atom_feed.entries() {
-                    let entry = StandardSyndication::parse_atom(atom_entry);
+                    let entry =
+                        StandardSyndication::parse_atom(atom_entry, ctx, attr);
+                    if !attr.keep_empty && entry.title().is_empty() {
+                        continue;
+                    }
                     tx.send(entry).ok();
                 }
                 return;
@@ -54,7 +59,10 @@ impl StandardSyndication {
                 tracing::trace!("Parsed {:?} as rss", self);
                 for rss_entry in rss_feed.items() {
                     let entry =
-                        StandardSyndication::parse_rss(rss_entry, parse_time);
+                        StandardSyndication::parse_rss(rss_entry, ctx, attr);
+                    if !attr.keep_empty && entry.title().is_empty() {
+                        continue;
+                    }
                     tx.send(entry).ok();
                 }
                 return;
@@ -73,7 +81,11 @@ impl StandardSyndication {
     }
 
     /// Parse an atom entry.
-    fn parse_atom(atom_entry: &atom_syndication::Entry) -> Entry {
+    fn parse_atom(
+        atom_entry: &atom_syndication::Entry,
+        _ctx: &UpdaterContext,
+        attr: &FeedAttributes,
+    ) -> Entry {
         let mut parsed = EntryBuilder::new();
         parsed
             .title(atom_entry.title().to_string())
@@ -108,15 +120,24 @@ impl StandardSyndication {
                 ));
             }
         }
+
         let mut entry = parsed.build();
-        for category in atom_entry.categories() {
-            entry.add_tag(&Tag::new(String::from(category.term.clone())));
+
+        if attr.apply_tags {
+            for category in atom_entry.categories() {
+                entry.add_tag(&Tag::new(String::from(category.term.clone())));
+            }
         }
+
         return entry;
     }
 
     /// Parse an rss entry.
-    fn parse_rss(rss_entry: &rss::Item, parse_time: &DateTime) -> Entry {
+    fn parse_rss(
+        rss_entry: &rss::Item,
+        ctx: &UpdaterContext,
+        attr: &FeedAttributes,
+    ) -> Entry {
         let mut parsed = EntryBuilder::new();
         parsed
             .title(rss_entry.title().unwrap_or(""))
@@ -134,7 +155,7 @@ impl StandardSyndication {
                     }
                 }
 
-                parse_time.clone()
+                ctx.parse_time.clone()
             })
             .author(rss_entry.author().unwrap_or(""))
             .content(html2md::rewrite_html(
@@ -151,12 +172,14 @@ impl StandardSyndication {
             parsed.comments(comments);
         }
         let mut entry = parsed.build();
-        for category in rss_entry.categories() {
-            entry.add_tag(&Tag::new(category.name()));
-        }
-        if let Some(dc) = rss_entry.dublin_core_ext() {
-            for subject in dc.subjects() {
-                entry.add_tag(&Tag::new(subject));
+        if attr.apply_tags {
+            for category in rss_entry.categories() {
+                entry.add_tag(&Tag::new(category.name()));
+            }
+            if let Some(dc) = rss_entry.dublin_core_ext() {
+                for subject in dc.subjects() {
+                    entry.add_tag(&Tag::new(subject));
+                }
             }
         }
         return entry;
@@ -206,7 +229,7 @@ impl Feed for StandardSyndication {
         match client.execute(request).await {
             Ok(req_result) => match req_result.text().await {
                 Ok(body) => {
-                    self.parse(body.as_str(), &ctx.parse_time, tx);
+                    self.parse(body.as_str(), &ctx, attr, tx);
                 }
                 Err(e) => {
                     tracing::error!("Failed to get body from response: {e}")

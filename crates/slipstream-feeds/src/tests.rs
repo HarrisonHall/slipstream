@@ -14,6 +14,8 @@ async fn standard_syndications() {
             freq: None,
             tags: std::collections::HashSet::from([Tag::new("rss")]),
             filters: vec![],
+            keep_empty: false,
+            apply_tags: true,
         },
     );
     assert!(hn_id.0 == 1);
@@ -29,6 +31,8 @@ async fn standard_syndications() {
             freq: None,
             tags: std::collections::HashSet::from([Tag::new("atom")]),
             filters: vec![],
+            keep_empty: false,
+            apply_tags: true,
         },
     );
     assert!(newsboat_id.0 == 1);
@@ -92,6 +96,8 @@ async fn mastodon() {
             freq: None,
             tags: std::collections::HashSet::from([Tag::new("mastodon")]),
             filters: vec![],
+            keep_empty: false,
+            apply_tags: true,
         },
     );
 

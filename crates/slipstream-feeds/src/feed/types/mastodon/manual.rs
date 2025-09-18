@@ -142,11 +142,17 @@ impl MastodonFeed {
     fn parse_status(
         &self,
         status: &MastodonStatusSchema,
-        parse_time: &DateTime,
+        ctx: &UpdaterContext,
+        attr: &FeedAttributes,
     ) -> Option<Entry> {
         let mut builder = EntryBuilder::new();
 
         let mut content: String = status.content.clone();
+        let md_content: String =
+            html2md::rewrite_html(&status.content, false).trim().into();
+        if !attr.keep_empty && md_content.is_empty() {
+            return None;
+        }
 
         builder.title(format!(
             "{}: \"{}\" ({})",
@@ -160,7 +166,7 @@ impl MastodonFeed {
         builder.author(&status.account.username);
         builder.date(
             DateTime::try_from(&status.created_at)
-                .unwrap_or_else(|_| parse_time.clone()),
+                .unwrap_or_else(|_| ctx.parse_time.clone()),
         );
         if let Some(url) = &status.url {
             builder.source(url);
@@ -190,8 +196,10 @@ impl MastodonFeed {
 
         let mut entry = builder.build();
 
-        for tag in &status.tags {
-            entry.add_tag(&Tag::new(&tag.name));
+        if attr.apply_tags {
+            for tag in &status.tags {
+                entry.add_tag(&Tag::new(&tag.name));
+            }
         }
 
         Some(entry)
@@ -201,7 +209,8 @@ impl MastodonFeed {
     fn parse_statuses(
         &self,
         body: &str,
-        parse_time: &DateTime,
+        ctx: &UpdaterContext,
+        attr: &FeedAttributes,
         tx: UnboundedSender<Entry>,
     ) {
         let statuses =
@@ -215,7 +224,7 @@ impl MastodonFeed {
 
         tracing::trace!("Parsed {:?} as mastodon", self);
         for status in statuses.0.iter() {
-            if let Some(entry) = self.parse_status(status, parse_time) {
+            if let Some(entry) = self.parse_status(status, ctx, attr) {
                 tx.send(entry).ok();
             }
         }
@@ -271,7 +280,7 @@ impl Feed for MastodonFeed {
                 )
                 .await
                 {
-                    self.parse_statuses(&body, &ctx.parse_time, tx);
+                    self.parse_statuses(&body, &ctx, attr, tx);
                 }
             }
             MastodonFeedType::HomeTimeline => {
@@ -281,7 +290,7 @@ impl Feed for MastodonFeed {
                 )
                 .await
                 {
-                    self.parse_statuses(&body, &ctx.parse_time, tx);
+                    self.parse_statuses(&body, &ctx, attr, tx);
                 }
             }
             MastodonFeedType::UserStatuses { user, id } => {
@@ -303,7 +312,7 @@ impl Feed for MastodonFeed {
                 )
                 .await
                 {
-                    self.parse_statuses(&body, &ctx.parse_time, tx);
+                    self.parse_statuses(&body, &ctx, attr, tx);
                 }
             }
         }

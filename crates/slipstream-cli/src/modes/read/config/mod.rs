@@ -25,11 +25,21 @@ pub struct ReadConfig {
     /// How far to scroll.
     #[serde(default = "ReadConfig::default_scroll")]
     pub scroll: u8,
+    /// Scroll buffer, how many lines before scrolling begins.
+    #[serde(
+        default = "ReadConfig::default_scroll_buffer",
+        alias = "scroll-buffer"
+    )]
+    pub scroll_buffer: u8,
 }
 
 impl ReadConfig {
     fn default_scroll() -> u8 {
         2
+    }
+
+    fn default_scroll_buffer() -> u8 {
+        3
     }
 
     /// Map crossterm key to reader command.

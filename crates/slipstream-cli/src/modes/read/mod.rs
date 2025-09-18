@@ -36,8 +36,6 @@ use tokio::task::JoinHandle;
 
 type Terminal = DefaultTerminal;
 
-/// The minimum number of displayed entries before supporting scroll.
-const SCROLL_WINDOW: usize = 3;
 /// How often to refresh the screen without input.
 const REFRESH_DELTA: f32 = 0.25;
 /// Minimum height of the screen.
@@ -185,7 +183,8 @@ impl Reader {
     /// If the buffer size is too small, this returns false and renders a notification.
     fn check_size_or_render(&mut self, buf: &mut Buffer) -> bool {
         if self.terminal_state.size.0 < MIN_VER_HEIGHT
-            || self.terminal_state.size.1 < (2 * SCROLL_WINDOW as u16) + 5
+            || self.terminal_state.size.1
+                < (2 * self.config.read.scroll_buffer as u16) + 5
         {
             let area = buf.area;
             ratatui::widgets::Paragraph::new("Too Small")
@@ -378,13 +377,13 @@ impl Reader {
                 match self.interaction_state.focus {
                     Focus::List => {
                         self.interaction_state.scroll(
-                            self.terminal_state.get_paging_lines(),
+                            self.terminal_state.get_paging_lines(&self.config),
                             &self.entries,
                         );
                     }
                     Focus::Entry => {
                         let paging_lines =
-                            self.terminal_state.get_paging_lines();
+                            self.terminal_state.get_paging_lines(&self.config);
                         if let Some(entry) = self.get_selected_entry_mut() {
                             entry.scroll(paging_lines);
                         }
@@ -396,12 +395,13 @@ impl Reader {
             ReadCommandLiteral::PageUp => match self.interaction_state.focus {
                 Focus::List => {
                     self.interaction_state.scroll(
-                        -self.terminal_state.get_paging_lines(),
+                        -self.terminal_state.get_paging_lines(&self.config),
                         &self.entries,
                     );
                 }
                 Focus::Entry => {
-                    let paging_lines = -self.terminal_state.get_paging_lines();
+                    let paging_lines =
+                        -self.terminal_state.get_paging_lines(&self.config);
                     if let Some(entry) = self.get_selected_entry_mut() {
                         entry.scroll(paging_lines);
                     }
@@ -862,21 +862,24 @@ impl<'a> Widget for ReaderWidget<'a> {
         }
 
         // Update window based on layout.
-        if self.reader.interaction_state.selection
-            < self.reader.terminal_state.window + SCROLL_WINDOW
+        if (self.reader.interaction_state.selection as isize)
+            < self.reader.terminal_state.window as isize
+                + self.reader.config.read.scroll_buffer as isize
+                - 1
         {
             self.reader.terminal_state.window =
                 (self.reader.interaction_state.selection as isize
-                    - SCROLL_WINDOW as isize)
-                    .max(0) as usize;
+                    - self.reader.config.read.scroll_buffer as isize
+                    + 1)
+                .max(0) as usize;
         }
         if self.reader.interaction_state.selection
             > self.reader.terminal_state.window + list_layout.height as usize
-                - SCROLL_WINDOW
+                - self.reader.config.read.scroll_buffer as usize
         {
             self.reader.terminal_state.window =
                 (self.reader.interaction_state.selection as isize
-                    + SCROLL_WINDOW as isize
+                    + self.reader.config.read.scroll_buffer as isize
                     - list_layout.height as isize)
                     .max(0) as usize;
         }

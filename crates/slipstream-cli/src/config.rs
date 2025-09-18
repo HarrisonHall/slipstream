@@ -11,6 +11,9 @@ pub struct Config {
     pub freq: Option<std::time::Duration>,
     /// Number of workers.
     pub workers: Option<usize>,
+    /// Timezone (default UTC).
+    #[serde(default, alias = "time-zone", alias = "tz")]
+    pub timezone: TimeZone,
     /// Log file.
     pub log: Option<String>,
     /// Maximum entry storage size.
@@ -35,6 +38,7 @@ impl Default for Config {
         Self {
             freq: None,
             workers: None,
+            timezone: TimeZone::default(),
             feeds: None,
             storage: None,
             database: None,
@@ -79,6 +83,8 @@ impl Config {
                 attr.display_name = Arc::new(name.clone());
                 attr.freq = Some(feed_def.options().freq());
                 attr.timeout = feed_def.options().oldest();
+                attr.keep_empty = feed_def.options().keep_empty();
+                attr.apply_tags = feed_def.options().apply_tags();
                 feed_def
                     .tags()
                     .clone()
@@ -192,4 +198,30 @@ pub struct GlobalConfig {
     /// Without specifying, no user agent is used.
     #[serde(default, alias = "user-agent")]
     pub user_agent: Option<String>,
+}
+
+/// Timezone.
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub enum TimeZone {
+    #[serde(alias = "utc", alias = "zulu")]
+    Utc,
+    #[serde(alias = "local")]
+    Local,
+}
+
+impl TimeZone {
+    pub fn format(&self, dt: &slipfeed::DateTime) -> String {
+        let c = dt.to_chrono().with_timezone(match self {
+            TimeZone::Utc => return dt.to_string(),
+            TimeZone::Local => &chrono::Local,
+        });
+
+        return c.format("%Y-%m-%d %H:%M").to_string();
+    }
+}
+
+impl Default for TimeZone {
+    fn default() -> Self {
+        TimeZone::Local
+    }
 }
