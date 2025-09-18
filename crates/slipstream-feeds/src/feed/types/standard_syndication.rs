@@ -1,123 +1,6 @@
-//! Feed management.
-
-use std::hash::Hash;
-
-use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
+//! Standard syndication (atom + rss).
 
 use super::*;
-
-/// Id that represents a feed.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FeedId(pub(crate) usize);
-
-impl FeedId {
-    /// Create a new feed id.
-    pub fn new(id: usize) -> Self {
-        Self(id)
-    }
-}
-
-/// Reference to a feed.
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FeedRef {
-    /// Id of the originating feed.
-    pub id: FeedId,
-    /// Name of the originating feed.
-    pub name: Arc<String>,
-}
-
-impl PartialOrd for FeedRef {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        (*self.name).partial_cmp(&(*other.name))
-    }
-}
-
-impl Ord for FeedRef {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (*self.name).cmp(&(*other.name))
-    }
-}
-
-/// Attributes all feeds must have.
-#[derive(Clone)]
-pub struct FeedAttributes {
-    /// Feed name.
-    /// This need not unique-- just something consistent that can be displayed.
-    pub display_name: Arc<String>,
-    /// How old entries must be, to be ignored.
-    pub timeout: Duration,
-    /// How often the feed should update.
-    pub freq: Option<Duration>,
-    /// Tags associated with the feed.
-    pub tags: HashSet<Tag>,
-    /// Filters for the feed.
-    pub filters: Vec<Filter>,
-}
-
-impl FeedAttributes {
-    /// Generate empty feed info.
-    pub fn new() -> Self {
-        Self {
-            display_name: Arc::new(":empty:".into()),
-            timeout: Duration::from_seconds(15),
-            freq: None,
-            tags: HashSet::new(),
-            filters: Vec::new(),
-        }
-    }
-
-    /// Add a filter.
-    pub fn add_filter(&mut self, filter: Filter) {
-        self.filters.push(filter);
-    }
-
-    /// Add a tag.
-    pub fn add_tag(&mut self, tag: Tag) {
-        self.tags.insert(tag);
-    }
-
-    /// Get tags for a feed.
-    pub fn get_tags(&self) -> std::collections::hash_set::Iter<tag::Tag> {
-        return self.tags.iter();
-    }
-
-    /// Check if entry passes filters.
-    pub fn passes_filters(&self, feed: &dyn Feed, entry: &Entry) -> bool {
-        self.filters.iter().all(|filter| filter(feed, entry))
-    }
-}
-
-impl std::fmt::Debug for FeedAttributes {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        f.debug_struct("FeedInfo")
-            .field("tags", &self.tags)
-            .finish()
-    }
-}
-
-/// What defines a feed.
-#[feed_trait]
-pub trait Feed: std::fmt::Debug + Send + Sync + 'static {
-    /// Fetch items from the feed.
-    #[allow(unused_variables)]
-    async fn update(&mut self, ctx: &UpdaterContext, attr: &FeedAttributes) {}
-
-    /// Tag fetched entry. This serves as a method for other feeds to edit and claim
-    /// ownership of other entries.
-    async fn tag(
-        &mut self,
-        entry: &mut Entry,
-        feed_id: FeedId,
-        attr: &FeedAttributes,
-    ) {
-        // By default, we only tag our own entries.
-        if entry.is_from_feed(feed_id) {
-            for tag in attr.get_tags() {
-                entry.add_tag(&tag);
-            }
-        }
-    }
-}
 
 /// A reference to an RSS/Atom feed.
 #[derive(Clone, Debug)]
@@ -320,11 +203,17 @@ impl Feed for StandardSyndication {
 
         // Execute request and parse.
         let (tx, mut rx) = unbounded_channel();
-        if let Ok(req_result) = client.execute(request).await {
-            if let Ok(body) = req_result.text().await {
-                self.parse(body.as_str(), &ctx.parse_time, tx);
-            }
-        }
+        match client.execute(request).await {
+            Ok(req_result) => match req_result.text().await {
+                Ok(body) => {
+                    self.parse(body.as_str(), &ctx.parse_time, tx);
+                }
+                Err(e) => {
+                    tracing::error!("Failed to get body from response: {e}")
+                }
+            },
+            Err(e) => tracing::error!("Failed to execute: {e}"),
+        };
 
         // Forward the matching entries.
         while let Ok(entry) = rx.try_recv() {

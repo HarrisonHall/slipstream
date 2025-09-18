@@ -33,6 +33,8 @@ pub struct Updater {
     last_update_check: Option<DateTime>,
     /// Update frequency.
     freq: Duration,
+    /// Number of feeds to update/fetch at a time.
+    workers: usize,
     /// Current entries.
     entries: EntrySet,
     /// Next feed id.
@@ -46,9 +48,15 @@ impl Updater {
             feeds: HashMap::new(),
             last_update_check: None,
             freq,
+            workers: 8,
             entries: EntrySet::new(maximum),
-            next_feed_id: 0,
+            next_feed_id: 1,
         }
+    }
+
+    /// Set the number of workers.
+    pub fn set_workers(&mut self, workers: usize) {
+        self.workers = workers;
     }
 
     /// Add a feed.
@@ -90,36 +98,69 @@ impl Updater {
         // Perform updates.
         self.last_update_check = Some(now.clone());
         self.entries.clear();
-        let (sender, mut receiver) =
+        let (tx, mut rx) =
             tokio::sync::mpsc::unbounded_channel::<(Entry, FeedRef)>();
         {
+            tracing::info!("Workers: {}", self.workers);
+            use futures::StreamExt;
             tracing::info!("Updating all feeds.");
-            let mut set = tokio::task::JoinSet::new();
-            for (id, feed_info) in self.feeds.iter() {
-                let feed_info = feed_info.clone();
-                let sender = sender.clone();
-                let id = id.clone();
-                let feed = feed_info.feed.clone();
-                let ctx = UpdaterContext {
-                    feed_id: id.clone(),
-                    parse_time: now.clone(),
-                    last_update: feed_info.last_update.clone(),
-                    sender: sender.clone(),
-                };
+            let feeds = self.feeds.clone();
+            let mut updates = tokio_stream::iter(feeds)
+                .map(|(id, feed_info)| {
+                    let feed_info = feed_info.clone();
+                    let tx = tx.clone();
+                    let id = id.clone();
+                    let feed = feed_info.feed.clone();
+                    let ctx = UpdaterContext {
+                        feed_id: id.clone(),
+                        parse_time: now.clone(),
+                        last_update: feed_info.last_update.clone(),
+                        sender: tx.clone(),
+                    };
 
-                set.spawn(async move {
-                    let mut feed = feed.write().await;
-                    if let Err(_) = tokio::time::timeout(
-                        feed_info.attr.timeout.to_tokio(),
-                        feed.update(&ctx, &feed_info.attr),
-                    )
-                    .await
-                    {
-                        tracing::warn!("Update timed out for {:?}", feed);
+                    async move {
+                        let mut feed = feed.write().await;
+                        if let Err(_) = tokio::time::timeout(
+                            feed_info.attr.timeout.to_tokio(),
+                            feed.update(&ctx, &feed_info.attr),
+                        )
+                        .await
+                        {
+                            tracing::warn!("Update timed out for {:?}", feed);
+                        }
                     }
-                });
-            }
-            set.join_all().await;
+                })
+                .buffer_unordered(self.workers);
+
+            while let Some(_) = updates.next().await {}
+
+            // // tokio::stream::iter(self.feeds)
+            // let mut set = tokio::task::JoinSet::new();
+            // for (id, feed_info) in self.feeds.iter() {
+            //     let feed_info = feed_info.clone();
+            //     let tx = tx.clone();
+            //     let id = id.clone();
+            //     let feed = feed_info.feed.clone();
+            //     let ctx = UpdaterContext {
+            //         feed_id: id.clone(),
+            //         parse_time: now.clone(),
+            //         last_update: feed_info.last_update.clone(),
+            //         sender: tx.clone(),
+            //     };
+
+            //     set.spawn(async move {
+            //         let mut feed = feed.write().await;
+            //         if let Err(_) = tokio::time::timeout(
+            //             feed_info.attr.timeout.to_tokio(),
+            //             feed.update(&ctx, &feed_info.attr),
+            //         )
+            //         .await
+            //         {
+            //             tracing::warn!("Update timed out for {:?}", feed);
+            //         }
+            //     });
+            // }
+            // set.join_all().await;
 
             // Update parse times.
             for feed_info in self.feeds.values_mut() {
@@ -129,7 +170,8 @@ impl Updater {
 
         // Gather entries and tag.
         tracing::info!("Gathering entries.");
-        while let Ok((mut entry, feed)) = receiver.try_recv() {
+        drop(tx);
+        while let Some((mut entry, feed)) = rx.recv().await {
             entry.add_feed(feed);
             for feed_info in self.feeds.values_mut() {
                 let mut feed = feed_info.feed.write().await;
@@ -183,6 +225,7 @@ impl Default for Updater {
     fn default() -> Self {
         Self {
             feeds: HashMap::default(),
+            workers: 8,
             last_update_check: None,
             freq: Duration::from_seconds(10),
             entries: EntrySet::new(1_000),

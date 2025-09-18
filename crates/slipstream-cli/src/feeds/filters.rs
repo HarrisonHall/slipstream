@@ -182,7 +182,7 @@ fn exclude_tags(exclusions: &Option<Vec<String>>) -> Option<slipfeed::Filter> {
     if let Some(exclusions) = exclusions {
         let exclusions: Vec<slipfeed::Tag> = exclusions
             .iter()
-            .map(|exc| slipfeed::Tag::new(exc.to_lowercase()))
+            .map(|exc| slipfeed::Tag::new(exc))
             .collect();
         return Some(Arc::new(move |_feed, entry| {
             exclusions.iter().all(|exclusion| {

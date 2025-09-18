@@ -9,6 +9,8 @@ pub struct Config {
     /// Update frequency.
     #[serde(default, with = "humantime_serde::option")]
     pub freq: Option<std::time::Duration>,
+    /// Number of workers.
+    pub workers: Option<usize>,
     /// Log file.
     pub log: Option<String>,
     /// Maximum entry storage size.
@@ -32,6 +34,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             freq: None,
+            workers: None,
             feeds: None,
             storage: None,
             database: None,
@@ -52,13 +55,19 @@ impl Config {
         })
         .await?;
         let mut updater = Updater::default();
-        updater.updater = Arc::new(RwLock::new(slipfeed::Updater::new(
-            slipfeed::Duration::from_seconds(match self.freq {
-                Some(freq) => freq.as_secs(),
-                None => DEFAULT_UPDATE_SEC as u64,
-            }),
-            self.storage.unwrap_or(1024) as usize,
-        )));
+        updater.updater = Arc::new(RwLock::new({
+            let mut updater = slipfeed::Updater::new(
+                slipfeed::Duration::from_seconds(match self.freq {
+                    Some(freq) => freq.as_secs(),
+                    None => DEFAULT_UPDATE_SEC as u64,
+                }),
+                self.storage.unwrap_or(1024) as usize,
+            );
+            if let Some(workers) = self.workers {
+                updater.set_workers(workers);
+            }
+            updater
+        }));
         updater.entry_db = Some(Arc::new(entry_db));
 
         if let Some(feeds) = &self.feeds {
@@ -106,6 +115,43 @@ impl Config {
                             id,
                             Some(feeds.clone()),
                         );
+                    }
+                    RawFeed::MastodonStatuses {
+                        mastodon,
+                        feed_type,
+                        token,
+                    } => {
+                        let feed = slipfeed::MastodonFeed::new(
+                            mastodon,
+                            feed_type.into(),
+                            token.clone(),
+                        );
+                        let mut inner_updater = updater.updater.write().await;
+                        let id = inner_updater.add_feed(feed, attr);
+                        updater.feeds.insert(name.clone(), id);
+                        updater.feeds_ids.insert(id, name.clone());
+                        tracing::debug!("Added mastodon feed {}.", name);
+                        world.write().await.insert(name.clone(), id, None);
+                    }
+                    RawFeed::MastodonUserStatuses {
+                        mastodon,
+                        user,
+                        token,
+                    } => {
+                        let feed = slipfeed::MastodonFeed::new(
+                            mastodon,
+                            slipfeed::MastodonFeedType::UserStatuses {
+                                user: user.clone(),
+                                id: None,
+                            },
+                            token.clone(),
+                        );
+                        let mut inner_updater = updater.updater.write().await;
+                        let id = inner_updater.add_feed(feed, attr);
+                        updater.feeds.insert(name.clone(), id);
+                        updater.feeds_ids.insert(id, name.clone());
+                        tracing::debug!("Added mastodon feed {}.", name);
+                        world.write().await.insert(name.clone(), id, None);
                     }
                 };
             }
