@@ -26,7 +26,7 @@ impl CommandParser {
         }
 
         match shlex::split(&format!("__PARSER__ {}", &command)) {
-            Some(split) => match CommandParser::try_parse_from(split) {
+            Some(split) => match CommandParser::try_parse_from(split.clone()) {
                 Ok(command) => Ok(command),
                 Err(e) => bail!("{}", e),
             },
@@ -77,6 +77,10 @@ pub struct SearchContext {
     /// Filter by command.
     #[arg(short, long, value_parser, num_args = 1.., value_delimiter = ' ')]
     pub command: Vec<String>,
+    /// Use a raw SQL clause (e.g., "UPPER(entries.author) = 'BBC-NEWS'").
+    /// WARNING: This is purposefully not checked.
+    #[arg(short, long, value_parser, num_args = 1..)]
+    pub raw: Vec<String>,
     /// Search text.
     pub text: Option<String>,
 }

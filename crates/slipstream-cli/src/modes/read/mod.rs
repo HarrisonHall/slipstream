@@ -720,6 +720,9 @@ impl Reader {
                 for cmd in &search.command {
                     criteria.push(DatabaseSearch::Command(cmd.clone()));
                 }
+                for raw_clause in &search.raw {
+                    criteria.push(DatabaseSearch::Raw(raw_clause.clone()));
+                }
                 if let Some(text) = &search.text {
                     criteria.push(DatabaseSearch::Search(text.clone()));
                 }
