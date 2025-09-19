@@ -201,17 +201,60 @@ pub struct GlobalConfig {
 }
 
 /// Timezone.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize)]
+#[serde(untagged)]
 pub enum TimeZone {
     #[serde(alias = "utc", alias = "zulu")]
     Utc,
     #[serde(alias = "local")]
     Local,
+    RealTimeZone(chrono_tz::Tz),
+}
+
+impl<'de> Deserialize<'de> for TimeZone {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        let lower_text = text.trim().to_lowercase();
+
+        if lower_text == "utc"
+            || lower_text == "zulu"
+            || lower_text == "universal"
+        {
+            return Ok(Self::Utc);
+        }
+
+        if lower_text == "local" || lower_text == "" {
+            return Ok(Self::Local);
+        }
+
+        let upper_text = text.trim().to_uppercase();
+        let text = format!("\"{upper_text}\"");
+        let de = match toml::de::ValueDeserializer::parse(&text) {
+            Ok(de) => de,
+            Err(e) => {
+                return Err(<D::Error as serde::de::Error>::custom(e));
+            }
+        };
+        match chrono_tz::Tz::deserialize(de) {
+            Ok(tz) => Ok(Self::RealTimeZone(tz)),
+            Err(e) => Err(<D::Error as serde::de::Error>::custom(e)),
+        }
+    }
 }
 
 impl TimeZone {
     pub fn format(&self, dt: &slipfeed::DateTime) -> String {
         let c = dt.to_chrono().with_timezone(match self {
+            Self::RealTimeZone(tz) => {
+                return dt
+                    .to_chrono()
+                    .with_timezone(tz)
+                    .format("%Y-%m-%d %H:%M %Z")
+                    .to_string();
+            }
             TimeZone::Utc => return dt.to_string(),
             TimeZone::Local => &chrono::Local,
         });
@@ -223,5 +266,6 @@ impl TimeZone {
 impl Default for TimeZone {
     fn default() -> Self {
         TimeZone::Local
+        // TImeZone(chrono_tz::Zulu)
     }
 }
