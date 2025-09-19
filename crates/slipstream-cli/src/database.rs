@@ -280,6 +280,9 @@ impl Database {
                     search_clause
                         .push(format!("commands.name LIKE '%{command}%'"));
                 }
+                DatabaseSearch::Raw(raw_clause) => {
+                    search_clause.push(raw_clause.clone());
+                }
             };
         }
         let cursor_clause: String = match cursor {
@@ -446,6 +449,7 @@ pub enum DatabaseSearch {
     Tag(String),
     Feed(String),
     Command(String),
+    Raw(String),
 }
 
 /// Database identifier for entries.
