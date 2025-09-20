@@ -110,6 +110,10 @@ impl<'de> Deserialize<'de> for BindingKey {
             "space" => KeyCode::Char(' '),
             "pageup" => KeyCode::PageUp,
             "pagedown" => KeyCode::PageDown,
+            "up" => KeyCode::Up,
+            "down" => KeyCode::Down,
+            "left" => KeyCode::Left,
+            "right" => KeyCode::Right,
             _ => {
                 use serde::de::Error;
                 return Err(D::Error::unknown_variant(

@@ -107,8 +107,13 @@ impl Entry {
     }
 
     /// Check if a tag exists.
-    pub fn has_tag(&self, tag: &Tag) -> bool {
-        self.tags.contains(tag)
+    pub fn has_tag(&self, tag: impl AsRef<str>) -> bool {
+        for other_tag in &self.tags {
+            if other_tag.to_string() == tag.as_ref() {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// Check if a tag exists, fuzzily.

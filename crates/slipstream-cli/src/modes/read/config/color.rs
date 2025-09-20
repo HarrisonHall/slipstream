@@ -125,7 +125,8 @@ pub enum ColorLiteral {
         alias = "brightmagenta",
         alias = "bright-magenta",
         alias = "lightmagenta",
-        alias = "light-magenta"
+        alias = "light-magenta",
+        alias = "pink"
     )]
     BrightMagenta,
     #[serde(
