@@ -51,33 +51,6 @@ async fn standard_syndications() {
     }
 }
 
-// #[tokio::test]
-// async fn mastodon() {
-//     tracing_subscriber::fmt::init();
-
-//     let data = mastodon_async::data::Data {
-//         base: "https://mastodon.social".into(),
-//         client_id: "".into(),
-//         client_secret: "".into(),
-//         redirect: "".into(),
-//         token: "".into(),
-//     };
-
-//     let m = mastodon_async::mastodon::Mastodon::from(data);
-
-//     let t = m.get_public_timeline(true).await;
-
-//     tracing::warn!("Hmm: {t:?}");
-//     assert!(t.is_ok(), "ofo {}", 4);
-//     if let Ok(t) = t {
-//         for p in t.iter() {
-//             tracing::info!(": {p:?}");
-//         }
-//     } else {
-//         eprintln!("Uh oh: {t:?}");
-//     }
-// }
-
 #[tokio::test]
 async fn mastodon() {
     tracing_subscriber::fmt::try_init().ok();

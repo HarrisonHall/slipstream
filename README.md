@@ -70,7 +70,6 @@ are essentially complete as-is.
 
 - `slipstream` (general)
   - [ ] Add more filters (regex/pomsky, allowlists, etc.)
-  - [ ] OPML conversion support
   - [ ] Support hooks
 - `slipsteam` (serve)
   - [ ] Track updated `updated_at` in database

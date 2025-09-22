@@ -14,6 +14,16 @@ pub struct FeedDefinition {
 }
 
 impl FeedDefinition {
+    #[allow(unused)]
+    pub fn from_feed(feed: RawFeed) -> Self {
+        Self {
+            feed,
+            tags: None,
+            filters: Filters::default(),
+            options: FeedOptions::default(),
+        }
+    }
+
     pub fn feed(&self) -> &RawFeed {
         &self.feed
     }
@@ -72,12 +82,11 @@ impl From<&MastodonFeedType> for slipstream_feeds::MastodonFeedType {
             }
             MastodonFeedType::HomeTimeline => {
                 slipstream_feeds::MastodonFeedType::HomeTimeline
-            }
-            // MastodonFeedType::UserStatuses(user) => {
-            //     slipstream_feeds::MastodonFeedType::UserStatuses {
-            //         user: user.clone(),
-            //     }
-            // }
+            } // MastodonFeedType::UserStatuses(user) => {
+              //     slipstream_feeds::MastodonFeedType::UserStatuses {
+              //         user: user.clone(),
+              //     }
+              // }
         }
     }
 }

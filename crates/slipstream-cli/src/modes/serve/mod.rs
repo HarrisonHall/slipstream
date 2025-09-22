@@ -11,7 +11,7 @@ pub use config::*;
 use web::*;
 
 /// Serve slipstream over http.
-pub async fn serve(
+pub async fn serve_cli(
     port: Option<u16>,
     config: Arc<Config>,
     updater: UpdaterHandle,

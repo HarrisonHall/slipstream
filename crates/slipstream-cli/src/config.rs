@@ -177,11 +177,26 @@ impl Config {
     }
 
     /// Find a feed by name.
-    pub fn feed(&self, feed: &str) -> Option<&FeedDefinition> {
+    pub fn feed(&self, feed: impl AsRef<str>) -> Option<&FeedDefinition> {
         if let Some(feeds) = self.feeds.as_ref() {
-            return feeds.get(feed);
+            return feeds.get(feed.as_ref());
         }
         None
+    }
+
+    /// Add a feed, directly.
+    pub fn add_feed(
+        &mut self,
+        feed_name: impl Into<String>,
+        feed_def: FeedDefinition,
+    ) {
+        if let Some(feeds) = &mut self.feeds {
+            feeds.insert(feed_name.into(), feed_def);
+        } else {
+            let mut feeds = HashMap::new();
+            feeds.insert(feed_name.into(), feed_def);
+            self.feeds = Some(feeds);
+        }
     }
 }
 
@@ -200,15 +215,32 @@ pub struct GlobalConfig {
     pub user_agent: Option<String>,
 }
 
-/// Timezone.
-#[derive(Copy, Clone, Debug, Serialize)]
-#[serde(untagged)]
-pub enum TimeZone {
-    #[serde(alias = "utc", alias = "zulu")]
-    Utc,
-    #[serde(alias = "local")]
-    Local,
-    RealTimeZone(chrono_tz::Tz),
+#[derive(Clone, Debug)]
+pub struct TimeZone {
+    timezone: String,
+    inner: TimeZoneInner,
+}
+
+impl Default for TimeZone {
+    fn default() -> Self {
+        Self {
+            timezone: "local".into(),
+            inner: TimeZoneInner::Local,
+        }
+    }
+}
+
+impl Serialize for TimeZone {
+    fn serialize<S>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // serializer.serialize_newtype_struct("timezone", &self.timezone)
+        serializer.serialize_str(&self.timezone)
+    }
 }
 
 impl<'de> Deserialize<'de> for TimeZone {
@@ -223,11 +255,17 @@ impl<'de> Deserialize<'de> for TimeZone {
             || lower_text == "zulu"
             || lower_text == "universal"
         {
-            return Ok(Self::Utc);
+            return Ok(Self {
+                timezone: lower_text,
+                inner: TimeZoneInner::Utc,
+            });
         }
 
         if lower_text == "local" || lower_text == "" {
-            return Ok(Self::Local);
+            return Ok(Self {
+                timezone: lower_text,
+                inner: TimeZoneInner::Local,
+            });
         }
 
         let upper_text = text.trim().to_uppercase();
@@ -239,33 +277,36 @@ impl<'de> Deserialize<'de> for TimeZone {
             }
         };
         match chrono_tz::Tz::deserialize(de) {
-            Ok(tz) => Ok(Self::RealTimeZone(tz)),
+            Ok(tz) => Ok(Self {
+                timezone: lower_text,
+                inner: TimeZoneInner::RealTimeZone(tz),
+            }),
             Err(e) => Err(<D::Error as serde::de::Error>::custom(e)),
         }
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+enum TimeZoneInner {
+    Utc,
+    Local,
+    RealTimeZone(chrono_tz::Tz),
+}
+
 impl TimeZone {
     pub fn format(&self, dt: &slipfeed::DateTime) -> String {
-        let c = dt.to_chrono().with_timezone(match self {
-            Self::RealTimeZone(tz) => {
+        let c = dt.to_chrono().with_timezone(match &self.inner {
+            TimeZoneInner::RealTimeZone(tz) => {
                 return dt
                     .to_chrono()
                     .with_timezone(tz)
                     .format("%Y-%m-%d %H:%M %Z")
                     .to_string();
             }
-            TimeZone::Utc => return dt.to_string(),
-            TimeZone::Local => &chrono::Local,
+            TimeZoneInner::Utc => return dt.to_string(),
+            TimeZoneInner::Local => &chrono::Local,
         });
 
         return c.format("%Y-%m-%d %H:%M").to_string();
-    }
-}
-
-impl Default for TimeZone {
-    fn default() -> Self {
-        TimeZone::Local
-        // TImeZone(chrono_tz::Zulu)
     }
 }

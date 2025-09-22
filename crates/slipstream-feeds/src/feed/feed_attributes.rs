@@ -47,7 +47,9 @@ impl FeedAttributes {
     }
 
     /// Get tags for a feed.
-    pub fn get_tags(&self) -> std::collections::hash_set::Iter<tag::Tag> {
+    pub fn get_tags<'a>(
+        &'a self,
+    ) -> std::collections::hash_set::Iter<'a, tag::Tag> {
         return self.tags.iter();
     }
 

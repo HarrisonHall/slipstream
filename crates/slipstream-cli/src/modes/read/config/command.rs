@@ -31,8 +31,7 @@ impl From<&CustomCommand> for Commandish {
 }
 
 /// Read command variants.
-#[derive(Clone, Debug, Serialize)]
-#[serde(untagged)]
+#[derive(Clone, Debug)]
 pub enum Commandish {
     /// The built-in commands.
     Literal(ReadCommandLiteral),
@@ -40,6 +39,31 @@ pub enum Commandish {
     CustomCommandRef(Arc<String>),
     /// Custom command definition.
     CustomCommandFull(CustomCommand),
+}
+
+impl Serialize for Commandish {
+    fn serialize<S>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Commandish::Literal(lit) => match lit {
+                ReadCommandLiteral::Command(command_mode) => {
+                    serializer.serialize_str(&format!(":{}", command_mode))
+                }
+                _ => lit.serialize(serializer),
+            },
+            Commandish::CustomCommandRef(custom) => {
+                serializer.serialize_str(&format!("!{}", custom))
+            }
+            Commandish::CustomCommandFull(custom) => {
+                serializer.serialize_str(&format!("!{}", &custom.name))
+            }
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for Commandish {

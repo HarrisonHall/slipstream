@@ -27,8 +27,10 @@ pub const SEARCH_MODE: KeyEvent =
     KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE);
 
 /// Keyboard key.
-#[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Hash)]
 pub struct BindingKey {
+    /// Specified binding.
+    binding: String,
     /// Underlying crossterm key event.
     key: KeyEvent,
 }
@@ -45,12 +47,25 @@ impl From<&BindingKey> for KeyEvent {
     }
 }
 
+impl Serialize for BindingKey {
+    fn serialize<S>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.binding)
+    }
+}
+
 impl<'de> Deserialize<'de> for BindingKey {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let mut text = String::deserialize(deserializer)?;
+        let binding = String::deserialize(deserializer)?;
+        let mut text = binding.clone();
 
         // Parse potential modifier.
         let mut modifier = KeyModifiers::NONE;
@@ -174,6 +189,7 @@ impl<'de> Deserialize<'de> for BindingKey {
         }
 
         Ok(Self {
+            binding,
             key: KeyEvent::new(code, modifier),
         })
     }

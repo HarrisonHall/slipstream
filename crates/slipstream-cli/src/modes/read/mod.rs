@@ -47,7 +47,7 @@ const CONTROL_C: KeyEvent =
     KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
 
 /// Perform the reader action.
-pub async fn read(
+pub async fn read_cli(
     config: Arc<Config>,
     updater: UpdaterHandle,
     cancel_token: CancellationToken,

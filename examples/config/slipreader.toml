@@ -63,16 +63,20 @@ scroll = 1
 hidden = ["unread", "important"]
 
 [[read.tags.colors]]
+tag = "science"
+color = { fg = "blue" }
+
+[[read.tags.colors]]
+tag = "hacking"
+color = { bg = "light-cyan", fg = "black" }
+
+[[read.tags.colors]]
 tag = "important"
 color = { bg = "red", fg = "black" }
 
 [[read.tags.colors]]
 tag = "unread"
 color = { fg = "yellow" }
-
-[[read.tags.colors]]
-tag = "hacking"
-color = { underline = "light-cyan" }
 
 [[read.tags.colors]]
 tag = "japanese"
