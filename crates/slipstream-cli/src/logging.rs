@@ -238,12 +238,6 @@ pub fn setup_logging(cli: &Cli, config: &Config) -> Result<()> {
 
     // CLI layer (to stderr).
     let cli_logger = match cli.command {
-        CommandMode::Serve { .. } => Some(
-            tracing_subscriber::fmt::layer()
-                .event_format(CliFormatter)
-                .with_writer(get_logger)
-                .with_filter(filter.clone()),
-        ),
         CommandMode::Read { .. } => {
             if cli.debug || cli.verbose {
                 Some(
@@ -256,6 +250,12 @@ pub fn setup_logging(cli: &Cli, config: &Config) -> Result<()> {
                 None
             }
         }
+        _ => Some(
+            tracing_subscriber::fmt::layer()
+                .event_format(CliFormatter)
+                .with_writer(get_logger)
+                .with_filter(filter.clone()),
+        ),
     };
 
     // File layer.

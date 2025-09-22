@@ -25,21 +25,8 @@ impl Cli {
     /// Parse configuration.
     pub fn parse_config(&self) -> Result<Config> {
         // Get specified config path.
-        let config_path: PathBuf = match &self.config {
-            Some(path) => path.clone(),
-            None => match PathBuf::from_str(&*DEFAULT_CONFIG_DIR) {
-                Ok(p) => p,
-                Err(e) => {
-                    bail!(
-                        "Invalid default config {}: {}.",
-                        &*DEFAULT_CONFIG_DIR,
-                        e
-                    );
-                }
-            },
-        }
-        .resolve()
-        .into();
+        let config_path = self.config_path()?;
+
         // Make directory if it doesn't exist.
         if let Some(parent_dir) = config_path.parent() {
             if !parent_dir.exists() {
@@ -76,6 +63,25 @@ impl Cli {
             }
         }
     }
+
+    /// Get config path.
+    pub fn config_path(&self) -> Result<PathBuf> {
+        Ok(match &self.config {
+            Some(path) => path.clone(),
+            None => match PathBuf::from_str(&*DEFAULT_CONFIG_DIR) {
+                Ok(p) => p,
+                Err(e) => {
+                    bail!(
+                        "Invalid default config {}: {}.",
+                        &*DEFAULT_CONFIG_DIR,
+                        e
+                    );
+                }
+            },
+        }
+        .resolve()
+        .into())
+    }
 }
 
 /// Slipstream command mode.
@@ -88,5 +94,10 @@ pub enum CommandMode {
         port: Option<u16>,
     },
     /// Read feeds in a local tui.
-    Read {},
+    Read,
+    /// Read feeds in a local tui.
+    Config {
+        #[command(subcommand)]
+        config_mode: ConfigMode,
+    },
 }

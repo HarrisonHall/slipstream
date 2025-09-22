@@ -22,7 +22,7 @@ pub struct ReadConfig {
     /// Custom commands.
     #[serde(default)]
     pub commands: Vec<CustomCommand>,
-    /// How far to scroll.
+    /// How far to scroll (mouse).
     #[serde(default = "ReadConfig::default_scroll")]
     pub scroll: u8,
     /// Scroll buffer, how many lines before scrolling begins.

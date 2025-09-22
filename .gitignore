@@ -10,3 +10,10 @@
 
 # Database files
 *.db
+*-journal
+
+# Export and test files.
+test
+*.export.toml
+*.list
+*.opml

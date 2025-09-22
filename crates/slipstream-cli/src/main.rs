@@ -11,11 +11,11 @@ use atom_syndication::{self as atom};
 use clap::{Parser, Subcommand};
 use resolve_path::PathResolveExt;
 use serde::{Deserialize, Serialize};
+use slipstream_feeds::{self as slipfeed};
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use slipstream_feeds::{self as slipfeed};
 
 mod cli;
 mod config;
@@ -23,6 +23,9 @@ mod database;
 mod feeds;
 mod logging;
 mod modes;
+
+#[cfg(test)]
+mod tests;
 
 use cli::*;
 use config::*;
@@ -49,6 +52,19 @@ const DEFAULT_UPDATE_SEC: u16 = 120;
 async fn main() -> Result<()> {
     // Initial setup.
     let cli = Cli::parse();
+
+    // If doing the config mode, we don't want to go any further.
+    match &cli.command {
+        CommandMode::Config { config_mode } => {
+            let config_path = match cli.config_path() {
+                Ok(cp) => cp,
+                Err(e) => bail!("Failed to determine config path: {e}"),
+            };
+            return config_cli(config_mode.clone(), config_path);
+        }
+        _ => {}
+    };
+
     let config = Arc::new(match cli.parse_config() {
         Ok(config) => config,
         Err(e) => bail!("Failed to parse config:\n{e}"),
@@ -64,18 +80,19 @@ async fn main() -> Result<()> {
     tasks.spawn(update(updater, config.clone(), cancel_token.clone()));
 
     // Run the command:
-    match cli.command {
-        CommandMode::Serve { port } => tasks.spawn(serve(
-            port,
+    match &cli.command {
+        CommandMode::Serve { port } => tasks.spawn(serve_cli(
+            port.clone(),
             config.clone(),
             updater_handle,
             cancel_token.clone(),
         )),
-        CommandMode::Read {} => tasks.spawn(read(
+        CommandMode::Read => tasks.spawn(read_cli(
             config.clone(),
             updater_handle,
             cancel_token.clone(),
         )),
+        CommandMode::Config { .. } => unreachable!(),
     };
 
     // Wait for ctrl+c (top-level):
