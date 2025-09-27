@@ -3,11 +3,14 @@
 use super::*;
 
 use axum::extract::State;
+use axum::http::HeaderMap;
 
 mod config;
+mod header_map_ext;
 mod web;
 
 pub use config::*;
+use header_map_ext::HeaderMapExt;
 use web::*;
 
 /// Serve slipstream over http.
@@ -81,15 +84,16 @@ type StateType = axum::extract::State<Arc<SFState>>;
 
 async fn get_all_html(
     State(state): StateType,
+    headers: HeaderMap,
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("/all");
     let mut html = state.html.lock().await;
     let updater = state.updater.clone();
     return (
-        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        HeaderMap::html_headers(),
         html.get(
             "/all",
-            async move { updater.collect_all().await },
+            async move { updater.collect_all(headers.if_modified_since()).await },
             state.updater.clone(),
             state.config.clone(),
         )
@@ -99,21 +103,27 @@ async fn get_all_html(
 
 async fn get_all_feed(
     State(state): StateType,
+    headers: HeaderMap,
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("/all/feed");
     let config = state.config.clone();
     let updater = state.updater.clone();
     let mut cache = state.cache.lock().await;
     return (
-        [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
+        HeaderMap::atom_headers(),
         cache
-            .get("/all", async move { updater.syndicate_all(config).await })
+            .get("/all", async move {
+                updater
+                    .syndicate_all(config, headers.if_modified_since())
+                    .await
+            })
             .await,
     );
 }
 
 async fn get_feed_html(
     State(state): StateType,
+    headers: HeaderMap,
     uri: axum::http::Uri,
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("{}", uri.path());
@@ -121,10 +131,14 @@ async fn get_feed_html(
     let updater = state.updater.clone();
     let mut html = state.html.lock().await;
     return (
-        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        HeaderMap::html_headers(),
         html.get(
             uri.path(),
-            async move { updater.collect_feed(feed).await },
+            async move {
+                updater
+                    .collect_feed(feed, headers.if_modified_since())
+                    .await
+            },
             state.updater.clone(),
             state.config.clone(),
         )
@@ -134,6 +148,7 @@ async fn get_feed_html(
 
 async fn get_feed_feed(
     State(state): StateType,
+    headers: HeaderMap,
     uri: axum::http::Uri,
     axum::extract::Path(feed): axum::extract::Path<String>,
 ) -> impl axum::response::IntoResponse {
@@ -142,10 +157,12 @@ async fn get_feed_feed(
     let updater = state.updater.clone();
     let mut cache = state.cache.lock().await;
     return (
-        [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
+        HeaderMap::atom_headers(),
         cache
             .get(uri.path(), async move {
-                updater.syndicate_feed(&feed, config).await
+                updater
+                    .syndicate_feed(&feed, config, headers.if_modified_since())
+                    .await
             })
             .await,
     );
@@ -153,6 +170,7 @@ async fn get_feed_feed(
 
 async fn get_tag_html(
     State(state): StateType,
+    headers: HeaderMap,
     uri: axum::http::Uri,
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("{}", uri.path());
@@ -160,10 +178,12 @@ async fn get_tag_html(
     let updater = state.updater.clone();
     let mut html = state.html.lock().await;
     return (
-        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        HeaderMap::html_headers(),
         html.get(
             uri.path(),
-            async move { updater.collect_tag(tag).await },
+            async move {
+                updater.collect_tag(tag, headers.if_modified_since()).await
+            },
             state.updater.clone(),
             state.config.clone(),
         )
@@ -173,6 +193,7 @@ async fn get_tag_html(
 
 async fn get_tag_feed(
     State(state): StateType,
+    headers: HeaderMap,
     uri: axum::http::Uri,
     axum::extract::Path(tag): axum::extract::Path<String>,
 ) -> impl axum::response::IntoResponse {
@@ -181,10 +202,12 @@ async fn get_tag_feed(
     let updater = state.updater.clone();
     let mut cache = state.cache.lock().await;
     return (
-        [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
+        HeaderMap::atom_headers(),
         cache
             .get(uri.path(), async move {
-                updater.syndicate_tag(&tag, config).await
+                updater
+                    .syndicate_tag(&tag, config, headers.if_modified_since())
+                    .await
             })
             .await,
     );
@@ -201,10 +224,7 @@ async fn get_config(
             String::new()
         }
     };
-    return (
-        [(axum::http::header::CONTENT_TYPE, "application/toml")],
-        serialized,
-    );
+    return (HeaderMap::toml_headers(), serialized);
 }
 
 async fn get_styles(
@@ -212,10 +232,7 @@ async fn get_styles(
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("/styles.css");
     let html = state.html.lock().await;
-    return (
-        [(axum::http::header::CONTENT_TYPE, "text/css")],
-        (*html.styles).clone(),
-    );
+    return (HeaderMap::css_headers(), (*html.styles).clone());
 }
 
 async fn get_robots_txt(
@@ -223,19 +240,13 @@ async fn get_robots_txt(
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("/robots.txt");
     let html = state.html.lock().await;
-    return (
-        [(axum::http::header::CONTENT_TYPE, "text/plain")],
-        (*html.robots_txt).clone(),
-    );
+    return (HeaderMap::plaintext_headers(), (*html.robots_txt).clone());
 }
 
 async fn get_favicon(
     State(state): StateType,
 ) -> impl axum::response::IntoResponse {
-    tracing::debug!("/robots.txt");
+    tracing::debug!("/favicon.ico");
     let html = state.html.lock().await;
-    return (
-        [(axum::http::header::CONTENT_TYPE, "image/x-icon")],
-        (*html.favicon).clone(),
-    );
+    return (HeaderMap::favicon_headers(), (*html.favicon).clone());
 }

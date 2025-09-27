@@ -516,3 +516,12 @@ pub enum OffsetCursor {
     Before(slipfeed::DateTime),
     After(slipfeed::DateTime),
 }
+
+impl From<Option<slipfeed::DateTime>> for OffsetCursor {
+    fn from(value: Option<slipfeed::DateTime>) -> Self {
+        match value {
+            Some(dt) => OffsetCursor::After(dt.clone()),
+            None => OffsetCursor::Latest,
+        }
+    }
+}

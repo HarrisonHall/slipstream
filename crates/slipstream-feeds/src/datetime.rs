@@ -54,6 +54,38 @@ impl DateTime {
         return self.0.format("%+").to_string();
     }
 
+    /// Convert intof-Modified-Since header.
+    pub fn to_if_modified_since(&self) -> String {
+        use chrono::Datelike;
+        use chrono::Timelike;
+
+        let weekday = self.0.weekday().to_string();
+        let day = format!("{:0>2}", self.0.day());
+        let month = match self.0.month() {
+            1 => "Jan",
+            2 => "Feb",
+            3 => "Mar",
+            4 => "Apr",
+            5 => "May",
+            6 => "Jun",
+            7 => "Jul",
+            8 => "Aug",
+            9 => "Sep",
+            10 => "Oct",
+            11 => "Nov",
+            _ => "Dec",
+        };
+        let year = self.0.year();
+        let hour = format!("{:0>2}", self.0.hour());
+        let minute = format!("{:0>2}", self.0.minute());
+        let second = format!("{:0>2}", self.0.second());
+        let since = format!(
+            "{}, {} {} {} {}:{}:{} GMT",
+            weekday, day, month, year, hour, minute, second
+        );
+        since
+    }
+
     // pub fn from_std(&self, dt: std::time::Instant) -> Self {
     //     Self(match chrono::DateTime::<chrono::Utc>::from_timestamp_millis(dt.duration_since(std::time::Instant)))
     // }
@@ -67,6 +99,27 @@ impl DateTime {
     pub fn from_unix_timestamp_s(timestamp: u64) -> Self {
         // TODO: Alternative to unwrap?
         Self(chrono::Utc.timestamp_opt(timestamp as i64, 0).unwrap())
+    }
+
+    /// Convert intof-Modified-Since header.
+    pub fn from_if_modified_since(
+        if_modified_since: impl AsRef<str>,
+    ) -> Option<Self> {
+        let res = chrono::DateTime::parse_from_str(
+            if_modified_since.as_ref(),
+            "%a, %d %m %Y %H:%M:%S GMT",
+        );
+
+        match res {
+            Ok(res) => Some(DateTime(res.to_utc())),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to parse If-Modified-Since ({}): {e}",
+                    if_modified_since.as_ref()
+                );
+                None
+            }
+        }
     }
 }
 
@@ -221,44 +274,5 @@ impl Duration {
     /// Create duration from tokio.
     pub fn from_tokio(dur: tokio::time::Duration) -> Self {
         Self(chrono::Duration::seconds(dur.as_secs() as i64))
-    }
-}
-
-/// Trait for formatting time as expected in the If-Modified-Since standard header.
-pub trait IfModifiedSinceHeader {
-    /// Create a timestamp following the If-Modified-Since header format.
-    fn if_modified_since_time(&self) -> String;
-}
-
-impl IfModifiedSinceHeader for DateTime {
-    fn if_modified_since_time(&self) -> String {
-        use chrono::Datelike;
-        use chrono::Timelike;
-
-        let weekday = self.0.weekday().to_string();
-        let day = format!("{:0>2}", self.0.day());
-        let month = match self.0.month() {
-            1 => "Jan",
-            2 => "Feb",
-            3 => "Mar",
-            4 => "Apr",
-            5 => "May",
-            6 => "Jun",
-            7 => "Jul",
-            8 => "Aug",
-            9 => "Sep",
-            10 => "Oct",
-            11 => "Nov",
-            _ => "Dec",
-        };
-        let year = self.0.year();
-        let hour = format!("{:0>2}", self.0.hour());
-        let minute = format!("{:0>2}", self.0.minute());
-        let second = format!("{:0>2}", self.0.second());
-        let since = format!(
-            "{}, {} {} {} {}:{}:{} GMT",
-            weekday, day, month, year, hour, minute, second
-        );
-        since
     }
 }

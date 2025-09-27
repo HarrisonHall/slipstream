@@ -121,12 +121,12 @@ impl Updater {
             UpdaterRequest::FeedFetch { tx, options } => {
                 if let Some(entry_db) = &self.entry_db {
                     let entries = match options {
-                        FeedFetchOptions::All => {
+                        FeedFetchOptions::All { since } => {
                             let unfiltered_entries = entry_db
                                 .get_entries(
                                     vec![DatabaseSearch::Latest],
                                     config.global.limits.max(),
-                                    OffsetCursor::Latest,
+                                    OffsetCursor::from(since),
                                 )
                                 .await;
                             let mut entries = DatabaseEntryList::new(
@@ -146,12 +146,12 @@ impl Updater {
                             }
                             entries
                         }
-                        FeedFetchOptions::Tag(tag) => {
+                        FeedFetchOptions::Tag { tag, since } => {
                             let unfiltered_entries = entry_db
                                 .get_entries(
                                     vec![DatabaseSearch::Tag(tag)],
                                     config.global.limits.max(),
-                                    OffsetCursor::Latest,
+                                    OffsetCursor::from(since),
                                 )
                                 .await;
                             let mut entries = DatabaseEntryList::new(
@@ -168,7 +168,7 @@ impl Updater {
                             }
                             entries
                         }
-                        FeedFetchOptions::Feed(feed) => {
+                        FeedFetchOptions::Feed { feed, since } => {
                             if let (Some(_feed_id), Some(feed_def)) =
                                 (self.feeds.get(&feed), config.feed(&feed))
                             {
@@ -178,7 +178,7 @@ impl Updater {
                                             feed.clone(),
                                         )],
                                         config.global.limits.max(),
-                                        OffsetCursor::Latest,
+                                        OffsetCursor::from(since),
                                     )
                                     .await;
                                 let mut entries = DatabaseEntryList::new(
@@ -278,9 +278,17 @@ enum UpdaterRequest {
 
 #[derive(Debug, Clone)]
 enum FeedFetchOptions {
-    All,
-    Feed(String),
-    Tag(String),
+    All {
+        since: Option<slipfeed::DateTime>,
+    },
+    Feed {
+        feed: String,
+        since: Option<slipfeed::DateTime>,
+    },
+    Tag {
+        tag: String,
+        since: Option<slipfeed::DateTime>,
+    },
 }
 
 #[derive(Clone)]
@@ -320,11 +328,14 @@ impl UpdaterHandle {
     }
 
     /// Collect the /all feed.
-    pub async fn collect_all(&self) -> DatabaseEntryList {
+    pub async fn collect_all(
+        &self,
+        since: Option<slipfeed::DateTime>,
+    ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
         self.send(UpdaterRequest::FeedFetch {
             tx,
-            options: FeedFetchOptions::All,
+            options: FeedFetchOptions::All { since },
         })
         .await;
         match rx.await {
@@ -337,11 +348,15 @@ impl UpdaterHandle {
     }
 
     /// Convert the /all feed into an atom feed.
-    pub async fn syndicate_all(&self, config: Arc<Config>) -> String {
+    pub async fn syndicate_all(
+        &self,
+        config: Arc<Config>,
+        since: Option<slipfeed::DateTime>,
+    ) -> String {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
         self.send(UpdaterRequest::FeedFetch {
             tx,
-            options: FeedFetchOptions::All,
+            options: FeedFetchOptions::All { since },
         })
         .await;
         match rx.await {
@@ -357,11 +372,15 @@ impl UpdaterHandle {
     pub async fn collect_feed(
         &self,
         feed: impl Into<String>,
+        since: Option<slipfeed::DateTime>,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
         self.send(UpdaterRequest::FeedFetch {
             tx,
-            options: FeedFetchOptions::Feed(feed.into()),
+            options: FeedFetchOptions::Feed {
+                feed: feed.into(),
+                since,
+            },
         })
         .await;
         match rx.await {
@@ -378,12 +397,16 @@ impl UpdaterHandle {
         &self,
         feed: impl Into<String>,
         config: Arc<Config>,
+        since: Option<slipfeed::DateTime>,
     ) -> String {
         let feed = feed.into();
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
         self.send(UpdaterRequest::FeedFetch {
             tx,
-            options: FeedFetchOptions::Feed(feed.clone()),
+            options: FeedFetchOptions::Feed {
+                feed: feed.clone(),
+                since,
+            },
         })
         .await;
         match rx.await {
@@ -399,11 +422,15 @@ impl UpdaterHandle {
     pub async fn collect_tag(
         &self,
         tag: impl Into<String>,
+        since: Option<slipfeed::DateTime>,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
         self.send(UpdaterRequest::FeedFetch {
             tx,
-            options: FeedFetchOptions::Tag(tag.into()),
+            options: FeedFetchOptions::Tag {
+                tag: tag.into(),
+                since,
+            },
         })
         .await;
         match rx.await {
@@ -420,12 +447,16 @@ impl UpdaterHandle {
         &self,
         tag: impl Into<String>,
         config: Arc<Config>,
+        since: Option<slipfeed::DateTime>,
     ) -> String {
         let tag = tag.into();
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
         self.send(UpdaterRequest::FeedFetch {
             tx,
-            options: FeedFetchOptions::Tag(tag.clone()),
+            options: FeedFetchOptions::Tag {
+                tag: tag.clone(),
+                since,
+            },
         })
         .await;
         match rx.await {

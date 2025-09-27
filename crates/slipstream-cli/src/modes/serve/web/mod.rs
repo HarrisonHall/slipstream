@@ -19,6 +19,7 @@ pub struct HtmlServer {
     templater: Arc<handlebars::Handlebars<'static>>,
     cache: HashMap<String, CacheEntry>,
     duration: slipfeed::Duration,
+    error_pages: ErrorPages,
 }
 
 impl HtmlServer {
@@ -35,6 +36,7 @@ impl HtmlServer {
             cache: HashMap::new(),
             templater: Arc::new(handlebars),
             duration,
+            error_pages: ErrorPages::new(),
         })
     }
 
@@ -97,11 +99,11 @@ impl HtmlServer {
                     .collect(),
             };
         }
-        let page = match self.templater.render("feed", &params) {
+        let page: String = match self.templater.render("feed", &params) {
             Ok(page) => page,
             Err(e) => {
                 tracing::error!("Unable to render page {}.", e);
-                return "500".into();
+                return self.error_pages.error_500.clone();
             }
         };
         let entry = CacheEntry {
@@ -117,6 +119,18 @@ impl HtmlServer {
 struct CacheEntry {
     creation: slipfeed::DateTime,
     entry: String,
+}
+
+struct ErrorPages {
+    error_500: String,
+}
+
+impl ErrorPages {
+    fn new() -> Self {
+        Self {
+            error_500: "500".into(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

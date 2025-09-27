@@ -213,7 +213,7 @@ impl Feed for StandardSyndication {
         if let Some(last_update) = ctx.last_update.as_ref() {
             request_builder = request_builder.header(
                 reqwest::header::IF_MODIFIED_SINCE,
-                last_update.if_modified_since_time(),
+                last_update.to_if_modified_since(),
             );
         };
         let request = match request_builder.build() {
