@@ -68,18 +68,24 @@ to see additional configuration options.
 While the `slipstream-feed` and `slipstream-cli` APIs may not be stable, they
 are essentially complete as-is.
 
+### Slipstream 3.0
+
 - `slipstream` (general)
-  - [ ] Add more filters (regex/pomsky, allowlists, etc.)
   - [ ] Support hooks
 - `slipsteam` (serve)
   - [ ] Track updated `updated_at` in database
-  - [ ] Respect IF_MODIFIED_SINCE in headers (incoming)
 - `slipstream` (read)
   - [ ] Indicate pending updates
-  - [ ] Improve help menu
 - `slipstream` (api)
   - [ ] Allow syncing tags to a slipstream server
   - [ ] Add support for a shared secret in an http header
+
+### Beyond
+
+- `slipstream` (general)
+  - [ ] Add more filters (regex/pomsky, allowlists, etc.)
+- `slipstream` (read)
+  - [ ] Improve help menu
 
 ## Contributing
 

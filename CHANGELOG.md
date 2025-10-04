@@ -4,7 +4,7 @@
 
 ### Added
 
-- N/A
+- Support for If-Modified-Since in `slipstream serve`
 
 ### Changed
 
@@ -55,7 +55,8 @@
 ### Changed
 
 - Tag formatting:
-  - Tags are now specified by pounds, e.g., `#cool-tag`.
+  - Tags are now specified by the number-sign/hash/octothorp/hash, e.g.,
+    `#cool-tag`.
   - Tags are now lowercase.
 - Only a set number of feeds are changed at a time based on the `workers`
   configuration option.
