@@ -46,6 +46,9 @@ pub enum Command {
     /// Search for specific text in entries.
     #[command(alias = "search")]
     SearchAny(SearchContext),
+    /// Use live-view.
+    #[command(alias = "live", alias = "live-view")]
+    SearchLive,
     /// Add a tag.
     #[command(alias = "tag", alias = "add-tag")]
     TagAdd { tag: String },

@@ -6,7 +6,9 @@ use super::*;
 /// This is parsed from the toml slipstream configuration file.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
-    /// Update frequency.
+    /// Global updater frequency.
+    /// This is duration between calls to update. This is not the default feed
+    /// update frequency, which is located in global limits.
     #[serde(default, with = "humantime_serde::option")]
     pub freq: Option<std::time::Duration>,
     /// Number of workers.
@@ -81,7 +83,10 @@ impl Config {
             for (name, feed_def) in feeds {
                 let mut attr = slipfeed::FeedAttributes::new();
                 attr.display_name = Arc::new(name.clone());
-                attr.freq = Some(feed_def.options().freq());
+                attr.freq = match feed_def.options().freq() {
+                    Some(freq) => Some(freq),
+                    None => Some(self.global.limits.freq_or_default()),
+                };
                 attr.timeout = feed_def.options().oldest();
                 attr.keep_empty = feed_def.options().keep_empty();
                 attr.apply_tags = feed_def.options().apply_tags();

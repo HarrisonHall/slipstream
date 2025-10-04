@@ -190,7 +190,10 @@ impl Database {
 
             match id {
                 (Some(id),) => {
-                    tracing::debug!("Found existing {}", id);
+                    tracing::trace!(
+                        "No insertion, found existing entry {}.",
+                        id
+                    );
                     id
                 }
                 (None,) => {
@@ -212,7 +215,10 @@ impl Database {
                         .await;
                     match id_res {
                         Ok(maybe_id) => match maybe_id.0 {
-                            Some(id) => id,
+                            Some(id) => {
+                                tracing::trace!("Insertion, new entry {}.", id);
+                                id
+                            }
                             None => {
                                 tracing::error!("Failed to insert entry");
                                 return 0;
@@ -260,9 +266,14 @@ impl Database {
     ) -> DatabaseEntryList {
         let mut set = DatabaseEntryList::new(max_length);
         let mut search_clause = vec!["TRUE = TRUE".to_string()];
+        let mut order_clause =
+            String::from("ORDER BY entries.timestamp DESC, entries.id DESC");
         for crit in &criteria {
             match crit {
                 DatabaseSearch::Latest => {}
+                DatabaseSearch::Live => {
+                    order_clause = "ORDER BY entries.id DESC".into();
+                }
                 DatabaseSearch::Search(search) => {
                     let search = search.to_lowercase();
                     search_clause.push(format!(
@@ -286,7 +297,8 @@ impl Database {
             };
         }
         let cursor_clause: String = match cursor {
-            OffsetCursor::Latest => "TRUE = TRUE".into(),
+            OffsetCursor::LatestTimestamp => "TRUE = TRUE".into(),
+            OffsetCursor::LatestId => "TRUE = TRUE".into(),
             OffsetCursor::Before(dt) => {
                 format!("entries.timestamp < unixepoch('{}')", dt.to_iso8601())
             }
@@ -309,11 +321,12 @@ impl Database {
             WHERE
                 {} AND {}
             GROUP BY entries.id
-            ORDER BY entries.timestamp DESC, entries.id DESC
+            {}
             LIMIT ?
             ",
             cursor_clause,
             search_clause.join(" AND "),
+            order_clause,
         ))
         .bind(max_length as u32)
         .fetch_all(&self.pool)
@@ -376,10 +389,6 @@ impl Database {
                             });
                         }
                     }
-
-                    // Parse flags.
-                    // entry.has_been_read = row.get::<bool, usize>(5);
-                    // entry.important = row.get::<bool, usize>(6);
 
                     set.add(entry).ok();
                 }
@@ -445,6 +454,7 @@ impl Database {
 #[derive(Debug, Clone)]
 pub enum DatabaseSearch {
     Latest,
+    Live,
     Search(String),
     Tag(String),
     Feed(String),
@@ -512,7 +522,8 @@ impl From<&slipfeed::Entry> for EntryV1 {
 
 #[derive(Clone, Debug)]
 pub enum OffsetCursor {
-    Latest,
+    LatestTimestamp,
+    LatestId,
     Before(slipfeed::DateTime),
     After(slipfeed::DateTime),
 }
@@ -521,7 +532,7 @@ impl From<Option<slipfeed::DateTime>> for OffsetCursor {
     fn from(value: Option<slipfeed::DateTime>) -> Self {
         match value {
             Some(dt) => OffsetCursor::After(dt.clone()),
-            None => OffsetCursor::Latest,
+            None => OffsetCursor::LatestTimestamp,
         }
     }
 }

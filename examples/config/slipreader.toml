@@ -1,7 +1,7 @@
 # slipstream example config
 
 # Root settings for the updater.
-freq = "5min"
+freq = "30s"
 database = "slip.db"
 
 # Settings that apply to **everything**.
@@ -22,6 +22,8 @@ exclude-content-words = [
 max = 512
 # Oldest entry stored.
 oldest = "1month"
+# Default feed update frequency
+freq = "5min"
 
 # Feed definitions.
 [feeds]
@@ -56,6 +58,11 @@ tags = ["science", "japanese"]
 url = "https://www.asahi.com/rss/asahi/eco.rdf"
 tags = ["environment", "energy", "japanese"]
 
+[feeds.test]
+url = "https://lorem-rss.herokuapp.com/feed?unit=second&interval=30"
+tags = ["test"]
+freq = "30sec"
+
 [read]
 scroll = 1
 
@@ -89,17 +96,39 @@ update = []
 read = [":remove-tag unread"]
 
 [read.bindings]
-i = ":toggle-tag important"
-a = ":toggle-tag archive"
-r = "!read"
-C-a = "!archive"
-o = "!open"
-S-o = "!open-2"
-u = "update"
 C-d = "page-down"
 C-u = "page-up"
 S-l = "next"
 S-h = "prev"
+up = "up"
+down = "down"
+left = "left"
+right = "right"
+
+# Important:
+i = ":toggle-tag important"
+S-i = ":search --tag important"
+C-i = "noop"
+
+# Read:
+r = ":toggle-tag read-later"
+S-r = ":search --tag read-later"
+C-r = "!read"
+
+# Archive:
+a = ":toggle-tag archive"
+S-a = ":search --command archive"
+C-a = "!archive"
+
+# Open:
+o = "!open"
+S-o = "!open-2"
+C-o = "noop"
+
+# Update:
+u = "update"
+S-u = ":search -t unread"
+# C-u = "noop"  # Used for page-up.
 
 1 = "!read-1"
 C-1 = "!archive-1"

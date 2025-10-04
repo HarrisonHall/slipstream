@@ -12,23 +12,12 @@ pub async fn update(
 ) -> Result<()> {
     // We don't want to cancel the updater's updater update future working on other
     // jobs. We convert this loop into a task and only cancel on quit.
-    let updater_task = tokio::task::spawn({
-        let internal_updater = updater.updater.clone();
-        let entry_db = updater.entry_db.clone();
-        async move {
-            loop {
-                let entries = {
-                    let mut slipfeed_updater = internal_updater.write().await;
-                    slipfeed_updater.update().await
-                };
-                for entry in entries.as_slice() {
-                    if let Some(entry_db) = &entry_db {
-                        entry_db.insert_slipfeed_entry(entry).await;
-                    }
-                }
-            }
-        }
-    });
+    let updater_task: tokio::task::JoinHandle<()> =
+        tokio::task::spawn(run_updater(
+            updater.updater.clone(),
+            updater.entry_db.clone(),
+            cancel_token.clone(),
+        ));
 
     // Continue updating and responding to requests until cancelled.
     'update: loop {
@@ -45,6 +34,25 @@ pub async fn update(
     updater_task.abort();
 
     Ok(())
+}
+
+async fn run_updater(
+    internal_updater: Arc<RwLock<slipfeed::Updater>>,
+    entry_db: Option<Arc<Database>>,
+    cancel_token: CancellationToken,
+) {
+    while !cancel_token.is_cancelled() {
+        let entries = {
+            let mut slipfeed_updater = internal_updater.write().await;
+            slipfeed_updater.update().await
+        };
+        for entry in entries.as_slice() {
+            if let Some(entry_db) = &entry_db {
+                entry_db.insert_slipfeed_entry(entry).await;
+            }
+        }
+    }
+    ()
 }
 
 /// Slipstream updater.

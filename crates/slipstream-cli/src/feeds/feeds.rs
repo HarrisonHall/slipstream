@@ -70,8 +70,6 @@ pub enum MastodonFeedType {
     PublicTimeline,
     #[serde(alias = "home-timeline", alias = "home", alias = "timeline")]
     HomeTimeline,
-    // #[serde(alias = "user", alias = "user-status", alias = "user-statuses")]
-    // UserStatuses(String),
 }
 
 impl From<&MastodonFeedType> for slipstream_feeds::MastodonFeedType {
@@ -82,11 +80,7 @@ impl From<&MastodonFeedType> for slipstream_feeds::MastodonFeedType {
             }
             MastodonFeedType::HomeTimeline => {
                 slipstream_feeds::MastodonFeedType::HomeTimeline
-            } // MastodonFeedType::UserStatuses(user) => {
-              //     slipstream_feeds::MastodonFeedType::UserStatuses {
-              //         user: user.clone(),
-              //     }
-              // }
+            }
         }
     }
 }

@@ -21,16 +21,13 @@ use std::time::Duration;
 
 use ratatui::DefaultTerminal;
 use ratatui::buffer::Buffer;
+use ratatui::prelude::{
+    Color, Constraint, Direction, Layout, Line, Rect, Span, Style, Text,
+};
 use ratatui::style::Stylize;
 use ratatui::{
     crossterm::event::{self, Event},
     widgets::{Block, Paragraph, Widget},
-};
-use ratatui::{
-    prelude::{
-        Color, Constraint, Direction, Layout, Line, Rect, Span, Style, Text,
-    },
-    // style::Stylize,
 };
 use tokio::task::JoinHandle;
 
@@ -63,7 +60,11 @@ pub async fn read_cli(
 
     // Update reader on load.
     reader
-        .update_entries(vec![DatabaseSearch::Latest], OffsetCursor::Latest)
+        .update_entries(
+            vec![DatabaseSearch::Latest],
+            OffsetCursor::LatestTimestamp,
+            false,
+        )
         .await;
 
     // Run loop.
@@ -318,7 +319,8 @@ impl Reader {
             ReadCommandLiteral::Update => {
                 self.update_entries(
                     vec![DatabaseSearch::Latest],
-                    OffsetCursor::Latest,
+                    OffsetCursor::LatestTimestamp,
+                    false,
                 )
                 .await;
             }
@@ -431,11 +433,12 @@ impl Reader {
                 let offset = if let Some(entry) = self.entries.last() {
                     OffsetCursor::Before(entry.date().clone())
                 } else {
-                    OffsetCursor::Latest
+                    OffsetCursor::LatestTimestamp
                 };
                 self.update_entries(
                     self.interaction_state.previous_search.clone(),
                     offset,
+                    false,
                 )
                 .await;
             }
@@ -443,11 +446,12 @@ impl Reader {
                 let offset = if let Some(entry) = self.entries.first() {
                     OffsetCursor::After(entry.date().clone())
                 } else {
-                    OffsetCursor::Latest
+                    OffsetCursor::LatestTimestamp
                 };
                 self.update_entries(
                     self.interaction_state.previous_search.clone(),
                     offset,
+                    false,
                 )
                 .await;
             }
@@ -580,17 +584,35 @@ impl Reader {
         // Check for new update.
         if let Some(entries_fut) = &mut self.refresh {
             if entries_fut.is_finished() {
+                // Update entries.
                 match entries_fut.await {
                     Ok(entries) => {
                         self.entries = entries;
-                        self.terminal_state.window = 0;
-                        self.interaction_state.selection = 0;
+                        if !self.interaction_state.repeat_previous
+                            || self.interaction_state.selection
+                                >= self.entries.len()
+                        {
+                            self.terminal_state.window = 0;
+                            self.interaction_state.selection = 0;
+                        }
                     }
                     Err(e) => {
                         tracing::error!("Failed to update entries: {}", e);
                     }
                 }
                 self.refresh = None;
+
+                // Repeat search.
+                if self.interaction_state.repeat_previous {
+                    self.interaction_state.next_delay =
+                        Some(tokio::time::Duration::from_secs_f32(5.0));
+                    self.update_entries(
+                        self.interaction_state.previous_search.clone(),
+                        self.interaction_state.previous_offset.clone(),
+                        true,
+                    )
+                    .await;
+                }
             }
         }
 
@@ -612,6 +634,7 @@ impl Reader {
         &mut self,
         criteria: Vec<DatabaseSearch>,
         offset: OffsetCursor,
+        repeat: bool,
     ) {
         // Check for new update.
         if let Some(entries_fut) = &mut self.refresh {
@@ -620,11 +643,20 @@ impl Reader {
         self.refresh = None;
 
         self.refresh = Some({
+            let delay = self.interaction_state.next_delay.take();
             let updater = self.updater.clone();
             let criteria = criteria.clone();
-            tokio::spawn(async move { updater.search(criteria, offset).await })
+            let offset = offset.clone();
+            tokio::spawn(async move {
+                if let Some(delay) = delay {
+                    tokio::time::sleep(delay).await;
+                }
+                updater.search(criteria, offset).await
+            })
         });
+        self.interaction_state.repeat_previous = repeat;
         self.interaction_state.previous_search = criteria;
+        self.interaction_state.previous_offset = offset;
     }
 
     async fn handle_command_mode_input(
@@ -705,7 +737,8 @@ impl Reader {
             command_mode::Command::SearchLatest => {
                 self.update_entries(
                     vec![DatabaseSearch::Latest],
-                    OffsetCursor::Latest,
+                    OffsetCursor::LatestTimestamp,
+                    false,
                 )
                 .await
             }
@@ -726,7 +759,20 @@ impl Reader {
                 if let Some(text) = &search.text {
                     criteria.push(DatabaseSearch::Search(text.clone()));
                 }
-                self.update_entries(criteria, OffsetCursor::Latest).await
+                self.update_entries(
+                    criteria,
+                    OffsetCursor::LatestTimestamp,
+                    false,
+                )
+                .await
+            }
+            command_mode::Command::SearchLive => {
+                self.update_entries(
+                    vec![DatabaseSearch::Live],
+                    OffsetCursor::LatestId,
+                    true,
+                )
+                .await
             }
             command_mode::Command::TagAdd { tag } => {
                 if self.interaction_state.selection < self.entries.len() {
@@ -787,11 +833,12 @@ impl Reader {
                 let offset = if let Some(entry) = self.entries.last() {
                     OffsetCursor::Before(entry.date().clone())
                 } else {
-                    OffsetCursor::Latest
+                    OffsetCursor::LatestTimestamp
                 };
                 self.update_entries(
                     self.interaction_state.previous_search.clone(),
                     offset,
+                    false,
                 )
                 .await;
             }
@@ -799,11 +846,12 @@ impl Reader {
                 let offset = if let Some(entry) = self.entries.first() {
                     OffsetCursor::After(entry.date().clone())
                 } else {
-                    OffsetCursor::Latest
+                    OffsetCursor::LatestTimestamp
                 };
                 self.update_entries(
                     self.interaction_state.previous_search.clone(),
                     offset,
+                    false,
                 )
                 .await;
             }
@@ -937,7 +985,15 @@ impl<'a> Widget for ReaderWidget<'a> {
                         ),
                         width = &(title_layout.width as usize),
                     ),
-                    Style::new().bg(Color::Blue).fg(Color::Black),
+                    Style::new()
+                        .bg(
+                            match self.reader.interaction_state.repeat_previous
+                            {
+                                false => Color::Blue,
+                                true => Color::LightYellow,
+                            },
+                        )
+                        .fg(Color::Black),
                 )
                 .render(title_layout, buf);
             }

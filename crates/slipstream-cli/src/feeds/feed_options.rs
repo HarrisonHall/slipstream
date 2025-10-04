@@ -26,7 +26,14 @@ impl FeedOptions {
         self.max.unwrap_or(1024)
     }
 
-    pub fn freq(&self) -> slipfeed::Duration {
+    pub fn freq(&self) -> Option<slipfeed::Duration> {
+        match self.freq {
+            Some(freq) => Some(slipfeed::Duration::from_std(freq)),
+            None => None,
+        }
+    }
+
+    pub fn freq_or_default(&self) -> slipfeed::Duration {
         match self.freq {
             Some(freq) => slipfeed::Duration::from_std(freq),
             None => FeedOptions::default_freq(),

@@ -47,6 +47,12 @@ pub struct InteractionState {
     pub selection: usize,
     /// Previous search.
     pub previous_search: Vec<DatabaseSearch>,
+    /// Previous offset.
+    pub previous_offset: OffsetCursor,
+    /// Whether or not to repeat previous search.
+    pub repeat_previous: bool,
+    /// Next delay for search.
+    pub next_delay: Option<tokio::time::Duration>,
 }
 
 impl InteractionState {
@@ -70,6 +76,9 @@ impl Default for InteractionState {
             focus: Focus::List,
             selection: 0,
             previous_search: Vec::new(),
+            previous_offset: OffsetCursor::LatestTimestamp,
+            repeat_previous: false,
+            next_delay: None,
         }
     }
 }
