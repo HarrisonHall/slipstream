@@ -16,8 +16,12 @@ pub struct Filters {
     pub must_include_all_substrings: Option<Vec<String>>,
     #[serde(alias = "exclude-tags")]
     pub exclude_tags: Option<Vec<String>>,
+    #[serde(alias = "exclude-tags-strict")]
+    pub exclude_tags_strict: Option<Vec<String>>,
     #[serde(alias = "include-tags")]
     pub include_tags: Option<Vec<String>>,
+    #[serde(alias = "include-tags-strict")]
+    pub include_tags_strict: Option<Vec<String>>,
 }
 
 impl Filters {
@@ -46,7 +50,13 @@ impl Filters {
         if let Some(filter) = exclude_tags(&self.exclude_tags) {
             filters.push(filter);
         }
+        if let Some(filter) = exclude_tags_strict(&self.exclude_tags_strict) {
+            filters.push(filter);
+        }
         if let Some(filter) = include_tags(&self.include_tags) {
+            filters.push(filter);
+        }
+        if let Some(filter) = include_tags_strict(&self.include_tags_strict) {
             filters.push(filter);
         }
         filters
@@ -62,7 +72,9 @@ impl Default for Filters {
             must_include_substrings: None,
             must_include_all_substrings: None,
             exclude_tags: None,
+            exclude_tags_strict: None,
             include_tags: None,
+            include_tags_strict: None,
         }
     }
 }
@@ -186,7 +198,27 @@ fn exclude_tags(exclusions: &Option<Vec<String>>) -> Option<slipfeed::Filter> {
             .collect();
         return Some(Arc::new(move |_feed, entry| {
             exclusions.iter().all(|exclusion| {
-                if entry.tags().contains(exclusion) {
+                if entry.has_tag_fuzzy(exclusion) {
+                    return false;
+                }
+                true
+            })
+        }));
+    }
+    None
+}
+
+fn exclude_tags_strict(
+    exclusions: &Option<Vec<String>>,
+) -> Option<slipfeed::Filter> {
+    if let Some(exclusions) = exclusions {
+        let exclusions: Vec<slipfeed::Tag> = exclusions
+            .iter()
+            .map(|exc| slipfeed::Tag::new(exc))
+            .collect();
+        return Some(Arc::new(move |_feed, entry| {
+            exclusions.iter().all(|exclusion| {
+                if entry.has_tag(exclusion) {
                     return false;
                 }
                 true
@@ -204,7 +236,27 @@ fn include_tags(inclusions: &Option<Vec<String>>) -> Option<slipfeed::Filter> {
             .collect();
         return Some(Arc::new(move |_feed, entry| {
             inclusions.iter().any(|inclusion| {
-                if entry.tags().contains(inclusion) {
+                if entry.has_tag_fuzzy(inclusion) {
+                    return true;
+                }
+                false
+            })
+        }));
+    }
+    None
+}
+
+fn include_tags_strict(
+    inclusions: &Option<Vec<String>>,
+) -> Option<slipfeed::Filter> {
+    if let Some(inclusions) = &inclusions {
+        let inclusions: Vec<slipfeed::Tag> = inclusions
+            .iter()
+            .map(|exc| slipfeed::Tag::new(exc.to_lowercase()))
+            .collect();
+        return Some(Arc::new(move |_feed, entry| {
+            inclusions.iter().any(|inclusion| {
+                if entry.has_tag(inclusion) {
                     return true;
                 }
                 false

@@ -78,7 +78,6 @@ are essentially complete as-is.
   - [ ] Indicate pending updates
 - `slipstream` (api)
   - [ ] Allow syncing tags to a slipstream server
-  - [ ] Add support for a shared secret in an http header
 
 ### Beyond
 

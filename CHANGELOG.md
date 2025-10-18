@@ -5,10 +5,13 @@
 ### Added
 
 - Support for If-Modified-Since in `slipstream serve`
+- Support for "live" mode in slipstream
 
 ### Changed
 
-- N/A
+- Changed the `include-tags` and `exclude-tags` filters to utilize fuzzy
+  matching, where strict matching is now utilized in `include-tags-strict` and
+  `exclude-tags-strict`
 
 ### Deprecated
 
