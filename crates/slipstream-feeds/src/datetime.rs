@@ -105,9 +105,12 @@ impl DateTime {
     pub fn from_if_modified_since(
         if_modified_since: impl AsRef<str>,
     ) -> Option<Self> {
+        // https://github.com/chronotope/chrono/issues/1575 %Z GMT not yet supported.
+        let with_tz = if_modified_since.as_ref().replace("GMT", "+0000");
+
         let res = chrono::DateTime::parse_from_str(
-            if_modified_since.as_ref(),
-            "%a, %d %m %Y %H:%M:%S GMT",
+            &with_tz,
+            "%a, %d %b %Y %H:%M:%S %z",
         );
 
         match res {
@@ -275,4 +278,13 @@ impl Duration {
     pub fn from_tokio(dur: tokio::time::Duration) -> Self {
         Self(chrono::Duration::seconds(dur.as_secs() as i64))
     }
+}
+
+#[tokio::test]
+async fn if_modified_since() {
+    tracing_subscriber::fmt::try_init().ok();
+
+    let now = DateTime::now();
+    let since = now.to_if_modified_since();
+    assert!(DateTime::from_if_modified_since(&since).is_some());
 }
