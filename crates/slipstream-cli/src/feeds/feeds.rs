@@ -101,13 +101,29 @@ impl EntryExt for slipfeed::Entry {
                     .name(self.author().clone())
                     .build(),
             );
-        entry.content(atom::Content {
-            base: None,
-            lang: None,
-            value: Some(self.content().clone()),
-            src: None,
-            content_type: Some("text".into()),
-        });
+
+        // Content can either be html or markdown.
+        match config.serve.export_format {
+            ExportFormat::HTML => {
+                entry.content(atom::Content {
+                    base: None,
+                    lang: None,
+                    value: Some(markdown::to_html(self.content().as_str())),
+                    src: None,
+                    content_type: Some("html".into()),
+                });
+            }
+            ExportFormat::Markdown => {
+                entry.content(atom::Content {
+                    base: None,
+                    lang: None,
+                    value: Some(self.content().clone()),
+                    src: None,
+                    content_type: Some("text".into()),
+                });
+            }
+        }
+
         if config.serve.show_source_in_title {
             if self.feeds().len() > 0 {
                 entry.title(format!(

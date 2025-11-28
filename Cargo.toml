@@ -11,6 +11,7 @@ chrono = { version = "0.4.41", features = ["serde"] }
 clap = {version = "4.5.47", features = ["derive"] }
 fast_html2md = "0.0.48"
 futures = "0.3.31"
+markdown = "1.0.0"
 resolve-path = "0.1.0"
 reqwest = { version = "0.12.23", features = ["rustls-tls"], default-features = false }
 serde = { version = "1.0.219", features = ["derive", "rc"] }
