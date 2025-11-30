@@ -91,8 +91,8 @@ pub trait EntryExt {
 
 impl EntryExt for slipfeed::Entry {
     fn to_atom(&self, config: &Config) -> atom::Entry {
-        let mut entry = atom::EntryBuilder::default();
-        entry
+        let mut atom_entry = atom::EntryBuilder::default();
+        atom_entry
             .summary(Some(self.content().clone().into()))
             // .published(Some(self.date().clone().to_chrono()))
             .updated(self.date().clone().to_chrono())
@@ -105,7 +105,7 @@ impl EntryExt for slipfeed::Entry {
         // Content can either be html or markdown.
         match config.serve.export_format {
             ExportFormat::HTML => {
-                entry.content(atom::Content {
+                atom_entry.content(atom::Content {
                     base: None,
                     lang: None,
                     value: Some(markdown::to_html(self.content().as_str())),
@@ -114,7 +114,7 @@ impl EntryExt for slipfeed::Entry {
                 });
             }
             ExportFormat::Markdown => {
-                entry.content(atom::Content {
+                atom_entry.content(atom::Content {
                     base: None,
                     lang: None,
                     value: Some(self.content().clone()),
@@ -126,7 +126,7 @@ impl EntryExt for slipfeed::Entry {
 
         if config.serve.show_source_in_title {
             if self.feeds().len() > 0 {
-                entry.title(format!(
+                atom_entry.title(format!(
                     "[{}] {}",
                     self.feeds()
                         .iter()
@@ -136,13 +136,13 @@ impl EntryExt for slipfeed::Entry {
                     self.title()
                 ));
             } else {
-                entry.title(self.title().clone());
+                atom_entry.title(self.title().clone());
             }
         } else {
-            entry.title(self.title().clone());
+            atom_entry.title(self.title().clone());
         }
         if self.source().url != "" {
-            entry.link(
+            atom_entry.link(
                 atom::LinkBuilder::default()
                     .href(&self.source().url)
                     .title(Some(self.source().title.clone()))
@@ -151,7 +151,7 @@ impl EntryExt for slipfeed::Entry {
             );
         }
         if self.comments().url != "" {
-            entry.link(
+            atom_entry.link(
                 atom::LinkBuilder::default()
                     .href(&self.comments().url)
                     .title(Some(self.comments().title.clone()))
@@ -160,7 +160,7 @@ impl EntryExt for slipfeed::Entry {
             );
         }
         for link in self.other_links() {
-            entry.link(
+            atom_entry.link(
                 atom::LinkBuilder::default()
                     .href(&link.url)
                     .title(Some(link.title.clone()))
@@ -168,15 +168,29 @@ impl EntryExt for slipfeed::Entry {
                     .build(),
             );
         }
+        atom_entry.source({
+            let mut source = atom::SourceBuilder::default();
+            if let Some(icon) = self.icon() {
+                source.icon(icon.url.clone());
+            }
+            source.build()
+        });
+
+        // Add tags.
         for tag in self.tags() {
-            entry.category(
+            atom_entry.category(
                 atom::CategoryBuilder::default()
                     .term(String::from(tag))
                     .build(),
             );
         }
-        entry.id("...");
-        entry.build()
+
+        // Use original id.
+        if let Some(source_id) = self.source_id() {
+            atom_entry.id(source_id);
+        }
+
+        atom_entry.build()
     }
 }
 

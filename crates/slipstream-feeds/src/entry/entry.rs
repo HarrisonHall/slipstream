@@ -23,6 +23,8 @@ pub struct Entry {
     comments: Link,
     /// Other entry links.
     other_links: Vec<Link>,
+    /// The icon link.
+    icon: Option<Link>,
     // Meta information.
     /// The id provided by the source.
     source_id: Option<String>,
@@ -69,6 +71,19 @@ impl Entry {
     /// Get other links.
     pub fn other_links(&self) -> &Vec<Link> {
         &self.other_links
+    }
+
+    /// Get icon link.
+    pub fn icon(&self) -> Option<&Link> {
+        self.icon.as_ref()
+    }
+
+    pub fn set_icon(&mut self, url: impl Into<String>) {
+        self.icon = Some(Link {
+            url: url.into(),
+            title: "Icon".into(),
+            mime_type: None,
+        });
     }
 
     /// Get the feeds.
@@ -211,6 +226,7 @@ impl Default for Entry {
             source: Link::new("", ""),
             comments: Link::new("", ""),
             other_links: Vec::new(),
+            icon: None,
             source_id: None,
             feeds: BTreeSet::new(),
             tags: BTreeSet::new(),
@@ -258,6 +274,7 @@ pub struct EntryBuilder {
     source: Option<Link>,
     comments: Option<Link>,
     other_links: Vec<Link>,
+    icon: Option<Link>,
     source_id: Option<String>,
 }
 
@@ -272,6 +289,7 @@ impl EntryBuilder {
             source: None,
             comments: None,
             other_links: Vec::new(),
+            icon: None,
             source_id: None,
         }
     }
@@ -326,6 +344,16 @@ impl EntryBuilder {
         self
     }
 
+    /// Set the icon link.
+    pub fn icon(&mut self, url: impl Into<String>) -> &mut Self {
+        self.icon = Some(Link {
+            url: url.into(),
+            title: "Icon".into(),
+            mime_type: None,
+        });
+        self
+    }
+
     /// Set the source id.
     pub fn source_id(&mut self, source_id: impl Into<String>) -> &mut Self {
         self.source_id = Some(source_id.into());
@@ -352,6 +380,7 @@ impl EntryBuilder {
                 .clone()
                 .unwrap_or_else(|| Link::new("", "Comments")),
             other_links: self.other_links.clone(),
+            icon: self.icon.clone(),
 
             source_id: self.source_id.clone(),
             feeds: BTreeSet::new(),

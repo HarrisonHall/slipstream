@@ -2863,7 +2863,7 @@ dependencies = [
 
 [[package]]
 name = "slipstream-cli"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "ansi-to-tui",
  "anyhow",
@@ -2902,7 +2902,7 @@ dependencies = [
 
 [[package]]
 name = "slipstream-feeds"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "async-trait",
  "atom_syndication",

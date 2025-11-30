@@ -487,6 +487,8 @@ pub struct EntryV1 {
     source: slipfeed::Link,
     comments: slipfeed::Link,
     other_links: Vec<slipfeed::Link>,
+    #[serde(default = "String::default")]
+    icon: String,
 }
 
 impl From<&EntryV1> for slipfeed::Entry {
@@ -498,7 +500,8 @@ impl From<&EntryV1> for slipfeed::Entry {
             .author(&value.author)
             .content(&value.content)
             .source(&value.source.url)
-            .comments(&value.comments.url);
+            .comments(&value.comments.url)
+            .icon(&value.icon);
         for link in &value.other_links {
             entry.other_link(link.clone());
         }
@@ -516,6 +519,10 @@ impl From<&slipfeed::Entry> for EntryV1 {
             source: value.source().clone(),
             comments: value.comments().clone(),
             other_links: value.other_links().clone(),
+            icon: match value.icon() {
+                Some(icon) => icon.url.clone(),
+                None => String::default(),
+            },
         }
     }
 }

@@ -39,10 +39,15 @@ impl StandardSyndication {
             Ok(atom_feed) => {
                 tracing::trace!("Parsed {:?} as atom", self);
                 for atom_entry in atom_feed.entries() {
-                    let entry =
+                    let mut entry =
                         StandardSyndication::parse_atom(atom_entry, ctx, attr);
                     if !attr.keep_empty && entry.title().is_empty() {
                         continue;
+                    }
+                    if entry.icon().is_none() {
+                        if let Some(icon) = atom_feed.icon() {
+                            entry.set_icon(icon);
+                        }
                     }
                     tx.send(entry).ok();
                 }
@@ -58,10 +63,15 @@ impl StandardSyndication {
             Ok(rss_feed) => {
                 tracing::trace!("Parsed {:?} as rss", self);
                 for rss_entry in rss_feed.items() {
-                    let entry =
+                    let mut entry =
                         StandardSyndication::parse_rss(rss_entry, ctx, attr);
                     if !attr.keep_empty && entry.title().is_empty() {
                         continue;
+                    }
+                    if entry.icon().is_none() {
+                        if let Some(icon) = rss_feed.image() {
+                            entry.set_icon(icon.url());
+                        }
                     }
                     tx.send(entry).ok();
                 }
@@ -118,6 +128,11 @@ impl StandardSyndication {
                     link.title().unwrap_or(""),
                     link.mime_type().unwrap_or(""),
                 ));
+            }
+        }
+        if let Some(source) = atom_entry.source() {
+            if let Some(icon) = source.icon() {
+                parsed.icon(icon);
             }
         }
 

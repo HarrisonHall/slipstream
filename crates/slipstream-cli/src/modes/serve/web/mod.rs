@@ -139,6 +139,7 @@ struct TemplateParams {
     entries: Vec<MinEntry>,
 }
 
+/// Minimum view for entry to be displayed in html.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 struct MinEntry {
     title: String,
@@ -149,6 +150,7 @@ struct MinEntry {
     content: String,
     comments: slipfeed::Link,
     links: Vec<slipfeed::Link>,
+    icon: String,
     tags: Vec<String>,
 }
 
@@ -166,6 +168,10 @@ impl MinEntry {
             content,
             comments: value.comments().clone(),
             links: value.other_links().clone(),
+            icon: match value.icon() {
+                Some(icon) => icon.url.clone(),
+                None => String::default(),
+            },
             tags: value.tags().iter().map(|t| t.to_string()).collect(),
         }
     }

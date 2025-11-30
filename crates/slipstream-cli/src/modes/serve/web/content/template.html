@@ -32,6 +32,12 @@
         background: rgb(22, 16, 3);
         margin: 0.2em;
       }
+      .title {
+        align-items: center;
+      }
+      .feed-icon {
+        height: 1.25em;
+      }
     </style>
   </head>
   <body>
@@ -43,9 +49,16 @@
       <section>
         {{#each entries}}
         <article>
-          <header class="title">
-            <h4>{{title}}</h4>
-          </header>
+            <header class="title">
+              <h4 class="">
+                {{#if icon}}
+                <img src="{{icon}}" alt="Icon for the article source at {{source}}." class="feed-icon" />
+                {{/if}}
+                <span class="feed-title">
+                {{title}}
+                </span>
+              </h4>
+            </header>
           {{#if author}}
           <p>{{author}}</p>
           {{/if}}
