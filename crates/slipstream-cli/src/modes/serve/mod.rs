@@ -109,14 +109,19 @@ async fn get_all_feed(
     let config = state.config.clone();
     let updater = state.updater.clone();
     let mut cache = state.cache.lock().await;
+    let cache_behavior = headers.cache_behavior();
     return (
         HeaderMap::atom_headers(),
         cache
-            .get("/all", async move {
-                updater
-                    .syndicate_all(config, headers.if_modified_since())
-                    .await
-            })
+            .get(
+                "/all",
+                async move {
+                    updater
+                        .syndicate_all(config, headers.if_modified_since())
+                        .await
+                },
+                cache_behavior,
+            )
             .await,
     );
 }
@@ -156,14 +161,23 @@ async fn get_feed_feed(
     let config = state.config.clone();
     let updater = state.updater.clone();
     let mut cache = state.cache.lock().await;
+    let cache_behavior = headers.cache_behavior();
     return (
         HeaderMap::atom_headers(),
         cache
-            .get(uri.path(), async move {
-                updater
-                    .syndicate_feed(&feed, config, headers.if_modified_since())
-                    .await
-            })
+            .get(
+                uri.path(),
+                async move {
+                    updater
+                        .syndicate_feed(
+                            &feed,
+                            config,
+                            headers.if_modified_since(),
+                        )
+                        .await
+                },
+                cache_behavior,
+            )
             .await,
     );
 }
@@ -201,14 +215,23 @@ async fn get_tag_feed(
     let config = state.config.clone();
     let updater = state.updater.clone();
     let mut cache = state.cache.lock().await;
+    let cache_behavior = headers.cache_behavior();
     return (
         HeaderMap::atom_headers(),
         cache
-            .get(uri.path(), async move {
-                updater
-                    .syndicate_tag(&tag, config, headers.if_modified_since())
-                    .await
-            })
+            .get(
+                uri.path(),
+                async move {
+                    updater
+                        .syndicate_tag(
+                            &tag,
+                            config,
+                            headers.if_modified_since(),
+                        )
+                        .await
+                },
+                cache_behavior,
+            )
             .await,
     );
 }

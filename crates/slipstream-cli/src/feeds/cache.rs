@@ -18,9 +18,18 @@ impl Cache {
 
     pub async fn get(
         &mut self,
+        // Key for the cache.
         uri: impl AsRef<str>,
+        // Future to create the entry if not present.
         create: impl Future<Output = String>,
+        // Whether or not to write the result
+        behavior: CacheBehavior,
     ) -> String {
+        // If skipping the cache, just return the result.
+        if let CacheBehavior::Skip = behavior {
+            return create.await;
+        }
+
         let now = slipfeed::DateTime::now();
 
         // Check and use cache.
@@ -42,8 +51,24 @@ impl Cache {
     }
 }
 
+/// An entry in the cache.
 #[derive(Clone, Debug)]
 struct CacheEntry {
     creation: slipfeed::DateTime,
     entry: String,
+}
+
+/// Behavior for utilizing cache.
+pub enum CacheBehavior {
+    /// Use the cached data or write result to cache.
+    UseOrWrite,
+    /// Do not use the cache. Do not use the cached data. Do not write result
+    /// to cache.
+    Skip,
+}
+
+impl Default for CacheBehavior {
+    fn default() -> Self {
+        Self::UseOrWrite
+    }
 }

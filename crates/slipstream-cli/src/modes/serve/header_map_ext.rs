@@ -23,6 +23,9 @@ pub trait HeaderMapExt {
 
     /// Grab the If-Modified-Since header as a datetime, if present.
     fn if_modified_since(&self) -> Option<slipfeed::DateTime>;
+
+    /// Change cache behavior based on header values.
+    fn cache_behavior(&self) -> crate::feeds::CacheBehavior;
 }
 
 impl HeaderMapExt for HeaderMap {
@@ -88,27 +91,12 @@ impl HeaderMapExt for HeaderMap {
 
         return None;
     }
+
+    fn cache_behavior(&self) -> CacheBehavior {
+        let ims = self.if_modified_since();
+        match ims {
+            Some(_) => CacheBehavior::Skip,
+            None => CacheBehavior::UseOrWrite,
+        }
+    }
 }
-
-// impl axum::extract::FromRequest for IfModifiedSince {
-//     type Rejection = ();
-
-//     fn from_request<'life0, 'async_trait>(
-//         req: axum::extract::Request,
-//         state: &'life0 S,
-//     ) -> ::core::pin::Pin<
-//         Box<
-//             dyn ::core::future::Future<
-//                     Output = std::result::Result<Self, Self::Rejection>,
-//                 > + ::core::marker::Send
-//                 + 'async_trait,
-//         >,
-//     >
-//     where
-//         'life0: 'async_trait,
-//         Self: 'async_trait,
-//     {
-//     }
-// }
-
-// type ExtractIfModifiedSince = axum::extract::Request<IfModifiedSince>;
