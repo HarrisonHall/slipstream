@@ -64,78 +64,150 @@ impl Database {
         Ok(Self { path, pool })
     }
 
-    /// Initialize the database.
-    async fn initialize(pool: &SqlitePool) -> Result<()> {
-        let res = sqlx::query(
-            "
-            CREATE TABLE IF NOT EXISTS entries(
-                id INTEGER PRIMARY KEY ASC,
-                -- When the entry was created.
-                timestamp INTEGER NOT NULL,
-                -- The entry json blob.
-                entry TEXT NOT NULL,
-                -- Entry title.
-                title TEXT NOT NULL,
-                -- Entry content.
-                content TEXT NOT NULL,
-                -- Entry author.
-                author TEXT NOT NULL,
-                -- Entry source_id.
-                -- This is the source provided by the _original_ feed.
-                source_id TEXT DEFAULT NULL
-            ) STRICT;
-            CREATE INDEX IF NOT EXISTS entries_entry_idx ON entries(entry);
-            CREATE INDEX IF NOT EXISTS entries_timestamp_idx ON entries(timestamp);
-            CREATE INDEX IF NOT EXISTS entries_title_idx ON entries(title);
-            CREATE INDEX IF NOT EXISTS entries_content_idx ON entries(content);
-            CREATE INDEX IF NOT EXISTS entries_author_idx ON entries(author);
-            CREATE INDEX IF NOT EXISTS entries_source_id_idx ON entries(source_id);
+    async fn database_version(pool: &SqlitePool) -> Option<semver::Version> {
+        // Note: Could check for table.
+        // let res = sqlx::query(
+        //     "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='version_history';"
+        // );
 
-            CREATE TABLE IF NOT EXISTS sources(
-                id INTEGER PRIMARY KEY ASC,
-                -- The entry id.
-                entry_id INTEGER REFERENCES entries(id) NOT NULL,
-                -- The entry source uri.
-                source TEXT NOT NULL,
-                UNIQUE(entry_id, source)
-            ) STRICT;
-            CREATE INDEX IF NOT EXISTS sources_source_idx ON sources(source);
-            CREATE INDEX IF NOT EXISTS sources_entry_id_idx ON sources(entry_id);
-            
-            CREATE TABLE IF NOT EXISTS tags(
-                id INTEGER PRIMARY KEY ASC,
-                -- The entry id.
-                entry_id INTEGER REFERENCES entries(id) NOT NULL,
-                -- The entry tag.
-                tag TEXT NOT NULL,
-                UNIQUE(entry_id, tag)
-            ) STRICT;
-            CREATE INDEX IF NOT EXISTS tags_tag_idx ON tags(tag);
-            CREATE INDEX IF NOT EXISTS tags_entry_id_idx ON tags(entry_id);
-            
-            CREATE TABLE IF NOT EXISTS commands(
-                id INTEGER PRIMARY KEY ASC,
-                -- The entry id.
-                entry_id INTEGER REFERENCES entries(id) NOT NULL,
-                -- The command timestamp.
-                timestamp INTEGER NOT NULL,
-                -- The command ran.
-                name TEXT NOT NULL,
-                -- The result.
-                result TEXT NOT NULL,
-                -- Boolean whether the command succeeded,
-                success INTEGER NOT NULL
-            ) STRICT;
-            CREATE INDEX IF NOT EXISTS commands_name_idx ON commands(name);
-            CREATE INDEX IF NOT EXISTS commands_timestamp_idx ON commands(timestamp);
-            CREATE INDEX IF NOT EXISTS commands_entry_id_idx ON commands(entry_id);
-            ",
+        let version_res: (Option<String>,) = sqlx::query_as(
+            "SELECT version FROM version_history ORDER BY id DESC LIMIT 1",
         )
-        .execute(pool)
-        .await;
+        .fetch_one(pool)
+        .await
+        .unwrap_or_else(|_| (None,));
+        match version_res.0 {
+            Some(v) => match semver::Version::parse(&v) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to parse version_history semver: {e}"
+                    );
+                    None
+                }
+            },
+            None => None,
+        }
+    }
 
-        if let Err(e) = res {
-            bail!("Failed to initialize database: {e}");
+    /// Initialize the database.
+    /// This handles all upgrades and migrations.
+    async fn initialize(pool: &SqlitePool) -> Result<()> {
+        let mut current_version = Database::database_version(pool)
+            .await
+            .unwrap_or_else(|| semver::Version::new(0, 0, 0));
+        loop {
+            if current_version < semver::Version::new(1, 0, 0) {
+                let res = sqlx::query(
+                    "
+                    -- Basic feed entries table.
+                    CREATE TABLE IF NOT EXISTS entries(
+                        id INTEGER PRIMARY KEY ASC,
+                        -- When the entry was created.
+                        timestamp INTEGER NOT NULL,
+                        -- The entry json blob.
+                        entry TEXT NOT NULL,
+                        -- Entry title.
+                        title TEXT NOT NULL,
+                        -- Entry content.
+                        content TEXT NOT NULL,
+                        -- Entry author.
+                        author TEXT NOT NULL,
+                        -- Entry source_id.
+                        -- This is the source provided by the _original_ feed.
+                        source_id TEXT DEFAULT NULL
+                    ) STRICT;
+                    CREATE INDEX IF NOT EXISTS entries_entry_idx ON entries(entry);
+                    CREATE INDEX IF NOT EXISTS entries_timestamp_idx ON entries(timestamp);
+                    CREATE INDEX IF NOT EXISTS entries_title_idx ON entries(title);
+                    CREATE INDEX IF NOT EXISTS entries_content_idx ON entries(content);
+                    CREATE INDEX IF NOT EXISTS entries_author_idx ON entries(author);
+                    CREATE INDEX IF NOT EXISTS entries_source_id_idx ON entries(source_id);
+
+                    CREATE TABLE IF NOT EXISTS sources(
+                        id INTEGER PRIMARY KEY ASC,
+                        -- The entry id.
+                        entry_id INTEGER REFERENCES entries(id) NOT NULL,
+                        -- The entry source uri.
+                        source TEXT NOT NULL,
+                        UNIQUE(entry_id, source)
+                    ) STRICT;
+                    CREATE INDEX IF NOT EXISTS sources_source_idx ON sources(source);
+                    CREATE INDEX IF NOT EXISTS sources_entry_id_idx ON sources(entry_id);
+            
+                    CREATE TABLE IF NOT EXISTS tags(
+                        id INTEGER PRIMARY KEY ASC,
+                        -- The entry id.
+                        entry_id INTEGER REFERENCES entries(id) NOT NULL,
+                        -- The entry tag.
+                        tag TEXT NOT NULL,
+                        UNIQUE(entry_id, tag)
+                    ) STRICT;
+                    CREATE INDEX IF NOT EXISTS tags_tag_idx ON tags(tag);
+                    CREATE INDEX IF NOT EXISTS tags_entry_id_idx ON tags(entry_id);
+            
+                    CREATE TABLE IF NOT EXISTS commands(
+                        id INTEGER PRIMARY KEY ASC,
+                        -- The entry id.
+                        entry_id INTEGER REFERENCES entries(id) NOT NULL,
+                        -- The command timestamp.
+                        timestamp INTEGER NOT NULL,
+                        -- The command ran.
+                        name TEXT NOT NULL,
+                        -- The result.
+                        result TEXT NOT NULL,
+                        -- Boolean whether the command succeeded,
+                        success INTEGER NOT NULL
+                    ) STRICT;
+                    CREATE INDEX IF NOT EXISTS commands_name_idx ON commands(name);
+                    CREATE INDEX IF NOT EXISTS commands_timestamp_idx ON commands(timestamp);
+                    CREATE INDEX IF NOT EXISTS commands_entry_id_idx ON commands(entry_id);
+
+                    CREATE TABLE IF NOT EXISTS version_history(
+                        id INTEGER PRIMARY KEY ASC,
+                        -- Semver version.
+                        version TEXT NOT NULL,
+                        -- The timestamp of the upgrade.
+                        timestamp INTEGER NOT NULL
+                    ) STRICT;
+                    ",
+                )
+                .execute(pool)
+                .await;
+
+                if let Err(e) = res {
+                    bail!("Failed to initialize database: {e}");
+                }
+
+                current_version = semver::Version::new(1, 0, 0);
+                continue;
+            }
+
+            if current_version < semver::Version::new(2, 10, 0) {
+                let res = sqlx::query(
+                    "
+                    INSERT INTO version_history(version, timestamp) VALUES(?, unixepoch(?));
+
+                    ALTER TABLE entries ADD COLUMN modified_timestamp INTEGER NOT NULL DEFAULT 0;
+                    CREATE INDEX IF NOT EXISTS entries_modified_timestamp_idx ON entries(modified_timestamp);
+                    UPDATE entries SET modified_timestamp = timestamp WHERE modified_timestamp = 0;
+                    ",
+                )
+                .bind(&semver::Version::new(2, 10, 0).to_string())
+                .bind(&slipstream_feeds::DateTime::now().to_chrono())
+                .execute(pool)
+                .await;
+
+                if let Err(e) = res {
+                    bail!("Failed to upgrade database to v2.10.0: {e}");
+                }
+
+                current_version = semver::Version::new(2, 10, 0);
+                continue;
+            }
+
+            tracing::debug!("Database is already up-to-date.");
+            break;
         }
 
         Ok(())
@@ -199,13 +271,14 @@ impl Database {
                 (None,) => {
                     let id_res: Result<(Option<EntryDbId>,), _> =
                         sqlx::query_as(
-                            "
-                        INSERT INTO entries (timestamp, entry, title, author, content, source_id)
-                        VALUES (unixepoch(?), ?, ?, ?, ?, ?)
+                        "
+                        INSERT INTO entries (timestamp, modified_timestamp, entry, title, author, content, source_id)
+                        VALUES (unixepoch(?), unixepoch(?), ?, ?, ?, ?, ?)
                         RETURNING id
                         ",
                         )
                         .bind(&entry.date().to_chrono())
+                        .bind(&slipstream_feeds::DateTime::now().to_chrono())
                         .bind(sqlx::types::Json::from(&serialized_entry))
                         .bind(entry.title())
                         .bind(entry.author())
@@ -304,6 +377,12 @@ impl Database {
             }
             OffsetCursor::After(dt) => {
                 format!("entries.timestamp > unixepoch('{}')", dt.to_iso8601())
+            }
+            OffsetCursor::ModifiedAfter(dt) => {
+                format!(
+                    "entries.modified_timestamp > unixepoch('{}')",
+                    dt.to_iso8601()
+                )
             }
         };
         let res = sqlx::query(&format!(
@@ -533,6 +612,7 @@ pub enum OffsetCursor {
     LatestId,
     Before(slipfeed::DateTime),
     After(slipfeed::DateTime),
+    ModifiedAfter(slipfeed::DateTime),
 }
 
 impl From<Option<slipfeed::DateTime>> for OffsetCursor {

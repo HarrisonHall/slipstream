@@ -129,12 +129,30 @@ impl Updater {
             UpdaterRequest::FeedFetch { tx, options } => {
                 if let Some(entry_db) = &self.entry_db {
                     let entries = match options {
-                        FeedFetchOptions::All { since } => {
+                        FeedFetchOptions::All {
+                            since,
+                            modified_since,
+                        } => {
                             let unfiltered_entries = entry_db
                                 .get_entries(
                                     vec![DatabaseSearch::Latest],
                                     config.global.limits.max(),
-                                    OffsetCursor::from(since),
+                                    match (since, modified_since) {
+                                        (Some(since), None) => {
+                                            OffsetCursor::from(Some(since))
+                                        }
+                                        (None, Some(modified_since)) => {
+                                            OffsetCursor::ModifiedAfter(
+                                                modified_since,
+                                            )
+                                        }
+                                        (Some(_), Some(_)) => {
+                                            OffsetCursor::LatestTimestamp
+                                        }
+                                        (None, None) => {
+                                            OffsetCursor::LatestTimestamp
+                                        }
+                                    },
                                 )
                                 .await;
                             let mut entries = DatabaseEntryList::new(
@@ -288,6 +306,7 @@ enum UpdaterRequest {
 enum FeedFetchOptions {
     All {
         since: Option<slipfeed::DateTime>,
+        modified_since: Option<slipfeed::DateTime>,
     },
     Feed {
         feed: String,
@@ -338,12 +357,15 @@ impl UpdaterHandle {
     /// Collect the /all feed.
     pub async fn collect_all(
         &self,
-        since: Option<slipfeed::DateTime>,
+        modified_since: Option<slipfeed::DateTime>,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
         self.send(UpdaterRequest::FeedFetch {
             tx,
-            options: FeedFetchOptions::All { since },
+            options: FeedFetchOptions::All {
+                since: None,
+                modified_since,
+            },
         })
         .await;
         match rx.await {
@@ -359,12 +381,15 @@ impl UpdaterHandle {
     pub async fn syndicate_all(
         &self,
         config: Arc<Config>,
-        since: Option<slipfeed::DateTime>,
+        modified_since: Option<slipfeed::DateTime>,
     ) -> String {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
         self.send(UpdaterRequest::FeedFetch {
             tx,
-            options: FeedFetchOptions::All { since },
+            options: FeedFetchOptions::All {
+                since: None,
+                modified_since,
+            },
         })
         .await;
         match rx.await {
