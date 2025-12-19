@@ -2863,7 +2863,7 @@ dependencies = [
 
 [[package]]
 name = "slipstream-cli"
-version = "2.10.0"
+version = "2.11.0"
 dependencies = [
  "ansi-to-tui",
  "anyhow",

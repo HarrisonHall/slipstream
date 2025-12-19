@@ -31,15 +31,28 @@ pub struct ReadConfig {
         alias = "scroll-buffer"
     )]
     pub scroll_buffer: u8,
+    /// The initial search command.
+    #[serde(
+        default = "ReadConfig::default_initial_search",
+        alias = "initial-search"
+    )]
+    pub initial_search: String,
 }
 
 impl ReadConfig {
+    /// By default, scroll 2 lines per mouse movement.
     fn default_scroll() -> u8 {
         2
     }
 
+    /// By default, scroll before cursor moves into the top or bottom 3 rows.
     fn default_scroll_buffer() -> u8 {
         3
+    }
+
+    /// By default, no flags are used in the initial search.
+    fn default_initial_search() -> String {
+        "".into()
     }
 
     /// Map crossterm key to reader command.

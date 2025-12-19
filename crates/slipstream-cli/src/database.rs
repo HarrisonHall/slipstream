@@ -347,6 +347,9 @@ impl Database {
                 DatabaseSearch::Live => {
                     order_clause = "ORDER BY entries.id DESC".into();
                 }
+                DatabaseSearch::Raw(raw_clause) => {
+                    search_clause.push(raw_clause.clone());
+                }
                 DatabaseSearch::Search(search) => {
                     let search = search.to_lowercase();
                     search_clause.push(format!(
@@ -354,18 +357,22 @@ impl Database {
                     ));
                 }
                 DatabaseSearch::Tag(tag) => {
-                    search_clause.push(format!("tags.tag LIKE '%{tag}%'"));
+                    search_clause.push(format!("EXISTS(SELECT id FROM tags WHERE tags.tag LIKE '%{tag}%' AND tags.entry_id = entries.id)"))
+                }
+                DatabaseSearch::NotTag(tag) => {
+                    search_clause.push(format!("NOT EXISTS(SELECT id FROM tags WHERE tags.tag LIKE '%{tag}%' AND tags.entry_id = entries.id)"))
                 }
                 DatabaseSearch::Feed(feed) => {
-                    search_clause
-                        .push(format!("sources.source LIKE '%{feed}%'"));
+                    search_clause.push(format!("EXISTS(SELECT id FROM tags WHERE sources.source LIKE '%{feed}%' AND sources.entry_id = entries.id)"))
+                }
+                DatabaseSearch::NotFeed(feed) => {
+                    search_clause.push(format!("NOT EXISTS(SELECT id FROM tags WHERE sources.source LIKE '%{feed}%' AND sources.entry_id = entries.id)"))
                 }
                 DatabaseSearch::Command(command) => {
-                    search_clause
-                        .push(format!("commands.name LIKE '%{command}%'"));
+                    search_clause.push(format!("EXISTS(SELECT id FROM commands WHERE commands.name LIKE '%{command}%' AND commands.entry_id = entries.id)"))
                 }
-                DatabaseSearch::Raw(raw_clause) => {
-                    search_clause.push(raw_clause.clone());
+                DatabaseSearch::NotCommand(command) => {
+                    search_clause.push(format!("NOT EXISTS(SELECT id FROM commands WHERE commands.name LIKE '%{command}%' AND commands.entry_id = entries.id)"))
                 }
             };
         }
@@ -393,7 +400,8 @@ impl Database {
                 json_group_array(sources.source) AS sources,
                 json_group_array(tags.tag) AS tags,
                 json_group_object(commands.name, commands.result) AS commands
-            FROM entries
+            FROM
+                entries
                 LEFT JOIN sources ON entries.id = sources.entry_id
                 LEFT JOIN tags ON entries.id = tags.entry_id
                 LEFT JOIN commands ON entries.id = commands.entry_id
@@ -403,8 +411,8 @@ impl Database {
             {}
             LIMIT ?
             ",
-            cursor_clause,
             search_clause.join(" AND "),
+            cursor_clause,
             order_clause,
         ))
         .bind(max_length as u32)
@@ -532,13 +540,26 @@ impl Database {
 /// Message used to communicate with the database handler.
 #[derive(Debug, Clone)]
 pub enum DatabaseSearch {
+    /// Search latest (timestamp).
     Latest,
+    /// Search live (modified-timestamp).
     Live,
-    Search(String),
-    Tag(String),
-    Feed(String),
-    Command(String),
+    /// Raw sql search.
     Raw(String),
+    /// Search against string.
+    Search(String),
+    /// Search where a tag is present.
+    Tag(String),
+    /// Search where a tag is not present.
+    NotTag(String),
+    /// Search from a feed.
+    Feed(String),
+    /// Search not from a feed.
+    NotFeed(String),
+    /// Search where a command has been run.
+    Command(String),
+    /// Search where a command has not been run.
+    NotCommand(String),
 }
 
 /// Database identifier for entries.

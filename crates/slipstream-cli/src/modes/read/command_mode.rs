@@ -74,12 +74,21 @@ pub struct SearchContext {
     /// Filter by tag.
     #[arg(short, long, value_parser, num_args = 1.., value_delimiter = ' ')]
     pub tag: Vec<String>,
+    /// Filter by not tag.
+    #[arg(long, value_parser, num_args = 1.., value_delimiter = ' ')]
+    pub not_tag: Vec<String>,
     /// Filter by feed.
     #[arg(short, long, value_parser, num_args = 1.., value_delimiter = ' ')]
     pub feed: Vec<String>,
+    /// Filter by not feed.
+    #[arg(long, value_parser, num_args = 1.., value_delimiter = ' ')]
+    pub not_feed: Vec<String>,
     /// Filter by command.
     #[arg(short, long, value_parser, num_args = 1.., value_delimiter = ' ')]
     pub command: Vec<String>,
+    /// Filter by not command.
+    #[arg(long, value_parser, num_args = 1.., value_delimiter = ' ')]
+    pub not_command: Vec<String>,
     /// Use a raw SQL clause (e.g., "UPPER(entries.author) = 'BBC-NEWS'").
     /// WARNING: This is purposefully not checked.
     #[arg(short, long, value_parser, num_args = 1..)]

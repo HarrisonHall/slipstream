@@ -56,16 +56,15 @@ pub async fn read_cli(
     let mut terminal = ratatui::init();
     let _kb_cap = MouseCapture::new()?;
 
-    let mut reader = Reader::new(config, updater, cancel_token)?;
+    let mut reader = Reader::new(config.clone(), updater, cancel_token)?;
 
     // Update reader on load.
     reader
-        .update_entries(
-            vec![DatabaseSearch::Latest],
-            OffsetCursor::LatestTimestamp,
-            false,
-        )
-        .await;
+        .handle_command_mode_command(&format!(
+            "search {}",
+            &config.read.initial_search
+        ))
+        .await?;
 
     // Run loop.
     let result = reader.run(&mut terminal).await;
@@ -747,11 +746,20 @@ impl Reader {
                 for tag in &search.tag {
                     criteria.push(DatabaseSearch::Tag(tag.clone()));
                 }
+                for not_tag in &search.not_tag {
+                    criteria.push(DatabaseSearch::NotTag(not_tag.clone()));
+                }
                 for feed in &search.feed {
                     criteria.push(DatabaseSearch::Feed(feed.clone()));
                 }
+                for not_feed in &search.not_feed {
+                    criteria.push(DatabaseSearch::NotFeed(not_feed.clone()));
+                }
                 for cmd in &search.command {
                     criteria.push(DatabaseSearch::Command(cmd.clone()));
+                }
+                for not_cmd in &search.not_command {
+                    criteria.push(DatabaseSearch::NotCommand(not_cmd.clone()));
                 }
                 for raw_clause in &search.raw {
                     criteria.push(DatabaseSearch::Raw(raw_clause.clone()));
