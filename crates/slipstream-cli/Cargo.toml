@@ -53,4 +53,4 @@ tokio-util = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-slipstream-feeds = { path = "../slipstream-feeds", version = "0.5.2" }
+slipstream-feeds = { path = "../slipstream-feeds", version = "0.5.3" }
