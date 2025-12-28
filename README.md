@@ -21,7 +21,14 @@ Feed fetcher, filterer, and aggregator.
 `slipstream` is a command-line application for serving filtered/aggregated feeds
 from existing feeds a la Yahoo Pipes. A simple configuration file (e.g.
 [slipstream.toml](https://github.com/HarrisonHall/slipstream/blob/main/examples/config/slipstream.toml))
-is used to define feeds, relationships, and filters.
+is used to define feeds, filters, and aggregations.
+
+The original goal of `slipstream serve` was to support a single, self-hostable
+service that can aggregate feeds across devices. No need to share `opml` files
+across desktops, phones, and laptops-- all feeds can be accessible from a single
+new aggregate atom feed. Slipstream supports basic filters for
+allowlisting/denylisting entries from feeds based on substrings and tags.
+Everything `slipstream serve` supports, `slipstream read` also supports.
 
 #### Installation
 
@@ -65,17 +72,19 @@ to see additional configuration options.
 
 ## Roadmap
 
-While the `slipstream-feed` and `slipstream-cli` APIs may not be stable, they
+While the `slipstream-feeds` and `slipstream-cli` APIs may not be stable, they
 are essentially complete as-is.
 
 ### Slipstream 3.0
 
+- `slipstream-feeds`
+  - [ ] Custom HTML selector feeds
+  - [ ] Release-date feeds with reminders
 - `slipstream` (general)
   - [ ] Support hooks
-- `slipsteam` (serve)
-  - [ ] Track updated `updated_at` in database
 - `slipstream` (read)
   - [ ] Indicate pending updates
+  - [ ] Improve help menu
 - `slipstream` (api)
   - [ ] Allow syncing tags to a slipstream server
 
@@ -83,8 +92,6 @@ are essentially complete as-is.
 
 - `slipstream` (general)
   - [ ] Add more filters (regex/pomsky, allowlists, etc.)
-- `slipstream` (read)
-  - [ ] Improve help menu
 
 ## Contributing
 

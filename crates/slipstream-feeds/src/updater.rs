@@ -28,7 +28,8 @@ pub struct UpdaterContext {
 /// Updater for feeds.
 pub struct Updater {
     /// The feed being updated.
-    feeds: HashMap<FeedId, FeedInfo>,
+    /// Feeds are referenced in the order they are inserted.
+    feeds: BTreeMap<FeedId, FeedInfo>,
     /// Last update check.
     last_update_check: Option<DateTime>,
     /// Update frequency.
@@ -45,7 +46,7 @@ impl Updater {
     /// Generate a feed updater.
     pub fn new(freq: Duration, maximum: usize) -> Self {
         Self {
-            feeds: HashMap::new(),
+            feeds: BTreeMap::new(),
             last_update_check: None,
             freq,
             workers: 8,
@@ -226,7 +227,7 @@ impl Updater {
 impl Default for Updater {
     fn default() -> Self {
         Self {
-            feeds: HashMap::default(),
+            feeds: BTreeMap::default(),
             workers: 8,
             last_update_check: None,
             freq: Duration::from_seconds(10),

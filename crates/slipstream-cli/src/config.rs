@@ -26,7 +26,7 @@ pub struct Config {
     #[serde(default)]
     pub global: GlobalConfig,
     /// Feed configuration.
-    pub feeds: Option<HashMap<String, FeedDefinition>>,
+    pub feeds: Option<BTreeMap<String, FeedDefinition>>,
     // Serve configuration.
     #[serde(default)]
     pub serve: ServeConfig,
@@ -127,6 +127,26 @@ impl Config {
                             Some(feeds.clone()),
                         );
                     }
+                    RawFeed::AggregateTag {
+                        tag_allowlist,
+                        tag_blocklist,
+                    } => {
+                        let mut feed = AggregateTagFeed::new();
+                        feed.allowlist = tag_allowlist
+                            .into_iter()
+                            .map(|t| slipfeed::Tag::from(t.as_str()))
+                            .collect();
+                        feed.blocklist = tag_blocklist
+                            .into_iter()
+                            .map(|t| slipfeed::Tag::from(t.as_str()))
+                            .collect();
+                        let mut inner_updater = updater.updater.write().await;
+                        let id = inner_updater.add_feed(feed, attr);
+                        updater.feeds.insert(name.clone(), id);
+                        updater.feeds_ids.insert(id, name.clone());
+                        tracing::debug!("Added aggregate tag feed {}.", name);
+                        world.write().await.insert(name.clone(), id, None);
+                    }
                     RawFeed::MastodonStatuses {
                         mastodon,
                         feed_type,
@@ -198,7 +218,7 @@ impl Config {
         if let Some(feeds) = &mut self.feeds {
             feeds.insert(feed_name.into(), feed_def);
         } else {
-            let mut feeds = HashMap::new();
+            let mut feeds = BTreeMap::new();
             feeds.insert(feed_name.into(), feed_def);
             self.feeds = Some(feeds);
         }

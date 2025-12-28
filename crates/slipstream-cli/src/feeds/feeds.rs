@@ -50,6 +50,10 @@ pub enum RawFeed {
     Aggregate {
         feeds: Vec<String>,
     },
+    AggregateTag {
+        tag_allowlist: Vec<String>,
+        tag_blocklist: Vec<String>,
+    },
     MastodonStatuses {
         mastodon: String,
         #[serde(alias = "type")]
@@ -305,6 +309,73 @@ impl slipfeed::Feed for AggregateFeed {
         attr: &slipfeed::FeedAttributes,
     ) {
         if self.owns_entry(feed_id, entry).await {
+            if attr.passes_filters(self, entry) {
+                for tag in attr.get_tags() {
+                    entry.add_tag(tag);
+                }
+                entry.add_feed(slipfeed::FeedRef {
+                    id: feed_id,
+                    name: attr.display_name.clone(),
+                });
+            }
+        }
+    }
+}
+
+/// A feed that matches something on the allowlist, but no the blacklist.
+/// If the allowlist is empty, this checks against _all_ entries.
+#[derive(Clone, Debug)]
+pub struct AggregateTagFeed {
+    pub allowlist: Vec<slipfeed::Tag>,
+    pub blocklist: Vec<slipfeed::Tag>,
+}
+
+impl AggregateTagFeed {
+    pub fn new() -> Box<Self> {
+        return Box::new(Self {
+            allowlist: Vec::new(),
+            blocklist: Vec::new(),
+        });
+    }
+
+    fn in_allowlist(&self, entry: &slipfeed::Entry) -> bool {
+        if self.allowlist.len() == 0 {
+            return true;
+        }
+
+        for tag in self.allowlist.iter() {
+            if entry.has_tag(tag) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn in_blocklist(&self, entry: &slipfeed::Entry) -> bool {
+        for tag in self.blocklist.iter() {
+            if entry.has_tag(tag) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn matches(&self, entry: &slipfeed::Entry) -> bool {
+        self.in_allowlist(entry) && !self.in_blocklist(entry)
+    }
+}
+
+#[slipfeed::feed_trait]
+impl slipfeed::Feed for AggregateTagFeed {
+    async fn tag(
+        &mut self,
+        entry: &mut slipfeed::Entry,
+        feed_id: slipfeed::FeedId,
+        attr: &slipfeed::FeedAttributes,
+    ) {
+        if self.matches(entry) {
             if attr.passes_filters(self, entry) {
                 for tag in attr.get_tags() {
                     entry.add_tag(tag);

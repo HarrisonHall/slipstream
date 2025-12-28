@@ -1,8 +1,5 @@
 //! slipfeed feed management.
 
-use std::collections::HashMap;
-use std::collections::HashSet;
-
 mod datetime;
 mod entry;
 mod feed;

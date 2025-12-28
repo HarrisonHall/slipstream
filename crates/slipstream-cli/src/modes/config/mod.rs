@@ -95,6 +95,9 @@ fn export_config(
                             RawFeed::Aggregate { .. } => {
                                 // Do nothing.
                             }
+                            RawFeed::AggregateTag { .. } => {
+                                // Do nothing.
+                            }
                             RawFeed::MastodonStatuses {
                                 mastodon,
                                 feed_type,
@@ -137,6 +140,9 @@ fn export_config(
                                 converted_feeds.push(url.clone());
                             }
                             RawFeed::Aggregate { .. } => {
+                                // Do nothing.
+                            }
+                            RawFeed::AggregateTag { .. } => {
                                 // Do nothing.
                             }
                             RawFeed::MastodonStatuses {
