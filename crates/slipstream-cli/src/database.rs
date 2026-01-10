@@ -194,7 +194,7 @@ impl Database {
                     ",
                 )
                 .bind(&semver::Version::new(2, 10, 0).to_string())
-                .bind(&slipstream_feeds::DateTime::now().to_chrono())
+                .bind(&slipfeed::DateTime::now().to_chrono())
                 .execute(pool)
                 .await;
 
@@ -278,7 +278,7 @@ impl Database {
                         ",
                         )
                         .bind(&entry.date().to_chrono())
-                        .bind(&slipstream_feeds::DateTime::now().to_chrono())
+                        .bind(&slipfeed::DateTime::now().to_chrono())
                         .bind(sqlx::types::Json::from(&serialized_entry))
                         .bind(entry.title())
                         .bind(entry.author())

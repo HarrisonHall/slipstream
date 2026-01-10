@@ -1,38 +1,18 @@
 //! Slipstream.
 
-use std::cell::LazyCell;
-use std::collections::HashMap;
-use std::future::Future;
-use std::sync::Arc;
-use std::{path::PathBuf, str::FromStr};
-
-use anyhow::{Result, bail};
-use atom_syndication::{self as atom};
-use clap::{Parser, Subcommand};
-use resolve_path::PathResolveExt;
-use serde::{Deserialize, Serialize};
-use slipstream_feeds::{self as slipfeed};
-use tokio::sync::mpsc::{Receiver, Sender, channel};
-use tokio::sync::{Mutex, RwLock};
-use tokio::task::JoinSet;
-use tokio_util::sync::CancellationToken;
-
 mod cli;
 mod config;
 mod database;
 mod feeds;
 mod logging;
 mod modes;
+pub mod prelude;
 
 #[cfg(test)]
 mod tests;
 
-use cli::*;
-use config::*;
-use database::*;
-use feeds::*;
-use logging::*;
-use modes::*;
+use prelude::internal::*;
+use prelude::*;
 
 const DEFAULT_CONFIG_DIR: LazyCell<String> = LazyCell::new(|| {
     use directories::ProjectDirs;

@@ -72,14 +72,14 @@ pub enum MastodonFeedType {
     HomeTimeline,
 }
 
-impl From<&MastodonFeedType> for slipstream_feeds::MastodonFeedType {
+impl From<&MastodonFeedType> for slipfeed::MastodonFeedType {
     fn from(value: &MastodonFeedType) -> Self {
         match value {
             MastodonFeedType::PublicTimeline => {
-                slipstream_feeds::MastodonFeedType::PublicTimeline
+                slipfeed::MastodonFeedType::PublicTimeline
             }
             MastodonFeedType::HomeTimeline => {
-                slipstream_feeds::MastodonFeedType::HomeTimeline
+                slipfeed::MastodonFeedType::HomeTimeline
             }
         }
     }

@@ -30,14 +30,20 @@ pub async fn serve_cli(
 
     // Create server.
     let app = axum::Router::new()
-        .route("/", axum::routing::get(get_all_html))
+        .route("/", axum::routing::get(get_all_web))
         .route("/config", axum::routing::get(get_config))
-        .route("/all", axum::routing::get(get_all_html))
-        .route("/all/feed", axum::routing::get(get_all_feed))
-        .route("/feed/{feed}", axum::routing::get(get_feed_html))
-        .route("/feed/{feed}/feed", axum::routing::get(get_feed_feed))
-        .route("/tag/{tag}", axum::routing::get(get_tag_html))
-        .route("/tag/{tag}/feed", axum::routing::get(get_tag_feed))
+        .route("/all", axum::routing::get(get_all_web))
+        .route("/all/feed", axum::routing::get(get_all_atom))
+        .route("/all/feed.atom", axum::routing::get(get_all_atom))
+        .route("/all/feed.xml", axum::routing::get(get_all_atom))
+        .route("/feed/{feed}", axum::routing::get(get_feed_web))
+        .route("/feed/{feed}/feed", axum::routing::get(get_feed_atom))
+        .route("/feed/{feed}/feed.atom", axum::routing::get(get_feed_atom))
+        .route("/feed/{feed}/feed.xml", axum::routing::get(get_feed_atom))
+        .route("/tag/{tag}", axum::routing::get(get_tag_web))
+        .route("/tag/{tag}/feed", axum::routing::get(get_tag_atom))
+        .route("/tag/{tag}/feed.atom", axum::routing::get(get_tag_atom))
+        .route("/tag/{tag}/feed.xml", axum::routing::get(get_tag_atom))
         .route("/styles.css", axum::routing::get(get_styles))
         .route("/robots.txt", axum::routing::get(get_robots_txt))
         .route("/favicon.ico", axum::routing::get(get_favicon))
@@ -73,6 +79,7 @@ pub async fn serve_cli(
     Ok(())
 }
 
+/// State shared by the axum web server.
 #[derive(Clone)]
 struct SFState {
     updater: Arc<UpdaterHandle>,
@@ -80,9 +87,12 @@ struct SFState {
     cache: Arc<Mutex<Cache>>,
     html: Arc<Mutex<HtmlServer>>,
 }
+
+/// The wrapped state type.
 type StateType = axum::extract::State<Arc<SFState>>;
 
-async fn get_all_html(
+/// Get the web view for the /all feed.
+async fn get_all_web(
     State(state): StateType,
     headers: HeaderMap,
 ) -> impl axum::response::IntoResponse {
@@ -101,7 +111,8 @@ async fn get_all_html(
     );
 }
 
-async fn get_all_feed(
+/// Get the atom feed for the /all feed.
+async fn get_all_atom(
     State(state): StateType,
     headers: HeaderMap,
 ) -> impl axum::response::IntoResponse {
@@ -126,7 +137,8 @@ async fn get_all_feed(
     );
 }
 
-async fn get_feed_html(
+/// Get the web view for a feed.
+async fn get_feed_web(
     State(state): StateType,
     headers: HeaderMap,
     uri: axum::http::Uri,
@@ -151,7 +163,8 @@ async fn get_feed_html(
     );
 }
 
-async fn get_feed_feed(
+/// Get the atom feed for a feed.
+async fn get_feed_atom(
     State(state): StateType,
     headers: HeaderMap,
     uri: axum::http::Uri,
@@ -182,7 +195,8 @@ async fn get_feed_feed(
     );
 }
 
-async fn get_tag_html(
+/// Get the web view for a tag.
+async fn get_tag_web(
     State(state): StateType,
     headers: HeaderMap,
     uri: axum::http::Uri,
@@ -205,7 +219,8 @@ async fn get_tag_html(
     );
 }
 
-async fn get_tag_feed(
+/// Get the atom feed for a tag.
+async fn get_tag_atom(
     State(state): StateType,
     headers: HeaderMap,
     uri: axum::http::Uri,
@@ -236,6 +251,11 @@ async fn get_tag_feed(
     );
 }
 
+/// Get the server config toml.
+/// This is for convenience for anyone who may want to copy the feeds of a public
+/// server.
+/// This serves the parsed and re-exported config.toml. Any comments or extraneous
+/// metadata is stripped.
 async fn get_config(
     State(state): StateType,
 ) -> impl axum::response::IntoResponse {
@@ -250,6 +270,7 @@ async fn get_config(
     return (HeaderMap::toml_headers(), serialized);
 }
 
+/// Get the styles for the web view.
 async fn get_styles(
     State(state): StateType,
 ) -> impl axum::response::IntoResponse {
@@ -258,6 +279,7 @@ async fn get_styles(
     return (HeaderMap::css_headers(), (*html.styles).clone());
 }
 
+/// Get the robots.txt.
 async fn get_robots_txt(
     State(state): StateType,
 ) -> impl axum::response::IntoResponse {
@@ -266,6 +288,7 @@ async fn get_robots_txt(
     return (HeaderMap::plaintext_headers(), (*html.robots_txt).clone());
 }
 
+/// Get the slipstream favicon.
 async fn get_favicon(
     State(state): StateType,
 ) -> impl axum::response::IntoResponse {

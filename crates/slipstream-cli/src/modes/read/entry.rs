@@ -4,6 +4,7 @@ use std::ops::Deref;
 
 use ratatui::{
     layout::Flex,
+    text::ToText,
     widgets::{Clear, Wrap},
 };
 
@@ -298,7 +299,7 @@ impl<'a> Widget for EntryInfoWidget<'a> {
             .render(layouts[0], buf);
 
         if !self.0.content().is_empty() {
-            Paragraph::new(tui_markdown::from_str(self.0.content()))
+            Paragraph::new(tui_markdown::from_str(self.0.content()).to_text())
                 .left_aligned()
                 .wrap(Wrap { trim: false })
                 .render(layouts[1], buf);
