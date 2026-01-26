@@ -260,7 +260,7 @@ impl AggregateWorld {
         let feeds = match self.feed_feeds.get(&feed) {
             Some(feeds) => feeds,
             None => {
-                tracing::warn!("AggregateWorld lacks feed {:?}.", feed);
+                tracing::warn!("Empty AggregateWorld lacks feed {:?}.", feed);
                 return false;
             }
         };

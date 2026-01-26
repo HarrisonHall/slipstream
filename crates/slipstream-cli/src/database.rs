@@ -6,7 +6,8 @@ use std::path::PathBuf;
 
 use resolve_path::PathResolveExt;
 use sqlx::{
-    Row, SqlitePool, sqlite::SqliteConnectOptions, sqlite::SqlitePoolOptions,
+    Execute, Row, SqlitePool,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
 
 use crate::modes::DatabaseEntry;
@@ -337,62 +338,8 @@ impl Database {
         max_length: usize,
         cursor: OffsetCursor,
     ) -> DatabaseEntryList {
-        let mut set = DatabaseEntryList::new(max_length);
-        let mut search_clause = vec!["TRUE = TRUE".to_string()];
-        let mut order_clause =
-            String::from("ORDER BY entries.timestamp DESC, entries.id DESC");
-        for crit in &criteria {
-            match crit {
-                DatabaseSearch::Latest => {}
-                DatabaseSearch::Live => {
-                    order_clause = "ORDER BY entries.id DESC".into();
-                }
-                DatabaseSearch::Raw(raw_clause) => {
-                    search_clause.push(raw_clause.clone());
-                }
-                DatabaseSearch::Search(search) => {
-                    let search = search.to_lowercase();
-                    search_clause.push(format!(
-                        "entries.title LIKE '%{search}%' OR entries.author LIKE '%{search}%' OR entries.content LIKE '%{search}%'"
-                    ));
-                }
-                DatabaseSearch::Tag(tag) => {
-                    search_clause.push(format!("EXISTS(SELECT id FROM tags WHERE tags.tag LIKE '%{tag}%' AND tags.entry_id = entries.id)"))
-                }
-                DatabaseSearch::NotTag(tag) => {
-                    search_clause.push(format!("NOT EXISTS(SELECT id FROM tags WHERE tags.tag LIKE '%{tag}%' AND tags.entry_id = entries.id)"))
-                }
-                DatabaseSearch::Feed(feed) => {
-                    search_clause.push(format!("EXISTS(SELECT id FROM tags WHERE sources.source LIKE '%{feed}%' AND sources.entry_id = entries.id)"))
-                }
-                DatabaseSearch::NotFeed(feed) => {
-                    search_clause.push(format!("NOT EXISTS(SELECT id FROM tags WHERE sources.source LIKE '%{feed}%' AND sources.entry_id = entries.id)"))
-                }
-                DatabaseSearch::Command(command) => {
-                    search_clause.push(format!("EXISTS(SELECT id FROM commands WHERE commands.name LIKE '%{command}%' AND commands.entry_id = entries.id)"))
-                }
-                DatabaseSearch::NotCommand(command) => {
-                    search_clause.push(format!("NOT EXISTS(SELECT id FROM commands WHERE commands.name LIKE '%{command}%' AND commands.entry_id = entries.id)"))
-                }
-            };
-        }
-        let cursor_clause: String = match cursor {
-            OffsetCursor::LatestTimestamp => "TRUE = TRUE".into(),
-            OffsetCursor::LatestId => "TRUE = TRUE".into(),
-            OffsetCursor::Before(dt) => {
-                format!("entries.timestamp < unixepoch('{}')", dt.to_iso8601())
-            }
-            OffsetCursor::After(dt) => {
-                format!("entries.timestamp > unixepoch('{}')", dt.to_iso8601())
-            }
-            OffsetCursor::ModifiedAfter(dt) => {
-                format!(
-                    "entries.modified_timestamp > unixepoch('{}')",
-                    dt.to_iso8601()
-                )
-            }
-        };
-        let res = sqlx::query(&format!(
+        use sqlx::QueryBuilder;
+        let mut query = QueryBuilder::new(
             "
             SELECT
                 entries.id,
@@ -406,18 +353,96 @@ impl Database {
                 LEFT JOIN tags ON entries.id = tags.entry_id
                 LEFT JOIN commands ON entries.id = commands.entry_id
             WHERE
-                {} AND {}
-            GROUP BY entries.id
-            {}
-            LIMIT ?
             ",
-            search_clause.join(" AND "),
-            cursor_clause,
-            order_clause,
-        ))
-        .bind(max_length as u32)
-        .fetch_all(&self.pool)
-        .await;
+        );
+
+        query.push(" TRUE = TRUE");
+
+        let mut order_clause =
+            String::from(" ORDER BY entries.timestamp DESC, entries.id DESC");
+        for crit in &criteria {
+            match crit {
+                DatabaseSearch::Latest => {}
+                DatabaseSearch::Live => {
+                    order_clause = "ORDER BY entries.id DESC".into();
+                }
+                DatabaseSearch::Raw(raw_clause) => {
+                    query.push(format!(" AND {}", raw_clause));
+                }
+                DatabaseSearch::Search(search) => {
+                    let search = search.to_lowercase();
+                    query.push(" AND (AND entries.title LIKE CONCAT('%',");
+                    query.push_bind(search.clone());
+                    query.push(",'%') OR entries.author LIKE CONCAT('%',");
+                    query.push_bind(search);
+                    query.push(",'%'))");
+                }
+                DatabaseSearch::Tag(tag) => {
+                    query.push(
+                        " AND EXISTS(SELECT id FROM tags WHERE tags.tag LIKE CONCAT('%',",
+                    );
+                    query.push_bind(tag);
+                    query.push(",'%') AND tags.entry_id = entries.id)");
+                }
+                DatabaseSearch::NotTag(tag) => {
+                    query.push(
+                        " AND NOT EXISTS(SELECT id FROM tags WHERE tags.tag LIKE CONCAT('%',",
+                    );
+                    query.push_bind(tag);
+                    query.push(",'%') AND tags.entry_id = entries.id)");
+                }
+                DatabaseSearch::Feed(feed) => {
+                    query.push(" AND EXISTS(SELECT id FROM tags WHERE sources.source LIKE CONCAT('%',");
+                    query.push_bind(feed);
+                    query.push(",'%') AND sources.entry_id = entries.id)");
+                }
+                DatabaseSearch::NotFeed(feed) => {
+                    query.push(" AND NOT EXISTS(SELECT id FROM tags WHERE sources.source LIKE CONCAT('%',");
+                    query.push_bind(feed);
+                    query.push(",'%') AND sources.entry_id = entries.id)");
+                }
+                DatabaseSearch::Command(command) => {
+                    query.push(" AND EXISTS(SELECT id FROM commands WHERE commands.name LIKE CONCAT('%',");
+                    query.push_bind(command);
+                    query.push(",'%') AND commands.entry_id = entries.id)");
+                }
+                DatabaseSearch::NotCommand(command) => {
+                    query.push(" AND NOT EXISTS(SELECT id FROM commands WHERE commands.name LIKE CONCAT('%',");
+                    query.push_bind(command);
+                    query.push(",'%') AND commands.entry_id = entries.id)");
+                }
+            };
+        }
+        match cursor {
+            OffsetCursor::LatestTimestamp => {}
+            OffsetCursor::LatestId => {}
+            OffsetCursor::Before(dt) => {
+                query.push(" AND entries.timestamp < unixepoch(");
+                query.push_bind(dt.to_chrono());
+                query.push(")");
+            }
+            OffsetCursor::After(dt) => {
+                query.push(" AND entries.timestamp > unixepoch(");
+                query.push_bind(dt.to_chrono());
+                query.push(")");
+            }
+            OffsetCursor::ModifiedAfter(dt) => {
+                query.push(" AND entries.modified_timestamp > unixepoch(");
+                query.push_bind(dt.to_chrono());
+                query.push(")");
+            }
+        };
+        query.push(" GROUP BY entries.id");
+        query.push(order_clause);
+        query.push(" LIMIT ");
+        query.push_bind(max_length as u32);
+
+        let query = query.build();
+        tracing::trace!("Query: {}", query.sql());
+
+        let res = query.fetch_all(&self.pool).await;
+
+        let mut set = DatabaseEntryList::new(max_length);
         match res {
             Ok(rows) => {
                 for row in rows.iter() {
@@ -485,7 +510,7 @@ impl Database {
             }
         }
 
-        tracing::trace!("Got latest: {}", set.len());
+        tracing::trace!("Got latest: {}.", set.len());
         set
     }
 
@@ -636,10 +661,10 @@ pub enum OffsetCursor {
     ModifiedAfter(slipfeed::DateTime),
 }
 
-impl From<Option<slipfeed::DateTime>> for OffsetCursor {
-    fn from(value: Option<slipfeed::DateTime>) -> Self {
-        match value {
-            Some(dt) => OffsetCursor::After(dt.clone()),
+impl OffsetCursor {
+    pub fn modified_since(since: Option<slipfeed::DateTime>) -> Self {
+        match since {
+            Some(dt) => OffsetCursor::ModifiedAfter(dt),
             None => OffsetCursor::LatestTimestamp,
         }
     }
