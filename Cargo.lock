@@ -3029,7 +3029,7 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
 name = "slipstream-cli"
-version = "2.14.0"
+version = "2.14.1"
 dependencies = [
  "ansi-to-tui 7.0.0",
  "anyhow",

@@ -380,15 +380,15 @@ impl Database {
             OffsetCursor::LatestTimestamp => "TRUE = TRUE".into(),
             OffsetCursor::LatestId => "TRUE = TRUE".into(),
             OffsetCursor::Before(dt) => {
-                format!("entries.timestamp < unixepoch('{}')", dt.to_iso8601())
+                format!("entries.timestamp < unixepoch('{}')", dt.to_chrono())
             }
             OffsetCursor::After(dt) => {
-                format!("entries.timestamp > unixepoch('{}')", dt.to_iso8601())
+                format!("entries.timestamp > unixepoch('{}')", dt.to_chrono())
             }
             OffsetCursor::ModifiedAfter(dt) => {
                 format!(
                     "entries.modified_timestamp > unixepoch('{}')",
-                    dt.to_iso8601()
+                    dt.to_chrono()
                 )
             }
         };
@@ -636,10 +636,10 @@ pub enum OffsetCursor {
     ModifiedAfter(slipfeed::DateTime),
 }
 
-impl From<Option<slipfeed::DateTime>> for OffsetCursor {
-    fn from(value: Option<slipfeed::DateTime>) -> Self {
-        match value {
-            Some(dt) => OffsetCursor::After(dt.clone()),
+impl OffsetCursor {
+    pub fn modified_since(since: Option<slipfeed::DateTime>) -> Self {
+        match since {
+            Some(dt) => OffsetCursor::ModifiedAfter(dt),
             None => OffsetCursor::LatestTimestamp,
         }
     }

@@ -139,7 +139,7 @@ impl Updater {
                                     config.global.limits.max(),
                                     match (since, modified_since) {
                                         (Some(since), None) => {
-                                            OffsetCursor::from(Some(since))
+                                            OffsetCursor::After(since)
                                         }
                                         (None, Some(modified_since)) => {
                                             OffsetCursor::ModifiedAfter(
@@ -172,12 +172,17 @@ impl Updater {
                             }
                             entries
                         }
-                        FeedFetchOptions::Tag { tag, since } => {
+                        FeedFetchOptions::Tag {
+                            tag,
+                            modified_since,
+                        } => {
                             let unfiltered_entries = entry_db
                                 .get_entries(
                                     vec![DatabaseSearch::Tag(tag)],
                                     config.global.limits.max(),
-                                    OffsetCursor::from(since),
+                                    OffsetCursor::modified_since(
+                                        modified_since,
+                                    ),
                                 )
                                 .await;
                             let mut entries = DatabaseEntryList::new(
@@ -194,7 +199,10 @@ impl Updater {
                             }
                             entries
                         }
-                        FeedFetchOptions::Feed { feed, since } => {
+                        FeedFetchOptions::Feed {
+                            feed,
+                            modified_since,
+                        } => {
                             if let (Some(_feed_id), Some(feed_def)) =
                                 (self.feeds.get(&feed), config.feed(&feed))
                             {
@@ -204,7 +212,9 @@ impl Updater {
                                             feed.clone(),
                                         )],
                                         config.global.limits.max(),
-                                        OffsetCursor::from(since),
+                                        OffsetCursor::modified_since(
+                                            modified_since,
+                                        ),
                                     )
                                     .await;
                                 let mut entries = DatabaseEntryList::new(
@@ -310,11 +320,11 @@ enum FeedFetchOptions {
     },
     Feed {
         feed: String,
-        since: Option<slipfeed::DateTime>,
+        modified_since: Option<slipfeed::DateTime>,
     },
     Tag {
         tag: String,
-        since: Option<slipfeed::DateTime>,
+        modified_since: Option<slipfeed::DateTime>,
     },
 }
 
@@ -405,14 +415,14 @@ impl UpdaterHandle {
     pub async fn collect_feed(
         &self,
         feed: impl Into<String>,
-        since: Option<slipfeed::DateTime>,
+        modified_since: Option<slipfeed::DateTime>,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
         self.send(UpdaterRequest::FeedFetch {
             tx,
             options: FeedFetchOptions::Feed {
                 feed: feed.into(),
-                since,
+                modified_since,
             },
         })
         .await;
@@ -430,7 +440,7 @@ impl UpdaterHandle {
         &self,
         feed: impl Into<String>,
         config: Arc<Config>,
-        since: Option<slipfeed::DateTime>,
+        modified_since: Option<slipfeed::DateTime>,
     ) -> String {
         let feed = feed.into();
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
@@ -438,7 +448,7 @@ impl UpdaterHandle {
             tx,
             options: FeedFetchOptions::Feed {
                 feed: feed.clone(),
-                since,
+                modified_since,
             },
         })
         .await;
@@ -455,14 +465,14 @@ impl UpdaterHandle {
     pub async fn collect_tag(
         &self,
         tag: impl Into<String>,
-        since: Option<slipfeed::DateTime>,
+        modified_since: Option<slipfeed::DateTime>,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
         self.send(UpdaterRequest::FeedFetch {
             tx,
             options: FeedFetchOptions::Tag {
                 tag: tag.into(),
-                since,
+                modified_since,
             },
         })
         .await;
@@ -480,7 +490,7 @@ impl UpdaterHandle {
         &self,
         tag: impl Into<String>,
         config: Arc<Config>,
-        since: Option<slipfeed::DateTime>,
+        modified_since: Option<slipfeed::DateTime>,
     ) -> String {
         let tag = tag.into();
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
@@ -488,7 +498,7 @@ impl UpdaterHandle {
             tx,
             options: FeedFetchOptions::Tag {
                 tag: tag.clone(),
-                since,
+                modified_since,
             },
         })
         .await;
