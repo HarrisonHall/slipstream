@@ -1,6 +1,7 @@
 # Dev environment for slipstream.
 
 [tools]
+"cargo:cargo-machete" = "latest"
 "cargo:cargo-zigbuild" = "latest"
 
 [tasks.setup]

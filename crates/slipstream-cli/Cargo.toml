@@ -1,7 +1,7 @@
 [package]
 name = "slipstream-cli"
 description = "Simple CLI `slipfeed` server, with web support and a TUI reader."
-version = "2.15.0"
+version = "2.16.0"
 edition.workspace = true
 authors.workspace = true
 keywords.workspace = true
@@ -24,9 +24,7 @@ chrono-tz = { version = "0.10", features = ["serde"] }
 color-eyre = "0.6"
 crossterm = { version="0.28", features=["serde"] }
 directories = "6.0"
-colored = "3.0"
 handlebars = "6.3"
-humantime = "2.2"
 humantime-serde = "1.1"
 opml = "1.1"
 pulldown-cmark = "0.13"
@@ -41,11 +39,11 @@ tui-markdown = "0.3"
 atom_syndication = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
-fast_html2md = { workspace = true }
-futures = { workspace = true }
+# fast_html2md = { workspace = true }
+# futures = { workspace = true }
 markdown = { workspace = true }
 resolve-path = { workspace = true }
-reqwest = { workspace = true }
+# reqwest = { workspace = true }
 serde = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }

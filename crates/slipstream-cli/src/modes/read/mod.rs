@@ -1,5 +1,4 @@
-//!!utput
-//! Fields: time (relative),
+//! Read mode.
 
 use super::*;
 
@@ -767,6 +766,7 @@ impl Reader {
                 if let Some(text) = &search.text {
                     criteria.push(DatabaseSearch::Search(text.clone()));
                 }
+                tracing::info!("searchany: {:?}", criteria);
                 self.update_entries(
                     criteria,
                     OffsetCursor::LatestTimestamp,

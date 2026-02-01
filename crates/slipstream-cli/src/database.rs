@@ -371,7 +371,7 @@ impl Database {
                 }
                 DatabaseSearch::Search(search) => {
                     let search = search.to_lowercase();
-                    query.push(" AND (AND entries.title LIKE CONCAT('%',");
+                    query.push(" AND (entries.title LIKE CONCAT('%',");
                     query.push_bind(search.clone());
                     query.push(",'%') OR entries.author LIKE CONCAT('%',");
                     query.push_bind(search);

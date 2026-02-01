@@ -456,15 +456,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
-name = "colored"
-version = "3.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
-dependencies = [
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "compact_str"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1795,15 +1786,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "matchers"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
-dependencies = [
- "regex-automata",
-]
-
-[[package]]
 name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3117,7 +3099,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "slipstream-cli"
-version = "2.15.0"
+version = "2.16.0"
 dependencies = [
  "ansi-to-tui 7.0.0",
  "atom_syndication",
@@ -3126,19 +3108,14 @@ dependencies = [
  "chrono-tz",
  "clap",
  "color-eyre",
- "colored",
  "crossterm",
  "directories",
- "fast_html2md",
- "futures",
  "handlebars",
- "humantime",
  "humantime-serde",
  "markdown",
  "opml",
  "pulldown-cmark",
  "ratatui",
- "reqwest",
  "resolve-path",
  "rust-embed",
  "semver",
@@ -3157,7 +3134,7 @@ dependencies = [
 
 [[package]]
 name = "slipstream-feeds"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "async-trait",
  "atom_syndication",
@@ -3165,7 +3142,6 @@ dependencies = [
  "fast_html2md",
  "futures",
  "reqwest",
- "resolve-path",
  "rss",
  "serde",
  "serde_json",
@@ -3173,7 +3149,6 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "tracing-subscriber",
- "tracing-test",
 ]
 
 [[package]]
@@ -3878,37 +3853,12 @@ version = "0.3.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f30143827ddab0d256fd843b7a66d164e9f271cfa0dde49142c5ca0ca291f1e"
 dependencies = [
- "matchers",
  "nu-ansi-term",
- "once_cell",
- "regex-automata",
  "sharded-slab",
  "smallvec",
  "thread_local",
- "tracing",
  "tracing-core",
  "tracing-log",
-]
-
-[[package]]
-name = "tracing-test"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "557b891436fe0d5e0e363427fc7f217abf9ccd510d5136549847bdcbcd011d68"
-dependencies = [
- "tracing-core",
- "tracing-subscriber",
- "tracing-test-macro",
-]
-
-[[package]]
-name = "tracing-test-macro"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04659ddb06c87d233c566112c1c9c5b9e98256d9af50ec3bc9c8327f873a7568"
-dependencies = [
- "quote",
- "syn 2.0.114",
 ]
 
 [[package]]
