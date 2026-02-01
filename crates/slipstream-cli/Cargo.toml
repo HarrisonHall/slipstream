@@ -18,10 +18,10 @@ path = "src/main.rs"
 
 [dependencies]
 ansi-to-tui = "7.0.0"
-anyhow = "1.0.99"
 axum = "0.8.4"
 # chrono-tz = { version = "0.10.4", features = ["serde", "case-insensitive"] }
 chrono-tz = { version = "0.10.4", features = ["serde"] }
+color-eyre = "0.6.5"
 crossterm = { version="0.28.1", features=["serde"] }
 directories = "6.0.0"
 colored = "3.0.0"

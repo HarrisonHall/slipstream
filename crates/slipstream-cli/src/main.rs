@@ -31,6 +31,7 @@ const DEFAULT_UPDATE_SEC: u16 = 120;
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<()> {
     // Initial setup.
+    color_eyre::install()?;
     let cli = Cli::parse();
 
     // If doing the config mode, we don't want to go any further.

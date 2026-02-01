@@ -1,0 +1,71 @@
+# Dev environment for slipstream.
+
+[tools]
+"cargo:cargo-zigbuild" = "latest"
+
+[tasks.setup]
+description = "Set up dependencies."
+run = [
+  "rustup default sable",
+  "rustup component add rust-std-x86_64-unknown-linux-musl",
+]
+
+[tasks.install]
+description = "Install locally."
+run = "cargo install --path ./crates/slipstream-cli"
+
+[tasks.debug-slipstream]
+description = "Run debug slipstream."
+run = "cargo run --bin slipstream -- --debug -c ./examples/config/slipstream.toml serve"
+
+[tasks.debug-slipstream-local]
+description = "Run debug slipstream with local config."
+run = "cargo run --bin slipstream -- --debug serve"
+
+[tasks.debug-slipreader]
+description = "Run debug slipreader."
+run = "cargo run --bin slipstream -- --debug -c ./examples/config/slipreader.toml read"
+
+[tasks.debug-slipreader-local]
+description = "Run debug slipreader with local config."
+run = "cargo run --bin slipstream -- --debug read"
+
+[tasks.debug-verify]
+description = "Verify config."
+run = [
+  "cargo run --bin slipstream -- --debug -c ./examples/config/slipstream.toml config verify",
+  "cargo run --bin slipstream -- --debug -c ./examples/config/slipreader.toml config verify",
+]
+
+[tasks.debug-verify-local]
+description = "Verify with local config."
+run = [
+  "cargo run --bin slipstream -- --debug config verify",
+]
+
+[tasks.test]
+description = "Test the repo."
+run = "RUST_LOG=\"trace\" cargo test -- --nocapture"
+
+[tasks.test-import-export]
+description = "Test import and export."
+run = [
+    "mkdir -p test",
+    "cargo run --bin slipstream -- --debug -c ./examples/config/slipstream.toml config export slipstream ./test/slipstream.export.toml",
+    "cargo run --bin slipstream -- --debug -c ./examples/config/slipstream.toml config export opml ./test/slipstream.export.opml",
+    "cargo run --bin slipstream -- --debug -c ./examples/config/slipstream.toml config export list ./test/slipstream.export.list",
+    "cargo run --bin slipstream -- --debug -c ./examples/config/slipreader.toml config export slipstream ./test/slipreader.export.toml",
+    "cargo run --bin slipstream -- --debug -c ./examples/config/slipreader.toml config export opml ./test/slipreader.export.opml",
+    "cargo run --bin slipstream -- --debug -c ./examples/config/slipreader.toml config export list ./test/slipreader.export.list",
+    "cargo run --bin slipstream -- --debug -c ./test/slipreader.export.toml config import slipstream ./test/slipstream.export.toml ./test/slipreader.import.slip.toml",
+    "cargo run --bin slipstream -- --debug -c ./test/slipreader.export.toml config import opml ./test/slipstream.export.opml ./test/slipreader.import.opml.toml",
+    "cargo run --bin slipstream -- --debug -c ./test/slipreader.export.toml config import list ./test/slipstream.export.list ./test/slipreader.import.list.toml",
+]
+
+[tasks.build]
+description = "Build static release for many versions of linux."
+run = "cargo zigbuild --package slipstream-cli --target x86_64-unknown-linux-gnu.2.32 --release"
+
+[tasks.publish]
+description = "Publish to crates.io."
+run = "cargo publish --workspace"
