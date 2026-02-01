@@ -6,21 +6,21 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-atom_syndication = "0.12.7"
-chrono = { version = "0.4.41", features = ["serde"] }
-clap = {version = "4.5.47", features = ["derive"] }
+atom_syndication = "0.12"
+chrono = { version = "0.4", features = ["serde"] }
+clap = {version = "4.5", features = ["derive"] }
 fast_html2md = "0.0.48"
-futures = "0.3.31"
-markdown = "1.0.0"
-resolve-path = "0.1.0"
-reqwest = { version = "0.12.23", features = ["rustls-tls"], default-features = false }
-serde = { version = "1.0.219", features = ["derive", "rc"] }
-sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio", "macros", "chrono", "time", "uuid"] }
-tokio = { version = "1.47.1", features = ["sync", "rt", "rt-multi-thread", "macros", "process", "signal"] }
-tokio-stream = "0.1.17"
-tokio-util = "0.7.16"
-tracing = "0.1.41"
-tracing-subscriber = "0.3.20"
+futures = "0.3"
+markdown = "1.0"
+resolve-path = "0.1"
+reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
+serde = { version = "1.0", features = ["derive", "rc"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "macros", "chrono", "time", "uuid"] }
+tokio = { version = "1.47", features = ["sync", "rt", "rt-multi-thread", "macros", "process", "signal"] }
+tokio-stream = "0.1"
+tokio-util = "0.7"
+tracing = "0.1"
+tracing-subscriber = "0.3"
 tracing-test = "0.2"
 
 [workspace.package]
