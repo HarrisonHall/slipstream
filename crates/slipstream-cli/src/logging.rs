@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tracing::{Event, Level, Subscriber, level_filters::LevelFilter};
+use tracing::{Level, level_filters::LevelFilter};
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::SubscriberExt;
 

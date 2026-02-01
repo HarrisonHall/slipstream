@@ -427,6 +427,9 @@ impl Database {
                 query.push(")");
             }
             OffsetCursor::ModifiedAfter(dt) => {
+                order_clause = String::from(
+                    " ORDER BY entries.modified_timestamp DESC, entries.id DESC",
+                );
                 query.push(" AND entries.modified_timestamp > unixepoch(");
                 query.push_bind(dt.to_chrono());
                 query.push(")");
