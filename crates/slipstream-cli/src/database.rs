@@ -364,7 +364,7 @@ impl Database {
             match crit {
                 DatabaseSearch::Latest => {}
                 DatabaseSearch::Live => {
-                    order_clause = "ORDER BY entries.id DESC".into();
+                    order_clause = " ORDER BY entries.id DESC".into();
                 }
                 DatabaseSearch::Raw(raw_clause) => {
                     query.push(format!(" AND {}", raw_clause));

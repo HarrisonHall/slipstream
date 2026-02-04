@@ -101,6 +101,7 @@ impl Config {
                     .get_filters()
                     .iter()
                     .for_each(|f| attr.add_filter(f.clone()));
+
                 match feed_def.feed() {
                     RawFeed::Raw { url } => {
                         let feed = StandardFeed::new(
