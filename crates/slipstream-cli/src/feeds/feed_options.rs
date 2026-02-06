@@ -19,6 +19,9 @@ pub struct FeedOptions {
     /// Whether to apply tags from the source.
     #[serde(default = "FeedOptions::default_apply_tags", alias = "apply-tags")]
     apply_tags: bool,
+    /// Custom headers for this feed.
+    #[serde(default)]
+    headers: BTreeMap<String, String>,
 }
 
 impl FeedOptions {
@@ -55,6 +58,10 @@ impl FeedOptions {
         self.apply_tags
     }
 
+    pub fn headers(&self) -> &BTreeMap<String, String> {
+        &self.headers
+    }
+
     pub fn too_old(&self, dt: &slipfeed::DateTime) -> bool {
         slipfeed::DateTime::now() > dt.clone() + self.oldest()
     }
@@ -74,6 +81,23 @@ impl FeedOptions {
     fn default_apply_tags() -> bool {
         true
     }
+
+    pub(crate) fn merge(&mut self, other: &Self) {
+        if let Some(max) = &other.max {
+            self.max = Some(max.clone());
+        }
+        if let Some(freq) = &other.freq {
+            self.freq = Some(freq.clone());
+        }
+        if let Some(oldest) = &other.oldest {
+            self.oldest = Some(oldest.clone());
+        }
+        self.keep_empty = other.keep_empty;
+        self.apply_tags = other.apply_tags;
+        for (header, value) in &other.headers {
+            self.headers.insert(header.clone(), value.clone());
+        }
+    }
 }
 
 impl Default for FeedOptions {
@@ -84,6 +108,7 @@ impl Default for FeedOptions {
             oldest: None,
             keep_empty: Self::default_keep_empty(),
             apply_tags: Self::default_apply_tags(),
+            headers: BTreeMap::new(),
         }
     }
 }

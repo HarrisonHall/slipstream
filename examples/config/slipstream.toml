@@ -6,6 +6,8 @@ workers = 2
 
 # Settings that apply to **everything**.
 [global]
+
+[global.limits.headers]
 user-agent = "slipstream/2.0"
 
 [global.filters]
@@ -50,6 +52,7 @@ url = "https://news.ycombinator.com/rss"
 tags = ["tech", "news"]
 exclude-title-words = ["llm", "hiring"]
 freq = "1hr"
+headers = { user-agent = "miniflux" }
 
 [feeds.ziglang-compilation]
 url = "https://ziglang.org/devlog/index.xml"

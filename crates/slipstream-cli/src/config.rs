@@ -83,13 +83,16 @@ impl Config {
             for (name, feed_def) in feeds {
                 let mut attr = slipfeed::FeedAttributes::new();
                 attr.display_name = Arc::new(name.clone());
-                attr.freq = match feed_def.options().freq() {
-                    Some(freq) => Some(freq),
-                    None => Some(self.global.limits.freq_or_default()),
-                };
-                attr.timeout = feed_def.options().oldest();
-                attr.keep_empty = feed_def.options().keep_empty();
-                attr.apply_tags = feed_def.options().apply_tags();
+
+                // Build options from global, overriding with feed-specific options.
+                let mut options = self.global.limits.clone();
+                options.merge(feed_def.options());
+
+                attr.freq = Some(options.freq_or_default());
+                attr.timeout = options.oldest();
+                attr.headers = options.headers().clone();
+                attr.keep_empty = options.keep_empty();
+                attr.apply_tags = options.apply_tags();
                 feed_def
                     .tags()
                     .clone()
@@ -104,10 +107,7 @@ impl Config {
 
                 match feed_def.feed() {
                     RawFeed::Raw { url } => {
-                        let feed = StandardFeed::new(
-                            url,
-                            self.global.user_agent.clone(),
-                        );
+                        let feed = StandardFeed::new(url);
                         let mut inner_updater = updater.updater.write().await;
                         let id = inner_updater.add_feed(feed, attr);
                         updater.feeds.insert(name.clone(), id);

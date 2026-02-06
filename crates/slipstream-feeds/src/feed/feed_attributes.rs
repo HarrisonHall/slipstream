@@ -12,6 +12,8 @@ pub struct FeedAttributes {
     pub timeout: Duration,
     /// How often the feed should update.
     pub freq: Option<Duration>,
+    /// Header overrides.
+    pub headers: BTreeMap<String, String>,
     /// Tags associated with the feed.
     pub tags: HashSet<Tag>,
     /// Filters for the feed.
@@ -29,6 +31,7 @@ impl FeedAttributes {
             display_name: Arc::new(":empty:".into()),
             timeout: Duration::from_seconds(15),
             freq: None,
+            headers: BTreeMap::new(),
             tags: HashSet::new(),
             filters: Vec::new(),
             keep_empty: false,

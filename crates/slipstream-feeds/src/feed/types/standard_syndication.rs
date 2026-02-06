@@ -7,21 +7,12 @@ use super::*;
 pub struct StandardSyndication {
     /// The url of the feed.
     url: String,
-    /// The user agent used to fetch the feed.
-    /// If this is not set, no user agent is used.
-    user_agent: Option<String>,
 }
 
 impl StandardSyndication {
     /// Create a new standard syndication.
-    pub fn new(
-        url: impl Into<String>,
-        user_agent: Option<String>,
-    ) -> Box<Self> {
-        return Box::new(Self {
-            url: url.into(),
-            user_agent,
-        });
+    pub fn new(url: impl Into<String>) -> Box<Self> {
+        return Box::new(Self { url: url.into() });
     }
 
     /// Parse a feed from the body text.
@@ -210,13 +201,43 @@ impl Hash for StandardSyndication {
 #[feed_trait]
 impl Feed for StandardSyndication {
     async fn update(&mut self, ctx: &UpdaterContext, attr: &FeedAttributes) {
-        // Generate request.
+        // Generate client.
         let mut client_builder = reqwest::ClientBuilder::new();
 
-        if let Some(user_agent) = &self.user_agent {
-            client_builder = client_builder.user_agent(user_agent);
+        // Add headers.
+        let mut map = reqwest::header::HeaderMap::default();
+        'headers: for (header, value) in attr.headers.iter() {
+            let header_name = match reqwest::header::HeaderName::from_lowercase(
+                header.as_bytes(),
+            ) {
+                Ok(header_name) => header_name,
+                Err(e) => {
+                    tracing::warn!("Unable to add header {header}: {e}");
+                    continue 'headers;
+                }
+            };
+            match value.parse() {
+                Ok(val) => {
+                    tracing::trace!(
+                        "Adding header {:?}={:?}",
+                        header_name,
+                        &val
+                    );
+                    map.insert(header_name, val);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Unable to use header {}={}: {}",
+                        header,
+                        value,
+                        e
+                    );
+                }
+            };
         }
+        client_builder = client_builder.default_headers(map);
 
+        // Build the request.
         let client = match client_builder.build() {
             Ok(client) => client,
             Err(e) => {

@@ -63,6 +63,12 @@ url = "https://lorem-rss.herokuapp.com/feed?unit=second&interval=30"
 tags = ["test"]
 freq = "30sec"
 
+[feeds.lobsters]
+url = "https://lobste.rs/rss"
+tags = ["hacking", "fun", "aggregate"]
+exclude-title-words = ["llm", "ai", "hiring"]
+exclude-tags = ["ai", "llm", "agent", "agents", "vibecoding"]
+
 [read]
 scroll = 1
 
