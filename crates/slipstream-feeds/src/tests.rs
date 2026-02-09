@@ -5,7 +5,7 @@ async fn standard_syndications() {
     tracing_subscriber::fmt::try_init().ok();
 
     let mut rss_updater = Updater::new(Duration::from_seconds(1_000), 5);
-    let hn = StandardSyndication::new("https://news.ycombinator.com/rss", None);
+    let hn = StandardSyndication::new("https://news.ycombinator.com/rss");
     let hn_id = rss_updater.add_feed(
         hn,
         FeedAttributes {
@@ -16,13 +16,13 @@ async fn standard_syndications() {
             filters: vec![],
             keep_empty: false,
             apply_tags: true,
+            headers: BTreeMap::new(),
         },
     );
     assert!(hn_id.0 == 1);
 
     let mut atom_updater = Updater::new(Duration::from_seconds(1_000), 5);
-    let newsboat =
-        StandardSyndication::new("https://newsboat.org/news.atom", None);
+    let newsboat = StandardSyndication::new("https://newsboat.org/news.atom");
     let newsboat_id = atom_updater.add_feed(
         newsboat,
         FeedAttributes {
@@ -33,6 +33,7 @@ async fn standard_syndications() {
             filters: vec![],
             keep_empty: false,
             apply_tags: true,
+            headers: BTreeMap::new(),
         },
     );
     assert!(newsboat_id.0 == 1);
@@ -71,6 +72,7 @@ async fn mastodon() {
             filters: vec![],
             keep_empty: false,
             apply_tags: true,
+            headers: BTreeMap::new(),
         },
     );
 
