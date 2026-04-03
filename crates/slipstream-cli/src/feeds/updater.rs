@@ -12,12 +12,12 @@ pub async fn update(
 ) -> Result<()> {
     // We don't want to cancel the updater's updater update future working on other
     // jobs. We convert this loop into a task and only cancel on quit.
-    let updater_task: tokio::task::JoinHandle<()> =
-        tokio::task::spawn(run_updater(
-            updater.updater.clone(),
-            updater.entry_db.clone(),
-            cancel_token.clone(),
-        ));
+    let updater_task: tokio::task::JoinHandle<()> = {
+        let entry_db = updater.entry_db.clone();
+        let updater = updater.updater.clone();
+        let cancel_token = cancel_token.clone();
+        tokio::task::spawn(run_updater(updater, entry_db, cancel_token))
+    };
 
     // Continue updating and responding to requests until cancelled.
     'update: loop {
@@ -257,13 +257,13 @@ impl Updater {
 
     /// Check if entry passes the global filters.
     pub fn passes_global_filters(&self, entry: &slipfeed::Entry) -> bool {
-        let feed = NoopFeed;
+        let feed = NoopFeed::default();
         self.global_filters.iter().all(|f| f(&feed, entry))
     }
 
     /// Check if entry passes the all filters.
     pub fn passes_all_filters(&self, entry: &slipfeed::Entry) -> bool {
-        let feed = NoopFeed;
+        let feed = NoopFeed::default();
         self.all_filters.iter().all(|f| f(&feed, entry))
     }
 }

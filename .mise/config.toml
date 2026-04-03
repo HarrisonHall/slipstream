@@ -7,7 +7,7 @@
 [tasks.setup]
 description = "Set up dependencies."
 run = [
-  "rustup default sable",
+  "rustup default stable",
   "rustup component add rust-std-x86_64-unknown-linux-musl",
 ]
 

@@ -5,7 +5,7 @@ use super::*;
 /// Limits for feeds.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FeedOptions {
-    /// Maximum iterable feeds from feed.
+    /// Maximum iterable entries from feed.
     max: Option<usize>,
     /// Update frequency. Defaults to 2 hours.
     #[serde(default, with = "humantime_serde::option")]
@@ -22,6 +22,9 @@ pub struct FeedOptions {
     /// Custom headers for this feed.
     #[serde(default)]
     headers: BTreeMap<String, String>,
+    /// Feed update step (lower updates first).
+    #[serde(default)]
+    step: Option<usize>,
 }
 
 impl FeedOptions {
@@ -48,6 +51,10 @@ impl FeedOptions {
             Some(oldest) => slipfeed::Duration::from_std(oldest),
             None => FeedOptions::default_oldest(),
         }
+    }
+
+    pub fn step(&self, default: u8) -> u8 {
+        self.step.unwrap_or(default as usize) as u8
     }
 
     pub fn keep_empty(&self) -> bool {
@@ -92,6 +99,9 @@ impl FeedOptions {
         if let Some(oldest) = &other.oldest {
             self.oldest = Some(oldest.clone());
         }
+        if let Some(step) = &other.step {
+            self.step = Some(step.clone());
+        }
         self.keep_empty = other.keep_empty;
         self.apply_tags = other.apply_tags;
         for (header, value) in &other.headers {
@@ -106,6 +116,7 @@ impl Default for FeedOptions {
             max: None,
             freq: None,
             oldest: None,
+            step: None,
             keep_empty: Self::default_keep_empty(),
             apply_tags: Self::default_apply_tags(),
             headers: BTreeMap::new(),

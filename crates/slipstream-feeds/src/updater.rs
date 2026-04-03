@@ -2,11 +2,13 @@
 
 use super::*;
 
+pub type BoxedFeed = Arc<RwLock<Box<dyn Feed>>>;
+
 /// Information the updater keeps about the feed.
 #[derive(Clone)]
 struct FeedInfo {
     id: FeedId,
-    feed: Arc<RwLock<Box<dyn Feed>>>,
+    feed: BoxedFeed,
     attr: FeedAttributes,
     last_update: Option<DateTime>,
 }
@@ -140,47 +142,61 @@ impl Updater {
 
             total_feeds_updated = feeds.len();
 
-            let mut updates = tokio_stream::iter(feeds)
-                .map(|(id, feed_info)| {
-                    let feed_info = feed_info.clone();
-                    let tx = tx.clone();
-                    let id = id.clone();
-                    let feed = feed_info.feed.clone();
-                    let ctx = UpdaterContext {
-                        feed_id: id.clone(),
-                        parse_time: now.clone(),
-                        last_update: feed_info.last_update.clone(),
-                        sender: tx.clone(),
-                    };
+            // Move feeds into a "stepped" structure to update in a deterministic
+            // order.
+            let mut stepped = SteppedFeeds::default();
+            stepped.parse_feeds(feeds);
 
-                    async move {
-                        let mut feed = feed.write().await;
-                        if let Err(_) = tokio::time::timeout(
-                            feed_info.attr.timeout.to_tokio(),
-                            feed.update(&ctx, &feed_info.attr),
-                        )
-                        .await
-                        {
-                            tracing::warn!("Update timed out for {:?}", feed);
+            for (step, feeds) in stepped.stepped {
+                tracing::debug!("Updating feeds: step={step}");
+
+                // Push updates to workers.
+                let mut updates = tokio_stream::iter(feeds)
+                    .map(|(id, feed_info)| {
+                        let feed_info = feed_info.clone();
+                        let tx = tx.clone();
+                        let id = id.clone();
+                        let feed = feed_info.feed.clone();
+                        let ctx = UpdaterContext {
+                            feed_id: id.clone(),
+                            parse_time: now.clone(),
+                            last_update: feed_info.last_update.clone(),
+                            sender: tx.clone(),
+                        };
+
+                        async move {
+                            let mut feed = feed.write().await;
+                            if let Err(_) = tokio::time::timeout(
+                                feed_info.attr.timeout.to_tokio(),
+                                feed.update(&ctx, &feed_info.attr),
+                            )
+                            .await
+                            {
+                                tracing::warn!(
+                                    "Update timed out for {:?}",
+                                    feed
+                                );
+                            }
                         }
+                    })
+                    .buffer_unordered(self.workers);
+
+                // Wait for all updates.
+                tracing::info!("Gathering entries: step={}", step);
+                while let Some(_) = updates.next().await {}
+
+                // Gather entries and tag.
+                tracing::debug!("Applying tags: step={}", step);
+                while let Ok((mut entry, feed)) = rx.try_recv() {
+                    entry.add_feed(feed);
+                    for feed_info in self.feeds.values_mut() {
+                        let mut feed = feed_info.feed.write().await;
+                        feed.tag(&mut entry, feed_info.id, &feed_info.attr)
+                            .await;
                     }
-                })
-                .buffer_unordered(self.workers);
-
-            // Wait for all updates.
-            while let Some(_) = updates.next().await {}
-        }
-
-        // Gather entries and tag.
-        tracing::info!("Gathering entries.");
-        drop(tx);
-        while let Some((mut entry, feed)) = rx.recv().await {
-            entry.add_feed(feed);
-            for feed_info in self.feeds.values_mut() {
-                let mut feed = feed_info.feed.write().await;
-                feed.tag(&mut entry, feed_info.id, &feed_info.attr).await;
+                    self.entries.add(entry);
+                }
             }
-            self.entries.add(entry);
         }
 
         tracing::info!("{} (total) entries gathered", self.entries.len());
@@ -222,6 +238,15 @@ impl Updater {
             next: 0,
         };
     }
+
+    /// Get a feed from the id.
+    pub fn get_feed(&mut self, feed: FeedId) -> Option<&mut BoxedFeed> {
+        if let Some(feed) = self.feeds.get_mut(&feed) {
+            Some(&mut feed.feed)
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for Updater {
@@ -233,6 +258,25 @@ impl Default for Updater {
             freq: Duration::from_seconds(10),
             entries: EntrySet::new(1_000),
             next_feed_id: 0,
+        }
+    }
+}
+
+#[derive(Default)]
+struct SteppedFeeds {
+    stepped: BTreeMap<u8, Vec<(FeedId, FeedInfo)>>,
+    // steps: std::collections::BTreeSet<u8>,
+}
+
+impl SteppedFeeds {
+    fn parse_feeds(&mut self, feeds: Vec<(FeedId, FeedInfo)>) {
+        for (id, info) in feeds {
+            if let Some(step) = self.stepped.get_mut(&info.attr.step) {
+                step.push((id, info));
+            } else {
+                // self.steps.insert(info.attr.step);
+                self.stepped.insert(info.attr.step, vec![(id, info)]);
+            }
         }
     }
 }

@@ -2,9 +2,11 @@
 
 use super::*;
 
+use downcast_rs::{DowncastSync, impl_downcast};
+
 /// What defines a feed.
 #[feed_trait]
-pub trait Feed: std::fmt::Debug + Send + Sync + 'static {
+pub trait Feed: std::fmt::Debug + Send + Sync + DowncastSync + 'static {
     /// Fetch items from the feed.
     #[allow(unused_variables)]
     async fn update(&mut self, ctx: &UpdaterContext, attr: &FeedAttributes) {}
@@ -25,3 +27,5 @@ pub trait Feed: std::fmt::Debug + Send + Sync + 'static {
         }
     }
 }
+
+impl_downcast!(sync Feed);

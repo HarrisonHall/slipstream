@@ -6,10 +6,11 @@ use super::*;
 pub struct FeedDefinition {
     #[serde(flatten)]
     feed: RawFeed,
+    #[serde(default)]
     tags: Option<Vec<String>>,
-    #[serde(flatten)]
+    #[serde(default, flatten)]
     filters: Filters,
-    #[serde(flatten)]
+    #[serde(default, flatten)]
     options: FeedOptions,
 }
 
@@ -200,103 +201,112 @@ impl EntryExt for slipfeed::Entry {
 
 pub use slipfeed::StandardSyndication as StandardFeed;
 
-pub struct AggregateWorld {
-    /// Map of feed name to id.
-    feed_ids: HashMap<String, slipfeed::FeedId>,
-    /// Map of feed id to name.
-    feed_names: HashMap<slipfeed::FeedId, String>,
-    /// Map of feed id to aggregates.
-    feed_feeds: HashMap<slipfeed::FeedId, Vec<String>>,
-}
+// pub struct AggregateWorld {
+//     /// Map of feed name to id.
+//     feed_ids: HashMap<String, slipfeed::FeedId>,
+//     /// Map of feed id to name.
+//     feed_names: HashMap<slipfeed::FeedId, String>,
+//     /// Map of feed id to aggregates.
+//     feed_feeds: HashMap<slipfeed::FeedId, Vec<String>>,
+// }
 
-impl AggregateWorld {
-    pub fn new() -> Arc<RwLock<Self>> {
-        Arc::new(RwLock::new(Self {
-            feed_ids: HashMap::new(),
-            feed_names: HashMap::new(),
-            feed_feeds: HashMap::new(),
-        }))
-    }
+// impl AggregateWorld {
+//     pub fn new() -> Arc<RwLock<Self>> {
+//         Arc::new(RwLock::new(Self {
+//             feed_ids: HashMap::new(),
+//             feed_names: HashMap::new(),
+//             feed_feeds: HashMap::new(),
+//         }))
+//     }
 
-    pub fn insert(
-        &mut self,
-        name: impl Into<String>,
-        id: slipfeed::FeedId,
-        aggs: Option<Vec<String>>,
-    ) {
-        let name = name.into();
-        self.feed_ids.insert(name.clone(), id);
-        self.feed_names.insert(id, name);
-        self.feed_feeds
-            .insert(id, aggs.unwrap_or_else(|| Vec::new()));
-    }
+//     pub fn insert(
+//         &mut self,
+//         name: impl Into<String>,
+//         id: slipfeed::FeedId,
+//         aggs: Option<Vec<String>>,
+//     ) {
+//         let name = name.into();
+//         self.feed_ids.insert(name.clone(), id);
+//         self.feed_names.insert(id, name);
+//         self.feed_feeds
+//             .insert(id, aggs.unwrap_or_else(|| Vec::new()));
+//     }
 
-    fn feed_owns_entry(
-        &self,
-        feed: slipfeed::FeedId,
-        entry: &slipfeed::Entry,
-    ) -> bool {
-        // FUTURE: Use graph solver!
-        return self.feed_owns_entry_lim(feed, entry, 6);
-    }
+//     fn feed_owns_entry(
+//         &self,
+//         feed: slipfeed::FeedId,
+//         entry: &slipfeed::Entry,
+//     ) -> bool {
+//         // FUTURE: Use graph solver!
+//         return self.feed_owns_entry_lim(feed, entry, 6);
+//     }
 
-    fn feed_owns_entry_lim(
-        &self,
-        feed: slipfeed::FeedId,
-        entry: &slipfeed::Entry,
-        limit: u8,
-    ) -> bool {
-        // If we're out, we're out.
-        if limit == 0 {
-            return false;
-        }
+//     fn feed_owns_entry_lim(
+//         &self,
+//         feed: slipfeed::FeedId,
+//         entry: &slipfeed::Entry,
+//         limit: u8,
+//     ) -> bool {
+//         // If we're out, we're out.
+//         if limit == 0 {
+//             return false;
+//         }
 
-        // Check direct ownership.
-        if entry.is_from_feed(feed) {
-            return true;
-        }
+//         // Check direct ownership.
+//         if entry.is_from_feed(feed) {
+//             return true;
+//         }
 
-        // Check indirect ownership.
-        let feeds = match self.feed_feeds.get(&feed) {
-            Some(feeds) => feeds,
-            None => {
-                tracing::warn!("Empty AggregateWorld lacks feed {:?}.", feed);
-                return false;
-            }
-        };
-        return feeds.iter().any(|feed_name| {
-            if let Some(feed_id) = self.feed_ids.get(feed_name) {
-                self.feed_owns_entry_lim(*feed_id, entry, limit - 1)
-            } else {
-                tracing::warn!("AggregateWorld lacks feed {}.", feed_name);
-                false
-            }
-        });
-    }
-}
+//         // Check indirect ownership.
+//         let feeds = match self.feed_feeds.get(&feed) {
+//             Some(feeds) => feeds,
+//             None => {
+//                 tracing::warn!("Empty AggregateWorld lacks feed {:?}.", feed);
+//                 return false;
+//             }
+//         };
+//         return feeds.iter().any(|feed_name| {
+//             if let Some(feed_id) = self.feed_ids.get(feed_name) {
+//                 self.feed_owns_entry_lim(*feed_id, entry, limit - 1)
+//             } else {
+//                 tracing::warn!("AggregateWorld lacks feed {}.", feed_name);
+//                 false
+//             }
+//         });
+//     }
+// }
 
-impl std::fmt::Debug for AggregateWorld {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return f.debug_struct("AggregateWorld").finish();
-    }
-}
+// impl std::fmt::Debug for AggregateWorld {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         return f.debug_struct("AggregateWorld").finish();
+//     }
+// }
 
 #[derive(Clone, Debug)]
 pub struct AggregateFeed {
-    world: Arc<RwLock<AggregateWorld>>,
+    pub(crate) feed_ids: Vec<slipfeed::FeedId>,
 }
 
 impl AggregateFeed {
-    pub fn new(world: Arc<RwLock<AggregateWorld>>) -> Box<Self> {
-        return Box::new(Self { world });
+    pub fn new() -> Box<Self> {
+        return Box::new(Self {
+            feed_ids: Vec::new(),
+        });
     }
 
     async fn owns_entry(
         &self,
-        id: slipfeed::FeedId,
+        _id: slipfeed::FeedId,
         entry: &slipfeed::Entry,
     ) -> bool {
-        return self.world.read().await.feed_owns_entry(id, entry);
+        for feed_id in &self.feed_ids {
+            for original_id in entry.feeds().iter() {
+                if *feed_id == original_id.id {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -389,8 +399,12 @@ impl slipfeed::Feed for AggregateTagFeed {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct NoopFeed;
+/// A feed that does nothing for convenience.
+#[derive(Clone, Debug, Default)]
+pub struct NoopFeed {
+    /// Empty field necessary for downcast.
+    _noop: std::marker::PhantomData<()>,
+}
 
 #[slipfeed::feed_trait]
 impl slipfeed::Feed for NoopFeed {

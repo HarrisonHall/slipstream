@@ -6,12 +6,14 @@ use super::*;
 #[derive(Clone)]
 pub struct FeedAttributes {
     /// Feed name.
-    /// This need not unique-- just something consistent that can be displayed.
+    /// This need not be unique-- just something consistent that can be displayed.
     pub display_name: Arc<String>,
     /// How old entries must be, to be ignored.
     pub timeout: Duration,
     /// How often the feed should update.
     pub freq: Option<Duration>,
+    /// Feed update step.
+    pub step: u8,
     /// Header overrides.
     pub headers: BTreeMap<String, String>,
     /// Tags associated with the feed.
@@ -31,6 +33,7 @@ impl FeedAttributes {
             display_name: Arc::new(":empty:".into()),
             timeout: Duration::from_seconds(15),
             freq: None,
+            step: 5,
             headers: BTreeMap::new(),
             tags: HashSet::new(),
             filters: Vec::new(),

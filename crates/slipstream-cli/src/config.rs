@@ -2,6 +2,10 @@
 
 use super::*;
 
+const DEFAULT_FEED_STEP: u8 = 3;
+const DEFAULT_FEED_AGG_STEP: u8 = 5;
+const DEFAULT_FEED_TAG_STEP: u8 = 7;
+
 /// Configuration for slipstream.
 /// This is parsed from the toml slipstream configuration file.
 #[derive(Debug, Serialize, Deserialize)]
@@ -77,8 +81,6 @@ impl Config {
         updater.entry_db = Some(Arc::new(entry_db));
 
         if let Some(feeds) = &self.feeds {
-            let world = AggregateWorld::new();
-
             // Add raw feeds.
             for (name, feed_def) in feeds {
                 let mut attr = slipfeed::FeedAttributes::new();
@@ -107,31 +109,28 @@ impl Config {
 
                 match feed_def.feed() {
                     RawFeed::Raw { url } => {
+                        attr.step = options.step(DEFAULT_FEED_STEP);
                         let feed = StandardFeed::new(url);
                         let mut inner_updater = updater.updater.write().await;
                         let id = inner_updater.add_feed(feed, attr);
                         updater.feeds.insert(name.clone(), id);
                         updater.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added standard feed {}.", name);
-                        world.write().await.insert(name.clone(), id, None);
                     }
-                    RawFeed::Aggregate { feeds } => {
-                        let feed = AggregateFeed::new(world.clone());
+                    RawFeed::Aggregate { .. } => {
+                        attr.step = options.step(DEFAULT_FEED_AGG_STEP);
+                        let feed = AggregateFeed::new();
                         let mut inner_updater = updater.updater.write().await;
                         let id = inner_updater.add_feed(feed, attr);
                         updater.feeds.insert(name.clone(), id);
                         updater.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added aggregate feed {}.", name);
-                        world.write().await.insert(
-                            name.clone(),
-                            id,
-                            Some(feeds.clone()),
-                        );
                     }
                     RawFeed::AggregateTag {
                         tag_allowlist,
                         tag_blocklist,
                     } => {
+                        attr.step = options.step(DEFAULT_FEED_TAG_STEP);
                         let mut feed = AggregateTagFeed::new();
                         feed.allowlist = tag_allowlist
                             .into_iter()
@@ -146,13 +145,13 @@ impl Config {
                         updater.feeds.insert(name.clone(), id);
                         updater.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added aggregate tag feed {}.", name);
-                        world.write().await.insert(name.clone(), id, None);
                     }
                     RawFeed::MastodonStatuses {
                         mastodon,
                         feed_type,
                         token,
                     } => {
+                        attr.step = options.step(DEFAULT_FEED_STEP);
                         let feed = slipfeed::MastodonFeed::new(
                             mastodon,
                             feed_type.into(),
@@ -163,13 +162,13 @@ impl Config {
                         updater.feeds.insert(name.clone(), id);
                         updater.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added mastodon feed {}.", name);
-                        world.write().await.insert(name.clone(), id, None);
                     }
                     RawFeed::MastodonUserStatuses {
                         mastodon,
                         user,
                         token,
                     } => {
+                        attr.step = options.step(DEFAULT_FEED_STEP);
                         let feed = slipfeed::MastodonFeed::new(
                             mastodon,
                             slipfeed::MastodonFeedType::UserStatuses {
@@ -183,9 +182,63 @@ impl Config {
                         updater.feeds.insert(name.clone(), id);
                         updater.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added mastodon feed {}.", name);
-                        world.write().await.insert(name.clone(), id, None);
                     }
                 };
+            }
+
+            // Add reference to child feeds for aggregate feeds.
+            for (name, feed_def) in feeds {
+                match feed_def.feed() {
+                    RawFeed::Aggregate { feeds: input_feeds } => {
+                        // Get ids of children.
+                        let mut child_ids = Vec::<slipfeed::FeedId>::new();
+                        for input_feed_name in input_feeds {
+                            if let Some(input_feed_id) =
+                                updater.feeds.get(input_feed_name)
+                            {
+                                child_ids.push(*input_feed_id);
+                            } else {
+                                tracing::warn!(
+                                    "Aggregate feed {} referenced feed {} that does not exist.",
+                                    name,
+                                    input_feed_name
+                                );
+                            }
+                        }
+
+                        // Apply to aggregate.
+                        if let Some(aggregate_feed_id) = updater.feeds.get(name)
+                        {
+                            let mut updater = updater.updater.write().await;
+                            if let Some(trait_feed) =
+                                updater.get_feed(*aggregate_feed_id)
+                            {
+                                let mut trait_feed = trait_feed.write().await;
+                                if let Some(agg) =
+                                    trait_feed.downcast_mut::<AggregateFeed>()
+                                {
+                                    agg.feed_ids = child_ids;
+                                } else {
+                                    tracing::error!(
+                                        "Aggregate feed {} is the incorrect type.",
+                                        name
+                                    );
+                                }
+                            }
+                        } else {
+                            tracing::error!(
+                                "Cannot initialize aggregate feed {name}, does not exist."
+                            );
+                        }
+                        tracing::debug!(
+                            "Updated children for aggregate feed {}.",
+                            name,
+                        );
+                    }
+                    _ => {
+                        // Do nothing for other feeds.
+                    }
+                }
             }
         }
 
