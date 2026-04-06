@@ -43,6 +43,8 @@ impl Default for TerminalState {
 pub struct InteractionState {
     /// Which section should have focus.
     pub focus: Focus,
+    /// Which list to render.
+    pub list_mode: ListMode,
     /// Current selected entry index.
     pub selection: usize,
     /// Previous search.
@@ -74,6 +76,7 @@ impl Default for InteractionState {
     fn default() -> Self {
         Self {
             focus: Focus::List,
+            list_mode: ListMode::Groups,
             selection: 0,
             previous_search: Vec::new(),
             previous_offset: OffsetCursor::LatestTimestamp,
@@ -175,4 +178,9 @@ impl LastFrameInputs {
 enum ScrollDirection {
     Up,
     Down,
+}
+
+enum ListMode {
+    Entries,
+    Groups,
 }

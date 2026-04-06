@@ -4,6 +4,7 @@ pub use cli::*;
 pub use config::*;
 pub use database::*;
 pub use feeds::*;
+pub use groups::*;
 pub use logging::*;
 pub use modes::*;
 

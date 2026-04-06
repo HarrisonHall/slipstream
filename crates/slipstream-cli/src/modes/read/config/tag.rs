@@ -8,6 +8,9 @@ pub struct TagConfig {
     pub hidden: Vec<String>,
     /// Tag colors, in descending order of importance.
     pub colors: Vec<TagColor>,
+    /// Indicator config.
+    #[serde(default)]
+    pub indicator: Option<IndicatorConfig>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -33,6 +36,12 @@ impl TagColor {
     pub fn apply_style(&self, style: &mut Style) {
         self.color.apply_style(style);
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct IndicatorConfig {
+    pub symbol: String,
+    pub color: ColorConfig,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -4,6 +4,7 @@ mod cli;
 mod config;
 mod database;
 mod feeds;
+mod groups;
 mod logging;
 mod modes;
 pub mod prelude;

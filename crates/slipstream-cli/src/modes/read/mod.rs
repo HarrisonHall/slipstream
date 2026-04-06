@@ -87,6 +87,8 @@ struct Reader {
         tokio::task::JoinSet<(EntryDbId, command::CommandResultContext)>,
     /// Entries.
     entries: DatabaseEntryList,
+    /// Entries, grouped.
+    entries_grouped: EntryGroupings,
     /// Cached of the terminal.
     terminal_state: TerminalState,
     /// State of user interaction.
@@ -102,12 +104,16 @@ impl Reader {
         updater: UpdaterHandle,
         cancel_token: CancellationToken,
     ) -> Result<Self> {
+        let entries = DatabaseEntryList::new(0);
+        let entries_grouped =
+            EntryGroupings::new(&DatabaseEntryList::new(0), &config.read);
         Ok(Self {
             config,
             updater,
             refresh: None,
             command_futures: tokio::task::JoinSet::new(),
-            entries: DatabaseEntryList::new(0),
+            entries,
+            entries_grouped,
             terminal_state: TerminalState::default(),
             interaction_state: InteractionState::default(),
             cancel_token,
@@ -586,6 +592,10 @@ impl Reader {
                 match entries_fut.await {
                     Ok(entries) => {
                         self.entries = entries;
+                        self.entries_grouped = EntryGroupings::new(
+                            &self.entries,
+                            &self.config.read,
+                        );
                         if !self.interaction_state.repeat_previous
                             || self.interaction_state.selection
                                 >= self.entries.len()

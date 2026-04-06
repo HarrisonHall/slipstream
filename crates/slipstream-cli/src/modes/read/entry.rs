@@ -420,3 +420,43 @@ impl std::ops::IndexMut<usize> for DatabaseEntryList {
         self.entries.index_mut(index)
     }
 }
+
+pub struct GroupWidget<'a> {
+    group: &'a mut EntryGroup,
+    config: &'a Config,
+    interaction_state: &'a InteractionState,
+    terminal_state: &'a TerminalState,
+}
+
+impl<'a> GroupWidget<'a> {
+    pub fn new(
+        group: &'a mut EntryGroup,
+        config: &'a Config,
+        interaction_state: &'a InteractionState,
+        terminal_state: &'a TerminalState,
+    ) -> Self {
+        Self {
+            group,
+            config,
+            interaction_state,
+            terminal_state,
+        }
+    }
+}
+
+impl<'a> Widget for GroupWidget<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer)
+    where
+        Self: Sized,
+    {
+        let hor_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(&[Constraint::Percentage(100)])
+            .split(area);
+
+        let text = ratatui::widgets::Paragraph::new(
+            self.group.entries[0].author().as_str(),
+        );
+        text.render(hor_layout[0], buf);
+    }
+}
