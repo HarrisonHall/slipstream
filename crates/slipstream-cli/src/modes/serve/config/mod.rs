@@ -7,7 +7,7 @@ use super::*;
 pub struct ServeConfig {
     /// Port.
     pub port: Option<u16>,
-    /// Address
+    /// Address.
     pub address: Option<String>,
     /// All configuration.
     pub all: Option<GlobalConfig>,

@@ -1020,18 +1020,34 @@ impl<'a> Widget for ReaderWidget<'a> {
             })
             .enumerate()
             .for_each(|(line_num, (entry_num, entry))| {
-                let feed: String = 'feed: {
-                    for feed_ref in entry.feeds().iter() {
-                        break 'feed (*feed_ref.name).clone();
-                    }
-                    "???".to_owned()
-                };
+                // let feed: String = 'feed: {
+                //     for feed_ref in entry.feeds().iter() {
+                //         break 'feed (*feed_ref.name).clone();
+                //     }
+                //     "???".to_owned()
+                // };
 
                 let selected: bool =
                     entry_num == self.reader.interaction_state.selection;
 
-                let style = if selected {
-                    if self.reader.terminal_state.has_focus {
+                let mut indicators = Vec::new();
+
+                let mut style = Style::new();
+                for color_rule in &self.reader.config.read.tags.colors {
+                    if color_rule.matches(entry) {
+                        color_rule.apply_style(&mut style);
+                        if let Some(mut indicator) = color_rule.indicator() {
+                            if selected {
+                                indicator =
+                                    indicator.bg(Color::Green).fg(Color::Black);
+                            }
+                            indicators.push(indicator);
+                        }
+                    }
+                }
+
+                if selected {
+                    style = if self.reader.terminal_state.has_focus {
                         match self.reader.interaction_state.focus {
                             Focus::Entry => {
                                 Style::new().bg(Color::Black).fg(Color::Green)
@@ -1040,16 +1056,8 @@ impl<'a> Widget for ReaderWidget<'a> {
                         }
                     } else {
                         Style::new().bg(Color::White).fg(Color::Black)
-                    }
-                } else {
-                    let mut style = Style::new();
-                    for color_rule in &self.reader.config.read.tags.colors {
-                        if color_rule.matches(entry) {
-                            color_rule.apply_style(&mut style);
-                        }
-                    }
-                    style
-                };
+                    };
+                }
 
                 let line_layout = Rect {
                     x: list_layout.x,
@@ -1067,20 +1075,47 @@ impl<'a> Widget for ReaderWidget<'a> {
                     self.reader.interaction_state.selection = entry_num;
                 }
 
-                Line::from(vec![
-                    Span::styled(
-                        format!("[{:<10}]", &feed[..10.min(feed.len())]),
-                        if selected {
-                            Style::new().bg(Color::Green).fg(Color::Black)
-                        } else {
-                            Style::new().fg(Color::Cyan)
-                        },
-                    ),
-                    Span::from(" "),
-                    Span::styled(entry.title(), style),
-                ])
-                .style(if selected { style } else { Style::new() })
-                .render(line_layout, buf);
+                let split_line_layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints(&[
+                        Constraint::Length(1),
+                        Constraint::Length(1),
+                        Constraint::Length(1),
+                        Constraint::Length(1),
+                        Constraint::Fill(1),
+                    ])
+                    .split(line_layout);
+
+                // Line::raw(" ").style(style).render(line_layout, buf);
+                for i in 0..4 {
+                    if let Some(span) = indicators.get(i) {
+                        span.render(split_line_layout[i], buf);
+                    } else {
+                        // Span::raw(" ")
+                        //     .style(style)
+                        //     .render(split_line_layout[i], buf);
+                    }
+                }
+                // for (i, span) in indicators.iter().enumerate() {
+                //     span.render(split_line_layout[i], buf);
+                // }
+                Span::styled(entry.title(), style)
+                    .render(*split_line_layout.last().unwrap(), buf);
+
+                // Line::from(vec![
+                //     Span::styled(
+                //         format!("[{:<10}]", &feed[..10.min(feed.len())]),
+                //         if selected {
+                //             Style::new().bg(Color::Green).fg(Color::Black)
+                //         } else {
+                //             Style::new().fg(Color::Cyan)
+                //         },
+                //     ),
+                //     Span::from(" "),
+                //     Span::styled(entry.title(), style),
+                // ])
+                // .style(if selected { style } else { Style::new() })
+                // .render(line_layout, buf);
             });
 
         // Render the selection:

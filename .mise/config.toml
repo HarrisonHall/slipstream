@@ -29,7 +29,7 @@ run = "cargo run --bin slipstream -- --debug -c ./examples/config/slipreader.tom
 
 [tasks.debug-slipreader-local]
 description = "Run debug slipreader with local config."
-run = "cargo run --bin slipstream -- --debug read"
+run = "cargo run --bin slipstream -- --debug -c ~/.config/slipstream/slipreader.toml read"
 
 [tasks.debug-verify]
 description = "Verify config."

@@ -86,6 +86,8 @@ color = { bg = "light-cyan", fg = "black" }
 [[read.tags.colors]]
 tag = "important"
 color = { bg = "red", fg = "black" }
+indicator.symbol = "!"
+indicator.color = "white"
 
 [[read.tags.colors]]
 tag = "unread"
@@ -94,6 +96,8 @@ color = { fg = "yellow" }
 [[read.tags.colors]]
 tag = "japanese"
 color = { underline = "red" }
+indicator.symbol = "J"
+indicator.color = "red"
 
 [read.hooks]
 fetch = []

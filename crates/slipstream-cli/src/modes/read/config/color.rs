@@ -31,6 +31,11 @@ impl ColorConfig {
     pub fn style(&self) -> Style {
         Style::from(self)
     }
+
+    /// Whether or not this config has any colors specified.
+    pub fn specified(&self) -> bool {
+        self.fg.is_some() || self.bg.is_some() || self.underline.is_some()
+    }
 }
 
 impl From<&ColorConfig> for Style {

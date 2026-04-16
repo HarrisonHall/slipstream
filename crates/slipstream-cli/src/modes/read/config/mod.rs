@@ -4,10 +4,12 @@ use super::*;
 
 mod color;
 mod command;
+mod flag;
 mod tag;
 
 pub use color::*;
 pub use command::*;
+pub use flag::*;
 pub use tag::*;
 
 /// Read configuration.

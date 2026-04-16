@@ -15,14 +15,23 @@ pub struct TagColor {
     /// Tag(s) that color should apply to.
     #[serde(flatten)]
     tag: TagOrTags,
-    /// Color for the tag.
+    /// Optional color for the tag.
+    #[serde(default)]
     color: ColorConfig,
+    /// Optional indicator for the tag.
+    #[serde(default)]
+    indicator: Option<FlagConfig>,
 }
 
 impl TagColor {
     pub fn matches(&self, entry: &slipfeed::Entry) -> bool {
+        // If no colors or indicators are specified, don't do anything for this
+        // tag.
+        if !self.color.specified() || self.indicator.is_none() {
+            return false;
+        }
+
         self.tag.matches_all(entry)
-        // entry.has_tag_fuzzy(&self.tag)
     }
 
     #[allow(unused)]
@@ -32,6 +41,13 @@ impl TagColor {
 
     pub fn apply_style(&self, style: &mut Style) {
         self.color.apply_style(style);
+    }
+
+    pub fn indicator<'a>(&'a self) -> Option<Span<'a>> {
+        match &self.indicator {
+            Some(indicator) => indicator.as_span(),
+            None => None,
+        }
     }
 }
 
