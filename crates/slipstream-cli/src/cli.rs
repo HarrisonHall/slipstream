@@ -92,6 +92,9 @@ pub enum CommandMode {
         /// Set the host port (default=3000).
         #[arg(short, long, value_name = "PORT")]
         port: Option<u16>,
+        /// The address to listen on (default="0.0.0.0")
+        #[arg(short, long)]
+        address: Option<String>,
     },
     /// Read feeds in a local tui.
     Read,

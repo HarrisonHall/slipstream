@@ -25,6 +25,7 @@ const DEFAULT_CONFIG_DIR: LazyCell<String> = LazyCell::new(|| {
     }
 });
 const DEFAULT_PORT: u16 = 3000;
+const DEFAULT_ADDRESS: &str = "0.0.0.0";
 const DEFAULT_UPDATE_SEC: u16 = 120;
 
 /// Entry point for slipstream.
@@ -62,8 +63,9 @@ async fn main() -> Result<()> {
 
     // Run the command:
     match &cli.command {
-        CommandMode::Serve { port } => tasks.spawn(serve_cli(
+        CommandMode::Serve {port, address } => tasks.spawn(serve_cli(
             port.clone(),
+            address.clone(),
             config.clone(),
             updater_handle,
             cancel_token.clone(),
