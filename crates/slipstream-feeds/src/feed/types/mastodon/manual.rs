@@ -148,8 +148,10 @@ impl MastodonFeed {
         let mut builder = EntryBuilder::new();
 
         let mut content: String = status.content.clone();
-        let md_content: String =
-            html2md::rewrite_html(&status.content, false).trim().into();
+        let md_content: String = htmd::convert(&status.content)
+            .unwrap_or(status.content.clone())
+            .trim()
+            .to_string();
         if !attr.keep_empty && md_content.is_empty() {
             return None;
         }
@@ -157,7 +159,8 @@ impl MastodonFeed {
         builder.title(format!(
             "{}: \"{}\" ({})",
             &status.account.display_name,
-            html2md::rewrite_html(&status.content, false)
+            htmd::convert(&status.content)
+                .unwrap_or(status.content.clone())
                 .chars()
                 .take(40)
                 .collect::<String>(),
@@ -192,7 +195,7 @@ impl MastodonFeed {
             content = format!("{}<br></br>{}", &content, &card.html);
         }
         builder.source_id(&status.id);
-        builder.content(html2md::rewrite_html(&content, false));
+        builder.content(htmd::convert(&content).unwrap_or(content.clone()));
 
         let mut entry = builder.build();
 

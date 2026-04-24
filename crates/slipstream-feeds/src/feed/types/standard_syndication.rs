@@ -101,12 +101,14 @@ impl StandardSyndication {
                     .trim(),
             )
             .content(match atom_entry.summary() {
-                Some(sum) => html2md::rewrite_html(&sum.value, false),
+                Some(sum) => {
+                    htmd::convert(&sum.value).unwrap_or(sum.value.clone())
+                }
                 None => match atom_entry.content() {
-                    Some(content) => html2md::rewrite_html(
-                        content.value().unwrap_or(""),
-                        false,
-                    ),
+                    Some(content) => {
+                        let raw = content.value.clone().unwrap_or("".into());
+                        htmd::convert(&raw).unwrap_or(raw.clone())
+                    }
                     None => "".into(),
                 },
             });
@@ -164,13 +166,13 @@ impl StandardSyndication {
                 ctx.parse_time.clone()
             })
             .author(rss_entry.author().unwrap_or(""))
-            .content(html2md::rewrite_html(
-                match rss_entry.description() {
-                    Some(desc) => desc,
-                    None => rss_entry.content().unwrap_or(""),
-                },
-                false,
-            ));
+            .content(match rss_entry.content() {
+                Some(desc) => htmd::convert(desc).unwrap_or(desc.to_string()),
+                None => {
+                    let raw = rss_entry.description().unwrap_or("");
+                    htmd::convert(raw).unwrap_or(raw.to_string())
+                }
+            });
         if let Some(link) = rss_entry.link() {
             parsed.source(link);
         }
