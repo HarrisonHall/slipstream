@@ -14,7 +14,7 @@ rust-version.workspace = true
 
 [dependencies]
 chrono = { workspace = true }
-fast_html2md = { workspace = true }
+htmd = { workspace = true }
 futures = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
