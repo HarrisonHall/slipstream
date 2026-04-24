@@ -16,6 +16,7 @@ use web::*;
 /// Serve slipstream over http.
 pub async fn serve_cli(
     port: Option<u16>,
+    address: Option<String>,
     config: Arc<Config>,
     updater: UpdaterHandle,
     cancel_token: CancellationToken,
@@ -54,13 +55,14 @@ pub async fn serve_cli(
             html,
         }));
     let port = port.unwrap_or(config.serve.port.unwrap_or(DEFAULT_PORT));
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+    let address = address.unwrap_or(config.serve.address.clone().unwrap_or(DEFAULT_ADDRESS.into()));
+    let listener = tokio::net::TcpListener::bind(format!("{address}:{port}"))
         .await
         .expect(&format!("Unable to bind to port {}", port));
 
     // Serve.
     tracing::info!("slipstream serve");
-    tracing::info!("Serving feeds @ 0.0.0.0:{}", port);
+    tracing::info!("Serving feeds @ {address}:{port}");
 
     let served = axum::serve(listener, app);
     let cancelled = cancel_token.cancelled();
