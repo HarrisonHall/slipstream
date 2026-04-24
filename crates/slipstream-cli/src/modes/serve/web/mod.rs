@@ -156,7 +156,10 @@ struct MinEntry {
 
 impl MinEntry {
     fn from_entry(value: &slipfeed::Entry, config: &Config) -> Self {
-        let md_parser = pulldown_cmark::Parser::new(value.content());
+        let md_parser = pulldown_cmark::Parser::new_ext(
+            value.content(),
+            pulldown_cmark::Options::all(),
+        );
         let mut content = String::new();
         pulldown_cmark::html::push_html(&mut content, md_parser);
         Self {
