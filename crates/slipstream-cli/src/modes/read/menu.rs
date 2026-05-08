@@ -24,8 +24,8 @@ impl<'a> Widget for MenuWidget<'a> {
             .constraints(vec![
                 Constraint::Min(1),
                 Constraint::Min(1),
-                Constraint::Percentage(75),
                 Constraint::Percentage(25),
+                Constraint::Percentage(75),
                 Constraint::Min(1),
             ])
             .split(area);
@@ -65,7 +65,11 @@ impl<'a> Widget for MenuWidget<'a> {
                 .into_text()
                 .unwrap_or_else(|_| Text::raw("")),
         )
-        .block(Block::bordered().title("Logs"))
+        .block(
+            Block::bordered()
+                .border_type(ratatui::widgets::BorderType::Rounded)
+                .title("Logs"),
+        )
         .render(log_layout, buf);
 
         // Show help.

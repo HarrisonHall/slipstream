@@ -948,7 +948,7 @@ impl<'a> Widget for ReaderWidget<'a> {
             .reader
             .terminal_state
             .last_frame_inputs
-            .clicked(list_layout)
+            .hovered(list_layout)
         {
             self.reader.interaction_state.focus = Focus::List;
         }
@@ -956,7 +956,7 @@ impl<'a> Widget for ReaderWidget<'a> {
             .reader
             .terminal_state
             .last_frame_inputs
-            .clicked(entry_layout)
+            .hovered(entry_layout)
         {
             self.reader.interaction_state.focus = Focus::Entry;
         }
@@ -1020,45 +1020,6 @@ impl<'a> Widget for ReaderWidget<'a> {
             })
             .enumerate()
             .for_each(|(line_num, (entry_num, entry))| {
-                // let feed: String = 'feed: {
-                //     for feed_ref in entry.feeds().iter() {
-                //         break 'feed (*feed_ref.name).clone();
-                //     }
-                //     "???".to_owned()
-                // };
-
-                let selected: bool =
-                    entry_num == self.reader.interaction_state.selection;
-
-                let mut indicators = Vec::new();
-
-                let mut style = Style::new();
-                for color_rule in &self.reader.config.read.tags.colors {
-                    if color_rule.matches(entry) {
-                        color_rule.apply_style(&mut style);
-                        if let Some(mut indicator) = color_rule.indicator() {
-                            if selected {
-                                indicator =
-                                    indicator.bg(Color::Green).fg(Color::Black);
-                            }
-                            indicators.push(indicator);
-                        }
-                    }
-                }
-
-                if selected {
-                    style = if self.reader.terminal_state.has_focus {
-                        match self.reader.interaction_state.focus {
-                            Focus::Entry => {
-                                Style::new().bg(Color::Black).fg(Color::Green)
-                            }
-                            _ => Style::new().bg(Color::Green).fg(Color::Black),
-                        }
-                    } else {
-                        Style::new().bg(Color::White).fg(Color::Black)
-                    };
-                }
-
                 let line_layout = Rect {
                     x: list_layout.x,
                     y: list_layout.y + (line_num as u16),
@@ -1075,6 +1036,61 @@ impl<'a> Widget for ReaderWidget<'a> {
                     self.reader.interaction_state.selection = entry_num;
                 }
 
+                let selected: bool =
+                    entry_num == self.reader.interaction_state.selection;
+                let hovering: bool = self
+                    .reader
+                    .terminal_state
+                    .last_frame_inputs
+                    .hovering(line_layout);
+
+                let mut indicators = Vec::new();
+
+                let mut line_style = Style::new();
+                let mut entry_style = Style::new();
+                for color_rule in &self.reader.config.read.tags.colors {
+                    if color_rule.matches(entry) {
+                        color_rule.apply_style(&mut entry_style);
+                        if let Some(mut indicator) = color_rule.indicator() {
+                            if hovering {
+                                indicator =
+                                    indicator.bg(Color::Gray).fg(Color::Black);
+                            }
+                            if selected {
+                                indicator =
+                                    indicator.bg(Color::Green).fg(Color::Black);
+                            }
+                            indicators.push(indicator);
+                        }
+                    }
+                }
+
+                if hovering {
+                    if self.reader.terminal_state.has_focus {
+                        entry_style = match self.reader.interaction_state.focus
+                        {
+                            Focus::Entry => {
+                                Style::new().bg(Color::Black).fg(Color::Gray)
+                            }
+                            _ => Style::new().bg(Color::Gray).fg(Color::Black),
+                        };
+                        line_style = entry_style;
+                    }
+                }
+                if selected {
+                    entry_style = if self.reader.terminal_state.has_focus {
+                        match self.reader.interaction_state.focus {
+                            Focus::Entry => {
+                                Style::new().bg(Color::Black).fg(Color::Green)
+                            }
+                            _ => Style::new().bg(Color::Green).fg(Color::Black),
+                        }
+                    } else {
+                        Style::new().bg(Color::White).fg(Color::Black)
+                    };
+                    line_style = entry_style;
+                }
+
                 let split_line_layout = Layout::default()
                     .direction(Direction::Horizontal)
                     .constraints(&[
@@ -1086,36 +1102,14 @@ impl<'a> Widget for ReaderWidget<'a> {
                     ])
                     .split(line_layout);
 
-                // Line::raw(" ").style(style).render(line_layout, buf);
+                Line::raw(" ").style(line_style).render(line_layout, buf);
                 for i in 0..4 {
                     if let Some(span) = indicators.get(i) {
                         span.render(split_line_layout[i], buf);
-                    } else {
-                        // Span::raw(" ")
-                        //     .style(style)
-                        //     .render(split_line_layout[i], buf);
                     }
                 }
-                // for (i, span) in indicators.iter().enumerate() {
-                //     span.render(split_line_layout[i], buf);
-                // }
-                Span::styled(entry.title(), style)
+                Span::styled(entry.title(), entry_style)
                     .render(*split_line_layout.last().unwrap(), buf);
-
-                // Line::from(vec![
-                //     Span::styled(
-                //         format!("[{:<10}]", &feed[..10.min(feed.len())]),
-                //         if selected {
-                //             Style::new().bg(Color::Green).fg(Color::Black)
-                //         } else {
-                //             Style::new().fg(Color::Cyan)
-                //         },
-                //     ),
-                //     Span::from(" "),
-                //     Span::styled(entry.title(), style),
-                // ])
-                // .style(if selected { style } else { Style::new() })
-                // .render(line_layout, buf);
             });
 
         // Render the selection:

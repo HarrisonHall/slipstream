@@ -149,13 +149,13 @@ impl<'a> Widget for EntryViewWidget<'a> {
         Self: Sized,
     {
         // Render outline.
-        let block =
-            Block::bordered()
-                .title(self.entry.title().as_str())
-                .fg(match self.interaction_state.focus {
-                    Focus::Entry => Color::Green,
-                    _ => Color::White,
-                });
+        let block = Block::bordered()
+            .title(self.entry.title().as_str())
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .fg(match self.interaction_state.focus {
+                Focus::Entry => Color::Green,
+                _ => Color::White,
+            });
         let inner_block = block.inner(area);
         block.render(area, buf);
 
@@ -164,7 +164,6 @@ impl<'a> Widget for EntryViewWidget<'a> {
             .direction(Direction::Vertical)
             .constraints(&[Constraint::Min(1), Constraint::Percentage(100)])
             .split(inner_block);
-        // let commands = self.entry.get_commands();
         let commands = ["info"]
             .iter()
             .map(|info| *info)

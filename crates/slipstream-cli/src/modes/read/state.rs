@@ -118,7 +118,13 @@ impl Focus {
 }
 
 pub struct LastFrameInputs {
+    /// Where the user has just clicked.
     click: Option<(u16, u16)>,
+    /// Where the user has just hovered to.
+    hover: Option<(u16, u16)>,
+    /// Last mouse position.
+    mouse: Option<(u16, u16)>,
+    /// Scroll event up/down.
     scroll: Option<ScrollDirection>,
 }
 
@@ -126,19 +132,29 @@ impl LastFrameInputs {
     pub fn new() -> Self {
         Self {
             click: None,
+            hover: None,
+            mouse: None,
             scroll: None,
         }
     }
 
     pub fn clear(&mut self) {
         self.click = None;
+        self.hover = None;
         self.scroll = None;
+        // NOTE: We do not clear mouse.
     }
 
     pub fn handle_event(&mut self, event: crossterm::event::MouseEvent) {
         match event.kind {
             event::MouseEventKind::Down(_button) => {
                 self.click = Some((event.column, event.row));
+                self.hover = Some((event.column, event.row));
+                self.mouse = Some((event.column, event.row));
+            }
+            event::MouseEventKind::Moved => {
+                self.hover = Some((event.column, event.row));
+                self.mouse = Some((event.column, event.row));
             }
             event::MouseEventKind::ScrollDown => {
                 self.scroll = Some(ScrollDirection::Down);
@@ -164,8 +180,25 @@ impl LastFrameInputs {
         return false;
     }
 
+    /// Check if area was just clicked.
     pub fn clicked(&self, area: Rect) -> bool {
         if let Some((x, y)) = self.click {
+            return area.contains(ratatui::layout::Position { x, y });
+        }
+        return false;
+    }
+
+    /// Check if area is currently being hovered.
+    pub fn hovering(&self, area: Rect) -> bool {
+        if let Some((x, y)) = self.mouse {
+            return area.contains(ratatui::layout::Position { x, y });
+        }
+        return false;
+    }
+
+    /// Check if area was just hovered.
+    pub fn hovered(&self, area: Rect) -> bool {
+        if let Some((x, y)) = self.hover {
             return area.contains(ratatui::layout::Position { x, y });
         }
         return false;
