@@ -1091,25 +1091,96 @@ impl<'a> Widget for ReaderWidget<'a> {
                     line_style = entry_style;
                 }
 
-                let split_line_layout = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints(&[
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Fill(1),
-                    ])
-                    .split(line_layout);
+                let feed: String = 'feed: {
+                    for feed_ref in entry.feeds().iter() {
+                        break 'feed (*feed_ref.name).clone();
+                    }
+                    "???".to_owned()
+                };
 
                 Line::raw(" ").style(line_style).render(line_layout, buf);
-                for i in 0..4 {
-                    if let Some(span) = indicators.get(i) {
-                        span.render(split_line_layout[i], buf);
+                let split_line_layout = self
+                    .reader
+                    .config
+                    .read
+                    .preview_format
+                    .layout()
+                    .split(line_layout);
+                for (i, token) in
+                    self.reader.config.read.preview_format.iter().enumerate()
+                {
+                    let last_token =
+                        i == self.reader.config.read.preview_format.len() - 1;
+                    match token {
+                        PreviewToken::Summary => {
+                            let summary_layout = if !last_token {
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints(&[
+                                        Constraint::Fill(1),
+                                        Constraint::Length(1),
+                                    ])
+                                    .split(split_line_layout[i])
+                            } else {
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints(&[Constraint::Fill(1)])
+                                    .split(split_line_layout[i])
+                            };
+
+                            Span::styled(entry.title(), entry_style)
+                                .render(summary_layout[0], buf);
+                        }
+                        PreviewToken::Flags => {
+                            let flag_layout = Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints(&[
+                                    Constraint::Length(1),
+                                    Constraint::Length(1),
+                                    Constraint::Length(1),
+                                    Constraint::Length(1),
+                                ])
+                                .split(split_line_layout[i]);
+                            for j in 0..4 {
+                                if let Some(span) = indicators.get(j) {
+                                    span.render(flag_layout[j], buf);
+                                }
+                            }
+                        }
+                        PreviewToken::Feed => {
+                            let feed_layout = if !last_token {
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints(&[
+                                        Constraint::Fill(1),
+                                        Constraint::Length(1),
+                                    ])
+                                    .split(split_line_layout[i])
+                            } else {
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints(&[Constraint::Fill(1)])
+                                    .split(split_line_layout[i])
+                            };
+
+                            Span::styled(
+                                format!(
+                                    "[{:<width$}]",
+                                    &feed[..feed.len().min(
+                                        feed_layout[0].width as usize - 2
+                                    )],
+                                    width = feed_layout[0].width as usize - 2
+                                ),
+                                if !selected && !hovering {
+                                    Style::new().fg(Color::LightCyan)
+                                } else {
+                                    entry_style
+                                },
+                            )
+                            .render(feed_layout[0], buf);
+                        }
                     }
                 }
-                Span::styled(entry.title(), entry_style)
-                    .render(*split_line_layout.last().unwrap(), buf);
             });
 
         // Render the selection:

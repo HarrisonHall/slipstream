@@ -5,11 +5,13 @@ use super::*;
 mod color;
 mod command;
 mod flag;
+mod preview;
 mod tag;
 
 pub use color::*;
 pub use command::*;
 pub use flag::*;
+pub use preview::*;
 pub use tag::*;
 
 /// Read configuration.
@@ -39,6 +41,9 @@ pub struct ReadConfig {
         alias = "initial-search"
     )]
     pub initial_search: String,
+    /// Per-entry preview format.
+    #[serde(default, alias = "preview-format")]
+    pub preview_format: PreviewFormat,
 }
 
 impl ReadConfig {
