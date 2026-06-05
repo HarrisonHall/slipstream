@@ -19,6 +19,15 @@ impl PreviewFormat {
                 PreviewToken::Feed => {
                     constraints.push(Constraint::Max(12));
                 }
+                PreviewToken::Date => {
+                    constraints.push(Constraint::Max(16));
+                }
+                PreviewToken::Tag => {
+                    constraints.push(Constraint::Max(12));
+                }
+                PreviewToken::Author => {
+                    constraints.push(Constraint::Max(12));
+                }
             }
         }
 
@@ -33,6 +42,7 @@ impl Default for PreviewFormat {
         Self(vec![
             PreviewToken::Feed,
             PreviewToken::Flags,
+            PreviewToken::Tag,
             PreviewToken::Summary,
         ])
     }
@@ -55,6 +65,10 @@ pub enum PreviewToken {
     Flags,
     #[serde(alias = "feed")]
     Feed,
-    // #[serde(alias = "date")]
-    // Date,
+    #[serde(alias = "date")]
+    Date,
+    #[serde(alias = "tag")]
+    Tag,
+    #[serde(alias = "author")]
+    Author,
 }

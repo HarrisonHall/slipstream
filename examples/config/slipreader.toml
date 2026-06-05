@@ -71,9 +71,17 @@ exclude-tags = ["ai", "llm", "agent", "agents", "vibecoding"]
 
 [read]
 scroll = 1
+preview_format = ["tag", "summary", "flags", "date"]
 
 [read.tags]
 hidden = ["unread", "important"]
+priority = [
+  "rust",
+  "fun",
+  "tech",
+  "science",
+  "hacking",
+]
 
 [[read.tags.colors]]
 tag = "science"
@@ -98,6 +106,10 @@ tag = "japanese"
 color = { underline = "red" }
 indicator.symbol = "J"
 indicator.color = "red"
+
+[[read.tags.colors]]
+tags = ["rust", "hacking"]
+color = { bg = "light-red", fg = "black" }
 
 [read.hooks]
 fetch = []

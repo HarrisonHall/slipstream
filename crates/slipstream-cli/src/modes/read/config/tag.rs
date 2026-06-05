@@ -5,8 +5,13 @@ use super::*;
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TagConfig {
     /// Hidden tags.
+    #[serde(default)]
     pub hidden: Vec<String>,
+    /// Priority tags.
+    #[serde(default)]
+    pub priority: Vec<String>,
     /// Tag colors, in descending order of importance.
+    #[serde(default)]
     pub colors: Vec<TagColor>,
 }
 
@@ -27,7 +32,7 @@ impl TagColor {
     pub fn matches(&self, entry: &slipfeed::Entry) -> bool {
         // If no colors or indicators are specified, don't do anything for this
         // tag.
-        if !self.color.specified() || self.indicator.is_none() {
+        if !self.color.specified() && self.indicator.is_none() {
             return false;
         }
 

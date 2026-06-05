@@ -1007,7 +1007,7 @@ impl<'a> Widget for ReaderWidget<'a> {
             }
         }
 
-        // Show titles.
+        // Show previews.
         self.reader
             .entries
             .iter()
@@ -1046,11 +1046,18 @@ impl<'a> Widget for ReaderWidget<'a> {
 
                 let mut indicators = Vec::new();
 
+                // Find style by iterating through color rules.
                 let mut line_style = Style::new();
                 let mut entry_style = Style::new();
                 for color_rule in &self.reader.config.read.tags.colors {
                     if color_rule.matches(entry) {
+                        // Apply style.
                         color_rule.apply_style(&mut entry_style);
+
+                        // Add indicator.
+                        if indicators.len() > 3 {
+                            continue;
+                        }
                         if let Some(mut indicator) = color_rule.indicator() {
                             if hovering {
                                 indicator =
@@ -1065,6 +1072,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                     }
                 }
 
+                // Selected, hovering, and focused state affects style.
                 if hovering {
                     if self.reader.terminal_state.has_focus {
                         entry_style = match self.reader.interaction_state.focus
@@ -1091,14 +1099,9 @@ impl<'a> Widget for ReaderWidget<'a> {
                     line_style = entry_style;
                 }
 
-                let feed: String = 'feed: {
-                    for feed_ref in entry.feeds().iter() {
-                        break 'feed (*feed_ref.name).clone();
-                    }
-                    "???".to_owned()
-                };
-
-                Line::raw(" ").style(line_style).render(line_layout, buf);
+                Line::raw(" ")
+                    .style(line_style.not_underlined())
+                    .render(line_layout, buf);
                 let split_line_layout = self
                     .reader
                     .config
@@ -1148,6 +1151,13 @@ impl<'a> Widget for ReaderWidget<'a> {
                             }
                         }
                         PreviewToken::Feed => {
+                            let feed: String = 'feed: {
+                                for feed_ref in entry.feeds().iter() {
+                                    break 'feed (*feed_ref.name).clone();
+                                }
+                                "???".to_owned()
+                            };
+
                             let feed_layout = if !last_token {
                                 Layout::default()
                                     .direction(Direction::Horizontal)
@@ -1178,6 +1188,98 @@ impl<'a> Widget for ReaderWidget<'a> {
                                 },
                             )
                             .render(feed_layout[0], buf);
+                        }
+                        PreviewToken::Date => {
+                            let date_layout = if !last_token {
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints(&[
+                                        Constraint::Fill(1),
+                                        Constraint::Length(1),
+                                    ])
+                                    .split(split_line_layout[i])
+                            } else {
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints(&[Constraint::Fill(1)])
+                                    .split(split_line_layout[i])
+                            };
+
+                            let mut date = entry.entry.date().to_iso8601();
+                            date = date.replace("T", " ");
+
+                            Span::styled(
+                                &date,
+                                if !selected && !hovering {
+                                    Style::new().fg(Color::LightYellow)
+                                } else {
+                                    entry_style
+                                },
+                            )
+                            .render(date_layout[0], buf);
+                        }
+                        PreviewToken::Tag => {
+                            let mut priority_tag: String = "".into();
+                            for tag in &self.reader.config.read.tags.priority {
+                                if entry.has_tag(tag) {
+                                    priority_tag = tag.clone();
+                                    break;
+                                }
+                            }
+                            if priority_tag.len() == 0 {
+                                for tag in entry.tags() {
+                                    priority_tag = tag.to_string();
+                                    break;
+                                }
+                            }
+
+                            let primary_tag_layout = if !last_token {
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints(&[
+                                        Constraint::Fill(1),
+                                        Constraint::Length(1),
+                                    ])
+                                    .split(split_line_layout[i])
+                            } else {
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints(&[Constraint::Fill(1)])
+                                    .split(split_line_layout[i])
+                            };
+
+                            Span::styled(
+                                if priority_tag.len() > 0 {
+                                    format!("#{priority_tag}")
+                                } else {
+                                    priority_tag
+                                },
+                                if selected || hovering {
+                                    entry_style
+                                } else {
+                                    Style::new().fg(Color::Yellow)
+                                },
+                            )
+                            .render(primary_tag_layout[0], buf);
+                        }
+                        PreviewToken::Author => {
+                            let author_layout = if !last_token {
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints(&[
+                                        Constraint::Fill(1),
+                                        Constraint::Length(1),
+                                    ])
+                                    .split(split_line_layout[i])
+                            } else {
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints(&[Constraint::Fill(1)])
+                                    .split(split_line_layout[i])
+                            };
+
+                            Span::styled(entry.author(), entry_style)
+                                .render(author_layout[0], buf);
                         }
                     }
                 }
