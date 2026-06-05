@@ -41,6 +41,18 @@ pub enum Commandish {
     CustomCommandFull(CustomCommand),
 }
 
+impl std::fmt::Display for Commandish {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Commandish::Literal(literal) => write!(f, ":{:?}", literal),
+            Commandish::CustomCommandRef(command) => write!(f, "!{}", command),
+            Commandish::CustomCommandFull(command) => {
+                write!(f, "!{}", &command.name)
+            }
+        }
+    }
+}
+
 impl Serialize for Commandish {
     fn serialize<S>(
         &self,

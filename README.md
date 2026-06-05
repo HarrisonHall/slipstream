@@ -80,11 +80,11 @@ are essentially complete as-is.
 - `slipstream-feeds`
   - [ ] Custom HTML selector feeds
   - [ ] Release-date feeds with reminders
+  - [ ] Tag aliases
 - `slipstream` (general)
   - [ ] Support hooks
 - `slipstream` (read)
   - [ ] Indicate pending updates
-  - [ ] Improve help menu
 - `slipstream` (api)
   - [ ] Allow syncing tags to a slipstream server
 

@@ -35,6 +35,12 @@ pub struct BindingKey {
     key: KeyEvent,
 }
 
+impl BindingKey {
+    pub fn binding(&self) -> &str {
+        &self.binding
+    }
+}
+
 impl From<BindingKey> for KeyEvent {
     fn from(value: BindingKey) -> Self {
         value.key
@@ -192,6 +198,12 @@ impl<'de> Deserialize<'de> for BindingKey {
             binding,
             key: KeyEvent::new(code, modifier),
         })
+    }
+}
+
+impl Ord for BindingKey {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.binding.cmp(&other.binding)
     }
 }
 

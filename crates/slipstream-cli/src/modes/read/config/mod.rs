@@ -22,7 +22,7 @@ pub struct ReadConfig {
     pub tags: TagConfig,
     /// Configured mappings for keys to commands.
     #[serde(default)]
-    pub bindings: HashMap<BindingKey, Commandish>,
+    pub bindings: BTreeMap<BindingKey, Commandish>,
     /// Custom commands.
     #[serde(default)]
     pub commands: Vec<CustomCommand>,
