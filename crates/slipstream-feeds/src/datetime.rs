@@ -137,40 +137,71 @@ impl TryFrom<&str> for DateTime {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let date = value;
 
+        if date.len() == 0 {
+            return Err(());
+        }
+
         // rfc3339:
         if let Ok(parsed) =
-            chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(
-                date.as_ref(),
-            )
+            chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(date)
         {
             return Ok(DateTime(parsed.to_utc()));
         }
 
         // rfc2822:
         if let Ok(parsed) =
-            chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc2822(
-                date.as_ref(),
-            )
+            chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc2822(date)
         {
             return Ok(DateTime(parsed.to_utc()));
         }
-
-        // iso8601 and variants:
-
         if let Ok(parsed) = chrono::NaiveDateTime::parse_from_str(
-            date.as_ref(),
-            "%Y-%m-%dT%H:%M:%SZ",
+            date,
+            "%a, %d %b %Y %H:%M:%S %z",
         ) {
             return Ok(DateTime(chrono::DateTime::from_naive_utc_and_offset(
                 parsed,
                 chrono::Utc,
             )));
         }
-
+        // https://github.com/chronotope/chrono/issues/1575 %Z GMT not yet supported.
+        let rfc2822_without_tz = date.replace("GMT", "+0000");
+        if let Ok(parsed) =
+            chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc2822(
+                &rfc2822_without_tz,
+            )
+        {
+            return Ok(DateTime(parsed.to_utc()));
+        }
         if let Ok(parsed) = chrono::NaiveDateTime::parse_from_str(
-            date.as_ref(),
-            "%Y-%m-%dT%H:%MZ",
+            &rfc2822_without_tz,
+            "%a, %d %b %Y %H:%M:%S %z",
         ) {
+            return Ok(DateTime(chrono::DateTime::from_naive_utc_and_offset(
+                parsed,
+                chrono::Utc,
+            )));
+        }
+        if rfc2822_without_tz.len() > 5 {
+            let rfc2822_without_tz_day = &rfc2822_without_tz[5..];
+
+            if let Ok(parsed) = chrono::NaiveDateTime::parse_from_str(
+                rfc2822_without_tz_day,
+                "%d %b %Y %H:%M:%S %z",
+            ) {
+                return Ok(DateTime(
+                    chrono::DateTime::from_naive_utc_and_offset(
+                        parsed,
+                        chrono::Utc,
+                    ),
+                ));
+            }
+        }
+
+        // iso8601 and variants:
+
+        if let Ok(parsed) =
+            chrono::NaiveDateTime::parse_from_str(date, "%Y-%m-%dT%H:%M:%SZ")
+        {
             return Ok(DateTime(chrono::DateTime::from_naive_utc_and_offset(
                 parsed,
                 chrono::Utc,
@@ -178,7 +209,15 @@ impl TryFrom<&str> for DateTime {
         }
 
         if let Ok(parsed) =
-            chrono::NaiveDate::parse_from_str(date.as_ref(), "%Y-%m-%d")
+            chrono::NaiveDateTime::parse_from_str(date, "%Y-%m-%dT%H:%MZ")
+        {
+            return Ok(DateTime(chrono::DateTime::from_naive_utc_and_offset(
+                parsed,
+                chrono::Utc,
+            )));
+        }
+
+        if let Ok(parsed) = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
         {
             if let Some(parsed) = parsed.and_hms_opt(0, 0, 0) {
                 return Ok(DateTime(

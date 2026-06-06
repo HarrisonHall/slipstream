@@ -203,78 +203,99 @@ impl Hash for StandardSyndication {
 #[feed_trait]
 impl Feed for StandardSyndication {
     async fn update(&mut self, ctx: &UpdaterContext, attr: &FeedAttributes) {
-        // Generate client.
-        let mut client_builder = reqwest::ClientBuilder::new();
-
-        // Add headers.
-        let mut map = reqwest::header::HeaderMap::default();
-        'headers: for (header, value) in attr.headers.iter() {
-            let header_name = match reqwest::header::HeaderName::from_lowercase(
-                header.as_bytes(),
-            ) {
-                Ok(header_name) => header_name,
+        let (tx, mut rx) = unbounded_channel();
+        if self.url.starts_with("file://") {
+            let filename = &self.url["file://".len()..];
+            match tokio::fs::read(filename).await {
+                Ok(buf) => {
+                    if let Ok(body) = str::from_utf8(buf.as_slice()) {
+                        self.parse(body, &ctx, attr, tx);
+                    } else {
+                        tracing::warn!(
+                            "Unable to read binary file `{filename}`."
+                        );
+                    }
+                }
                 Err(e) => {
-                    tracing::warn!("Unable to add header {header}: {e}");
-                    continue 'headers;
+                    tracing::warn!("Unable to read file `{filename}`: {e}");
+                }
+            }
+        } else {
+            // Generate client.
+            let mut client_builder = reqwest::ClientBuilder::new();
+
+            // Add headers.
+            let mut map = reqwest::header::HeaderMap::default();
+            'headers: for (header, value) in attr.headers.iter() {
+                let header_name =
+                    match reqwest::header::HeaderName::from_lowercase(
+                        header.as_bytes(),
+                    ) {
+                        Ok(header_name) => header_name,
+                        Err(e) => {
+                            tracing::warn!(
+                                "Unable to add header {header}: {e}"
+                            );
+                            continue 'headers;
+                        }
+                    };
+                match value.parse() {
+                    Ok(val) => {
+                        tracing::trace!(
+                            "Adding header {:?}={:?}",
+                            header_name,
+                            &val
+                        );
+                        map.insert(header_name, val);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Unable to use header {}={}: {}",
+                            header,
+                            value,
+                            e
+                        );
+                    }
+                };
+            }
+            client_builder = client_builder.default_headers(map);
+
+            // Build the request.
+            let client = match client_builder.build() {
+                Ok(client) => client,
+                Err(e) => {
+                    tracing::warn!("Unable to build client: {e}");
+                    return;
                 }
             };
-            match value.parse() {
-                Ok(val) => {
-                    tracing::trace!(
-                        "Adding header {:?}={:?}",
-                        header_name,
-                        &val
-                    );
-                    map.insert(header_name, val);
-                }
+            let mut request_builder = client.get(&self.url);
+            if let Some(last_update) = ctx.last_update.as_ref() {
+                request_builder = request_builder.header(
+                    reqwest::header::IF_MODIFIED_SINCE,
+                    last_update.to_if_modified_since(),
+                );
+            };
+            let request = match request_builder.build() {
+                Ok(request) => request,
                 Err(e) => {
-                    tracing::warn!(
-                        "Unable to use header {}={}: {}",
-                        header,
-                        value,
-                        e
-                    );
+                    tracing::warn!("Unable to build request: {e}");
+                    return;
                 }
+            };
+
+            // Execute request and parse.
+            match client.execute(request).await {
+                Ok(req_result) => match req_result.text().await {
+                    Ok(body) => {
+                        self.parse(body.as_str(), &ctx, attr, tx);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to get body from response: {e}")
+                    }
+                },
+                Err(e) => tracing::error!("Failed to execute: {e}"),
             };
         }
-        client_builder = client_builder.default_headers(map);
-
-        // Build the request.
-        let client = match client_builder.build() {
-            Ok(client) => client,
-            Err(e) => {
-                tracing::warn!("Unable to build client: {e}");
-                return;
-            }
-        };
-        let mut request_builder = client.get(&self.url);
-        if let Some(last_update) = ctx.last_update.as_ref() {
-            request_builder = request_builder.header(
-                reqwest::header::IF_MODIFIED_SINCE,
-                last_update.to_if_modified_since(),
-            );
-        };
-        let request = match request_builder.build() {
-            Ok(request) => request,
-            Err(e) => {
-                tracing::warn!("Unable to build request: {e}");
-                return;
-            }
-        };
-
-        // Execute request and parse.
-        let (tx, mut rx) = unbounded_channel();
-        match client.execute(request).await {
-            Ok(req_result) => match req_result.text().await {
-                Ok(body) => {
-                    self.parse(body.as_str(), &ctx, attr, tx);
-                }
-                Err(e) => {
-                    tracing::error!("Failed to get body from response: {e}")
-                }
-            },
-            Err(e) => tracing::error!("Failed to execute: {e}"),
-        };
 
         // Forward the matching entries.
         while let Ok(entry) = rx.try_recv() {

@@ -82,3 +82,33 @@ async fn mastodon() {
     let entries = updater.update().await;
     assert!(entries.len() > 0);
 }
+
+#[tokio::test]
+async fn parsing() {
+    tracing_subscriber::fmt::try_init().ok();
+
+    let mut updater = Updater::new(Duration::from_seconds(1_000), 5);
+    let rbt =
+        StandardSyndication::new("file://../../test/feeds/100rabbits.rss");
+    let _rbt_id = updater.add_feed(
+        rbt,
+        FeedAttributes {
+            display_name: Arc::new("100Rabbits".into()),
+            timeout: Duration::from_days(365),
+            freq: None,
+            step: 1,
+            tags: std::collections::HashSet::from([Tag::new("rss")]),
+            filters: vec![],
+            keep_empty: false,
+            apply_tags: true,
+            headers: BTreeMap::new(),
+        },
+    );
+
+    let entries = updater.update().await;
+    tracing::info!("{}", entries.len());
+
+    for entry in entries.as_slice() {
+        tracing::info!("ENTRY: {:?}", entry.date());
+    }
+}
