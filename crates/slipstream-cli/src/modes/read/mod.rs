@@ -1135,19 +1135,22 @@ impl<'a> Widget for ReaderWidget<'a> {
                                 .render(summary_layout[0], buf);
                         }
                         PreviewToken::Flags => {
-                            let flag_layout = Layout::default()
-                                .direction(Direction::Horizontal)
-                                .constraints(&[
-                                    Constraint::Length(1),
-                                    Constraint::Length(1),
-                                    Constraint::Length(1),
-                                    Constraint::Length(1),
-                                ])
-                                .split(split_line_layout[i]);
-                            for j in 0..4 {
-                                if let Some(span) = indicators.get(j) {
-                                    span.render(flag_layout[j], buf);
+                            let mut offset: u16 = 0;
+                            let layout = split_line_layout[i];
+                            for span in &indicators {
+                                if offset >= 4 {
+                                    break;
                                 }
+                                span.render(
+                                    Rect {
+                                        x: layout.x + offset,
+                                        y: layout.y,
+                                        width: layout.width - offset,
+                                        height: layout.height,
+                                    },
+                                    buf,
+                                );
+                                offset += span.width() as u16;
                             }
                         }
                         PreviewToken::Feed => {

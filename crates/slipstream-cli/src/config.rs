@@ -445,7 +445,6 @@ impl TransformsConfig {
                 for tag in tags {
                     for (derivation, matches) in &derivations {
                         if matches.contains(&tag) {
-                            tracing::info!("ADD {derivation} bc {tag}");
                             entry.add_tag(derivation);
                         }
                     }
@@ -460,14 +459,12 @@ impl TransformsConfig {
     ) -> Option<slipfeed::Transform> {
         if let Some(aliases) = &tag_aliases {
             let aliases = aliases.clone();
-            // tracing::info!("ALIAS {:?}", aliases);
             return Some(Arc::new(move |entry| {
                 // TODO: Figure out a way to handle this without cloning tags.
                 let tags = entry.tags().clone();
                 for tag in tags {
                     for (alias, matches) in &aliases {
                         if matches.contains(&tag) {
-                            tracing::info!("CHANGE {tag} to {alias}");
                             entry.remove_tag(&tag);
                             entry.add_tag(alias);
                             return;

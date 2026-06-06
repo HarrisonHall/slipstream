@@ -133,12 +133,9 @@ impl Entry {
 
     /// Check if a tag exists, fuzzily.
     pub fn has_tag_fuzzy(&self, tag: impl AsRef<str>) -> bool {
+        let lowercase = tag.as_ref().to_lowercase();
         for other_tag in &self.tags {
-            if other_tag
-                .to_string()
-                .to_lowercase()
-                .contains(&tag.as_ref().to_lowercase())
-            {
+            if other_tag.to_string().to_lowercase().contains(&lowercase) {
                 return true;
             }
         }

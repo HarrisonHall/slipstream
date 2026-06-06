@@ -13,11 +13,17 @@ pub struct FlagConfig {
 impl FlagConfig {
     /// Convert indicator to single-character span/flag.
     pub fn as_span<'a>(&'a self) -> Option<Span<'a>> {
-        if self.symbol.len() < 1 {
+        if self.symbol.chars().count() < 1 {
             return None;
         }
 
-        let mut span = Span::raw(&self.symbol[..1]);
+        let mut iter = self.symbol.char_indices();
+        let end = match iter.nth(1) {
+            None => self.symbol.len(),
+            Some(e) => e.0,
+        };
+
+        let mut span = Span::raw(&self.symbol[..end]);
         if let Some(color) = &self.color {
             span = span.fg(color);
         }

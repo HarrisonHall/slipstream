@@ -89,6 +89,7 @@ impl<'a> Widget for MenuWidget<'a> {
                 .into_text()
                 .unwrap_or_else(|_| Text::raw("")),
         )
+        .wrap(Wrap { trim: false })
         .block(
             Block::bordered()
                 .border_type(ratatui::widgets::BorderType::Rounded)
