@@ -11,8 +11,8 @@ Feed fetcher, filterer, and aggregator.
 
 - `slipstream-cli` - Simple CLI `slipfeed` server and reader utilizing a simple
   [config](https://github.com/HarrisonHall/slipstream/blob/main/examples/config/slipstream.toml).
-- `slipstream-feeds` (`slipfeed`) - Feed fetcher, filterer, and aggregator
-  library.
+- `slipstream-feeds` (`slipfeed`) - Feed fetcher, filterer, transformer, and
+  aggregator library.
 
 ## Getting Started
 
@@ -26,9 +26,21 @@ is used to define feeds, filters, and aggregations.
 The original goal of `slipstream serve` was to support a single, self-hostable
 service that can aggregate feeds across devices. No need to share `opml` files
 across desktops, phones, and laptops-- all feeds can be accessible from a single
-new aggregate atom feed. Slipstream supports basic filters for
-allowlisting/denylisting entries from feeds based on substrings and tags.
-Everything `slipstream serve` supports, `slipstream read` also supports.
+new aggregate atom feed. Slipstream supports basic filters for allowlisting and
+blocklisting entries from feeds based on substrings and tags. Everything
+`slipstream serve` supports, `slipstream read` also supports.
+
+- Fetch entries from various sources (rss, atom, mastodon)
+  - Filter entries based on various criteria (allowlist/blocklist tags and
+    substrings)
+  - Apply & transform tags (aliases)
+  - Make new aggregate feeds (composite feeds, matching tags)
+- Serve feeds via HTML and Atom (`slipstream serve`)
+- View the feeds locally with terminal reader (`slipstream read`)
+  - Handle custom keybindings and compound commands
+  - Display custom colors & flags based on tag matches
+  - Execute shell commands and page the result (archival, fetching)
+  - Command execution and result storage
 
 #### Installation
 
@@ -39,14 +51,15 @@ Everything `slipstream serve` supports, `slipstream read` also supports.
 Running `slipstream --config <your-config.toml> serve --port <your-port>` will
 start a web server that exposes the following endpoints:
 
-- `/config` for viewing the config (toml).
-- `/all` (or `/`) for viewing all entries (html).
-- `/feed/<feed_name>` for viewing a specific feed (html).
-- `/tag/<tag_name>` for viewing a feed for entries with a specific tag (html).
-- `/all/feed` for viewing all entries (atom).
-- `/feed/<feed_name>/feed` for viewing a specific feed (atom).
-- `/tag/<tag_name>/feed` for viewing a feed for entries with a specific tag
-  (atom).
+| Endpoint                 | Description               | Format |
+| ------------------------ | ------------------------- | ------ |
+| `/config`                | View the config           | `toml` |
+| `/all`                   | View all entries          | `html` |
+| `/all/feed`              | View all entries          | `atom` |
+| `/feed/<feed_name>`      | View entries in feed      | `html` |
+| `/feed/<feed_name>/feed` | View entries in feed      | `atom` |
+| `/tag/<tag_name>`        | View entries matching tag | `html` |
+| `/tag/<tag_name>/feed`   | View entries matching tag | `atom` |
 
 An example can be found at my personal website
 [feeds.hachha.dev](https://feeds.hachha.dev/).
@@ -56,13 +69,6 @@ An example can be found at my personal website
 ### Read
 
 Running `slipstream --config <your-config.toml> read` will launch a local tui.
-The slipstream reader supports the following features:
-
-- Custom commands
-- Custom keybindings
-- Custom colors
-- Responsive layout (horizontal and vertical)
-- Hooks
 
 Check out the example
 [config](https://github.com/HarrisonHall/slipstream/blob/main/examples/config/slipreader.toml)
@@ -91,6 +97,8 @@ are essentially complete as-is.
 
 - `slipstream` (general)
   - [ ] Add more filters (regex/pomsky, allowlists, etc.)
+- `slipstream` (read)
+  - [ ] Better pagination and search
 
 ## Contributing
 
