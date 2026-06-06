@@ -6,6 +6,7 @@ mod feed;
 mod filter;
 pub mod prelude;
 mod tag;
+mod transform;
 mod updater;
 
 #[cfg(test)]

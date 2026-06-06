@@ -25,6 +25,14 @@ oldest = "1month"
 # Default feed update frequency
 freq = "5min"
 
+[global.transforms.tag-derivations]
+"blue" = ["hacking"]
+"green" = ["rust", "zig", "c++"]
+
+[global.transforms.tag-aliases]
+"test-a" = ["test"]
+"japan" = ["japanese", "にほん", "日本"]
+
 # Feed definitions.
 [feeds]
 

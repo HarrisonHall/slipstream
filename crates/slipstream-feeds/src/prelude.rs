@@ -6,6 +6,7 @@ pub use entry::*;
 pub use feed::*;
 pub use filter::*;
 pub use tag::*;
+pub use transform::*;
 pub use updater::*;
 
 pub(crate) mod internal {

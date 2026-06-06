@@ -32,6 +32,8 @@ pub struct Updater {
     /// The feed being updated.
     /// Feeds are referenced in the order they are inserted.
     feeds: BTreeMap<FeedId, FeedInfo>,
+    /// Transforms for the entries.
+    transforms: Vec<Transform>,
     /// Last update check.
     last_update_check: Option<DateTime>,
     /// Update frequency.
@@ -49,6 +51,7 @@ impl Updater {
     pub fn new(freq: Duration, maximum: usize) -> Self {
         Self {
             feeds: BTreeMap::new(),
+            transforms: Vec::new(),
             last_update_check: None,
             freq,
             workers: 8,
@@ -80,6 +83,11 @@ impl Updater {
             },
         );
         feed_id
+    }
+
+    /// Add a transform.
+    pub fn add_transform(&mut self, transform: Transform) {
+        self.transforms.push(transform);
     }
 
     /// Update feeds.
@@ -185,15 +193,24 @@ impl Updater {
                 tracing::info!("Gathering entries: step={}", step);
                 while let Some(_) = updates.next().await {}
 
-                // Gather entries and tag.
+                // Gather entries, tag, and transform.
                 tracing::debug!("Applying tags: step={}", step);
                 while let Ok((mut entry, feed)) = rx.try_recv() {
+                    // Add original feed.
                     entry.add_feed(feed);
+
+                    // Tag.
                     for feed_info in self.feeds.values_mut() {
                         let mut feed = feed_info.feed.write().await;
                         feed.tag(&mut entry, feed_info.id, &feed_info.attr)
                             .await;
                     }
+
+                    // Run transforms.
+                    self.transforms
+                        .iter()
+                        .for_each(|transform| transform(&mut entry));
+
                     self.entries.add(entry);
                 }
             }
@@ -253,6 +270,7 @@ impl Default for Updater {
     fn default() -> Self {
         Self {
             feeds: BTreeMap::default(),
+            transforms: Vec::new(),
             workers: 8,
             last_update_check: None,
             freq: Duration::from_seconds(10),

@@ -2,6 +2,8 @@
 
 use super::*;
 
+use slipfeed::Tag;
+
 const DEFAULT_FEED_STEP: u8 = 3;
 const DEFAULT_FEED_AGG_STEP: u8 = 5;
 const DEFAULT_FEED_TAG_STEP: u8 = 7;
@@ -252,6 +254,16 @@ impl Config {
             updater.all_filters.extend(all_config.filters.get_filters());
         }
 
+        // Add transforms.
+        {
+            let mut inner_updater = updater.updater.write().await;
+            self.global
+                .transforms
+                .get_transforms()
+                .into_iter()
+                .for_each(|t| inner_updater.add_transform(t.clone()));
+        }
+
         Ok(updater)
     }
 
@@ -288,6 +300,9 @@ pub struct GlobalConfig {
     /// Global options. These can be overriden by other feeds.
     #[serde(default)]
     pub limits: FeedOptions,
+    /// Transform configuration.
+    #[serde(default)]
+    pub transforms: TransformsConfig,
     /// The user agent used for StandardSyndication HTTP requests.
     /// Without specifying, no user agent is used.
     #[serde(default, alias = "user-agent")]
@@ -387,5 +402,80 @@ impl TimeZone {
         });
 
         return c.format("%Y-%m-%d %H:%M").to_string();
+    }
+}
+
+/// Tag config.
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransformsConfig {
+    /// Derivations add tags based on the match.
+    /// E.g., "hacking" = ["rust", "zig", "python"]
+    /// will add the "hacking" tag to a feed with the "zig" tag.
+    #[serde(default, alias = "tag-derivations")]
+    pub tag_derivations: Option<BTreeMap<Tag, HashSet<Tag>>>,
+    /// Aliases swap the tag based on the match.
+    /// E.g., "hacking" = ["rust", "zig", "python"]
+    /// will transform the tag "zig" into "hacking".
+    #[serde(default, alias = "tag-aliases")]
+    pub tag_aliases: Option<BTreeMap<Tag, HashSet<Tag>>>,
+}
+
+impl TransformsConfig {
+    pub fn get_transforms(&self) -> Vec<slipfeed::Transform> {
+        let mut transforms: Vec<slipfeed::Transform> = Vec::new();
+        if let Some(transform) = Self::tag_derivations(&self.tag_derivations) {
+            transforms.push(transform);
+        }
+        if let Some(transform) = Self::tag_aliases(&self.tag_aliases) {
+            transforms.push(transform);
+        }
+
+        transforms
+    }
+
+    fn tag_derivations(
+        tag_derivations: &Option<BTreeMap<Tag, HashSet<Tag>>>,
+    ) -> Option<slipfeed::Transform> {
+        if let Some(derivations) = &tag_derivations {
+            let derivations = derivations.clone();
+            return Some(Arc::new(move |entry| {
+                // TODO: Figure out a way to handle this without cloning tags.
+                let tags = entry.tags().clone();
+                for tag in tags {
+                    for (derivation, matches) in &derivations {
+                        if matches.contains(&tag) {
+                            tracing::info!("ADD {derivation} bc {tag}");
+                            entry.add_tag(derivation);
+                        }
+                    }
+                }
+            }));
+        }
+        None
+    }
+
+    fn tag_aliases(
+        tag_aliases: &Option<BTreeMap<Tag, HashSet<Tag>>>,
+    ) -> Option<slipfeed::Transform> {
+        if let Some(aliases) = &tag_aliases {
+            let aliases = aliases.clone();
+            // tracing::info!("ALIAS {:?}", aliases);
+            return Some(Arc::new(move |entry| {
+                // TODO: Figure out a way to handle this without cloning tags.
+                let tags = entry.tags().clone();
+                for tag in tags {
+                    for (alias, matches) in &aliases {
+                        if matches.contains(&tag) {
+                            tracing::info!("CHANGE {tag} to {alias}");
+                            entry.remove_tag(&tag);
+                            entry.add_tag(alias);
+                            return;
+                        }
+                    }
+                }
+            }));
+        }
+        None
     }
 }

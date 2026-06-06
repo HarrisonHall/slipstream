@@ -9,7 +9,7 @@ pub use modes::*;
 
 pub(crate) mod internal {
     pub use std::cell::LazyCell;
-    pub use std::collections::{BTreeMap, HashMap};
+    pub use std::collections::{BTreeMap, HashMap, HashSet};
     pub use std::future::Future;
     pub use std::sync::Arc;
     pub use std::{path::PathBuf, str::FromStr};
