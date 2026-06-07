@@ -28,6 +28,8 @@ pub struct Entry {
     // Meta information.
     /// The id provided by the source.
     source_id: Option<String>,
+    /// The primary feed.
+    primary_feed: Option<FeedRef>,
     /// List of feeds this came from.
     feeds: BTreeSet<FeedRef>,
     /// Tags applied to this entry.
@@ -78,12 +80,25 @@ impl Entry {
         self.icon.as_ref()
     }
 
+    /// Get the primary feed, if it exists.
     pub fn set_icon(&mut self, url: impl Into<String>) {
         self.icon = Some(Link {
             url: url.into(),
             title: "Icon".into(),
             mime_type: None,
         });
+    }
+
+    /// Get the primary feed.
+    /// This should exist in contexts outside of slipstream-feeds.
+    pub fn primary_feed(&self) -> FeedRef {
+        match &self.primary_feed {
+            Some(fr) => fr.clone(),
+            None => FeedRef {
+                id: FeedId(0),
+                name: Arc::new("".into()),
+            },
+        }
     }
 
     /// Get the feeds.
@@ -93,6 +108,9 @@ impl Entry {
 
     /// Add a feed.
     pub fn add_feed(&mut self, feed: FeedRef) {
+        if self.primary_feed.is_none() {
+            self.primary_feed = Some(feed.clone());
+        }
         self.feeds.insert(feed);
     }
 
@@ -225,6 +243,7 @@ impl Default for Entry {
             other_links: Vec::new(),
             icon: None,
             source_id: None,
+            primary_feed: None,
             feeds: BTreeSet::new(),
             tags: BTreeSet::new(),
         }
@@ -380,6 +399,7 @@ impl EntryBuilder {
             icon: self.icon.clone(),
 
             source_id: self.source_id.clone(),
+            primary_feed: None,
             feeds: BTreeSet::new(),
             tags: BTreeSet::new(),
         }

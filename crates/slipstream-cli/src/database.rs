@@ -207,6 +207,30 @@ impl Database {
                 continue;
             }
 
+            if current_version < semver::Version::new(2, 23, 0) {
+                let res = sqlx::query(
+                    "
+                    INSERT INTO version_history(version, timestamp) VALUES(?, unixepoch(?));
+
+                    ALTER TABLE entries ADD COLUMN source_feed TEXT DEFAULT NULL;
+                    ALTER TABLE entries ADD COLUMN link TEXT DEFAULT NULL;
+                    CREATE INDEX IF NOT EXISTS entries_source_feed_idx ON entries(source_feed);
+                    CREATE INDEX IF NOT EXISTS entries_link_idx ON entries(link);
+                    ",
+                )
+                .bind(&semver::Version::new(2, 23, 0).to_string())
+                .bind(&slipfeed::DateTime::now().to_chrono())
+                .execute(pool)
+                .await;
+
+                if let Err(e) = res {
+                    bail!("Failed to upgrade database to v2.23.0: {e}");
+                }
+
+                current_version = semver::Version::new(2, 23, 0);
+                continue;
+            }
+
             tracing::debug!("Database is already up-to-date.");
             break;
         }
@@ -231,6 +255,17 @@ impl Database {
                     .fetch_one(&self.pool)
                     .await
                     .unwrap_or_else(|_| (None,));
+            }
+            // Search by primary-feed+primary-link.
+            if id.0.is_none() {
+                id = sqlx::query_as(
+                    "SELECT id FROM entries WHERE source_feed = ? AND link = ?",
+                )
+                .bind(entry.primary_feed().name.as_str())
+                .bind(&entry.source().url)
+                .fetch_one(&self.pool)
+                .await
+                .unwrap_or_else(|_| (None,));
             }
             // Search by title+author.
             if id.0.is_none()
@@ -273,8 +308,8 @@ impl Database {
                     let id_res: Result<(Option<EntryDbId>,), _> =
                         sqlx::query_as(
                         "
-                        INSERT INTO entries (timestamp, modified_timestamp, entry, title, author, content, source_id)
-                        VALUES (unixepoch(?), unixepoch(?), ?, ?, ?, ?, ?)
+                        INSERT INTO entries (timestamp, modified_timestamp, entry, title, author, link, content, source_feed, source_id)
+                        VALUES (unixepoch(?), unixepoch(?), ?, ?, ?, ?, ?, ?, ?)
                         RETURNING id
                         ",
                         )
@@ -283,7 +318,9 @@ impl Database {
                         .bind(sqlx::types::Json::from(&serialized_entry))
                         .bind(entry.title())
                         .bind(entry.author())
+                        .bind(&entry.source().url)
                         .bind(entry.content())
+                        .bind(entry.primary_feed().name.as_str())
                         .bind(entry.source_id())
                         .fetch_one(&self.pool)
                         .await;
