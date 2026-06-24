@@ -3,7 +3,7 @@
 use super::*;
 
 mod command;
-mod command_mode;
+pub mod command_mode;
 mod config;
 mod entry;
 mod keyboard;

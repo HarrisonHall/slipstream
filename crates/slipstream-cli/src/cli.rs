@@ -98,9 +98,9 @@ pub enum CommandMode {
     },
     /// Read feeds in a local tui.
     Read,
-    /// Read feeds in a local tui.
-    Config {
+    /// Utility comamnds.
+    Util {
         #[command(subcommand)]
-        config_mode: ConfigMode,
+        util: UtilMode,
     },
 }

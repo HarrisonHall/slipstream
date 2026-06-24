@@ -37,13 +37,15 @@ async fn main() -> Result<()> {
 
     // If doing the config mode, we don't want to go any further.
     match &cli.command {
-        CommandMode::Config { config_mode } => {
-            let config_path = match cli.config_path() {
-                Ok(cp) => cp,
-                Err(e) => bail!("Failed to determine config path: {e}"),
-            };
-            return config_cli(config_mode.clone(), config_path);
-        }
+        CommandMode::Util { util } => match util {
+            UtilMode::Config { config_mode } => {
+                let config_path = match cli.config_path() {
+                    Ok(cp) => cp,
+                    Err(e) => bail!("Failed to determine config path: {e}"),
+                };
+                return config_cli(config_mode.clone(), config_path);
+            }
+        },
         _ => {}
     };
 
@@ -63,7 +65,7 @@ async fn main() -> Result<()> {
 
     // Run the command:
     match &cli.command {
-        CommandMode::Serve {port, address } => tasks.spawn(serve_cli(
+        CommandMode::Serve { port, address } => tasks.spawn(serve_cli(
             port.clone(),
             address.clone(),
             config.clone(),
@@ -75,7 +77,7 @@ async fn main() -> Result<()> {
             updater_handle,
             cancel_token.clone(),
         )),
-        CommandMode::Config { .. } => unreachable!(),
+        CommandMode::Util { .. } => unreachable!(),
     };
 
     // Wait for ctrl+c (top-level):

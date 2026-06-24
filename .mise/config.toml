@@ -41,7 +41,7 @@ run = [
 [tasks.debug-verify-local]
 description = "Verify with local config."
 run = [
-  "cargo run --bin slipstream -- --debug config verify",
+  "cargo run --bin slipstream -- --debug util config verify",
 ]
 
 [tasks.test]
