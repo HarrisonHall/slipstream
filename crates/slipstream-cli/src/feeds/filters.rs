@@ -22,6 +22,10 @@ pub struct Filters {
     pub include_tags: Option<Vec<String>>,
     #[serde(alias = "include-tags-strict")]
     pub include_tags_strict: Option<Vec<String>>,
+    #[serde(alias = "exclude-links")]
+    pub exclude_links: Option<Vec<String>>,
+    #[serde(alias = "include-links")]
+    pub include_links: Option<Vec<String>>,
 }
 
 impl Filters {
@@ -59,6 +63,12 @@ impl Filters {
         if let Some(filter) = include_tags_strict(&self.include_tags_strict) {
             filters.push(filter);
         }
+        if let Some(filter) = exclude_links(&self.exclude_links) {
+            filters.push(filter);
+        }
+        if let Some(filter) = include_links(&self.include_links) {
+            filters.push(filter);
+        }
         filters
     }
 }
@@ -75,6 +85,8 @@ impl Default for Filters {
             exclude_tags_strict: None,
             include_tags: None,
             include_tags_strict: None,
+            exclude_links: None,
+            include_links: None,
         }
     }
 }
@@ -260,6 +272,46 @@ fn include_tags_strict(
                     return true;
                 }
                 false
+            })
+        }));
+    }
+    None
+}
+
+fn exclude_links(exclusions: &Option<Vec<String>>) -> Option<slipfeed::Filter> {
+    if let Some(exclusions) = exclusions {
+        let exclusions = exclusions.clone();
+        return Some(Arc::new(move |_feed, entry| {
+            exclusions.iter().all(|exclusion| {
+                let exclusion = exclusion.to_lowercase();
+                if entry.source().url.to_lowercase().contains(&exclusion) {
+                    return false;
+                }
+                !entry
+                    .other_links()
+                    .iter()
+                    .map(|link| link.url.to_lowercase())
+                    .any(|link| link.contains(&exclusion))
+            })
+        }));
+    }
+    None
+}
+
+fn include_links(inclusions: &Option<Vec<String>>) -> Option<slipfeed::Filter> {
+    if let Some(inclusions) = inclusions {
+        let inclusions = inclusions.clone();
+        return Some(Arc::new(move |_feed, entry| {
+            inclusions.iter().any(|inclusion| {
+                let inclusion = inclusion.to_lowercase();
+                if entry.source().url.to_lowercase().contains(&inclusion) {
+                    return true;
+                }
+                entry
+                    .other_links()
+                    .iter()
+                    .map(|link| link.url.to_lowercase())
+                    .any(|link| link.contains(&inclusion))
             })
         }));
     }
