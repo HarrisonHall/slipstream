@@ -58,44 +58,17 @@ impl slipfeed::Feed for FakeFeed {
     }
 }
 
-#[tokio::test]
-async fn test_filters() {
-    tracing_subscriber::fmt::try_init().ok();
-
-    let mut config = Config::default();
-    config.global.filters.exclude_title_words = Some(vec!["hello".into()]);
-    // config.global.filters.exclude_substrings =
-    //     Some(vec!["hello".into(), "hot".into()]);
-
+async fn run(config: Config) -> DatabaseEntryList {
     let mut updater =
         config.updater().await.expect("Could not create updater.");
     {
         let mut updater = updater.updater.write().await;
-        updater.add_feed(
-            FakeFeed::test_set_a(),
-            {
-                let mut attr = slipfeed::FeedAttributes::new();
-                attr.filters
-                    .extend_from_slice(&config.global.filters.get_filters());
-                attr
-            },
-            // slipfeed::FeedAttributes {
-            //     display_name: Arc::new("Test".into()),
-            //     timeout: slipfeed::Duration::from_hours(10),
-            //     freq: None,
-            //     step: 1,
-            //     tags: std::collections::HashSet::from([slipfeed::Tag::new(
-            //         "test",
-            //     )]),
-            //     filters: vec![],
-            //     keep_empty: false,
-            //     apply_tags: true,
-            //     headers: BTreeMap::new(),
-            // },
-        );
-
-        // let x = updater.update().await;
-        // assert!(x.len() == 5);
+        updater.add_feed(FakeFeed::test_set_a(), {
+            let mut attr = slipfeed::FeedAttributes::new();
+            attr.filters
+                .extend_from_slice(&config.global.filters.get_filters());
+            attr
+        });
     }
 
     let updater_handle = updater.handle().expect("Unable to get handle");
@@ -103,7 +76,26 @@ async fn test_filters() {
     let mut tasks = JoinSet::new();
     tasks.spawn(update(updater, Arc::new(config), cancel_token.clone()));
 
-    tokio::time::sleep(tokio::time::Duration::from_secs_f32(0.5)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs_f32(0.1)).await;
+
     let all = updater_handle.collect_all(None).await;
-    assert_eq!(all.iter_entries().count(), 5);
+
+    all
+}
+
+#[tokio::test]
+async fn test_filters() {
+    tracing_subscriber::fmt::try_init().ok();
+    let total = FakeFeed::test_set_a().entries.len();
+
+    let mut config = Config::default();
+    config.global.filters.exclude_title_words = Some(vec!["hello".into()]);
+    let results = run(config).await;
+    assert_eq!(results.iter_entries().count(), total - 1);
+
+    let mut config = Config::default();
+    config.global.filters.exclude_substrings =
+        Some(vec!["hello".into(), "hot".into()]);
+    let results = run(config).await;
+    assert_eq!(results.iter_entries().count(), total - 2);
 }
