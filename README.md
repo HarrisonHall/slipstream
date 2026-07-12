@@ -64,7 +64,7 @@ start a web server that exposes the following endpoints:
 An example can be found at my personal website
 [feeds.hachha.dev](https://feeds.hachha.dev/).
 
-![web screenshot](https://github.com/HarrisonHall/slipstream/blob/main/examples/media/web.png)
+![web screenshot](examples/media/web.png)
 
 ### Read
 
@@ -74,7 +74,7 @@ Check out the example
 [config](https://github.com/HarrisonHall/slipstream/blob/main/examples/config/slipreader.toml)
 to see additional configuration options.
 
-![cli screenshot](https://github.com/HarrisonHall/slipstream/blob/main/examples/media/cli.png)
+![cli screenshot](examples/media/cli.png)
 
 ## Roadmap
 
