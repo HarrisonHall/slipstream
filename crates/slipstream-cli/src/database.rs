@@ -257,7 +257,7 @@ impl Database {
                     .unwrap_or_else(|_| (None,));
             }
             // Search by primary-feed+primary-link.
-            if id.0.is_none() {
+            if id.0.is_none() && !entry.source().url.is_empty() {
                 id = sqlx::query_as(
                     "SELECT id FROM entries WHERE source_feed = ? AND link = ?",
                 )

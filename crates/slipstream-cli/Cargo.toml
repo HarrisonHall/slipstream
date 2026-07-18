@@ -28,6 +28,7 @@ humantime-serde = "1.1"
 opml = "1.1"
 pulldown-cmark = "0.13"
 ratatui = { version="0.30", features=["serde"] }
+regex = "1.13"
 rust-embed = { version="8.7", features=["debug-embed", "include-exclude"] }
 semver = "1.0"
 shellexpand = "3.1"

@@ -83,9 +83,6 @@ are essentially complete as-is.
 
 ### Slipstream 3.0
 
-- `slipstream-feeds`
-  - [ ] Custom HTML selector feeds
-  - [ ] Release-date feeds with reminders
 - `slipstream` (general)
   - [ ] Support hooks
 - `slipstream` (read)
@@ -95,8 +92,9 @@ are essentially complete as-is.
 
 ### Beyond
 
-- `slipstream` (general)
-  - [ ] Add more filters (regex/pomsky, allowlists, etc.)
+- `slipstream-feeds`
+  - [ ] Custom HTML selector feeds
+  - [ ] Release-date feeds with reminders
 - `slipstream` (read)
   - [ ] Better pagination and search
 
