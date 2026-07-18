@@ -71,7 +71,7 @@ impl ReadConfig {
 
         for (binding, command) in self.bindings.iter() {
             if *key == binding.into() {
-                return match &*command {
+                return match command {
                     Commandish::CustomCommandRef(name) => {
                         self.get_custom_command(name.as_str())
                     }

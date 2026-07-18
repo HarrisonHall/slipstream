@@ -14,7 +14,7 @@ mod tests;
 use prelude::internal::*;
 use prelude::*;
 
-const DEFAULT_CONFIG_DIR: LazyCell<String> = LazyCell::new(|| {
+static DEFAULT_CONFIG_DIR: LazyLock<String> = LazyLock::new(|| {
     use directories::ProjectDirs;
     if let Some(dirs) = ProjectDirs::from("", "", "slipstream") {
         let mut config = dirs.config_dir().to_path_buf();
@@ -36,15 +36,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // If doing the config mode, we don't want to go any further.
-    match &cli.command {
-        CommandMode::Config { config_mode } => {
-            let config_path = match cli.config_path() {
-                Ok(cp) => cp,
-                Err(e) => bail!("Failed to determine config path: {e}"),
-            };
-            return config_cli(config_mode.clone(), config_path);
-        }
-        _ => {}
+    if let CommandMode::Config { config_mode } = &cli.command {
+        let config_path = match cli.config_path() {
+            Ok(cp) => cp,
+            Err(e) => bail!("Failed to determine config path: {e}"),
+        };
+        return config_cli(config_mode.clone(), config_path);
     };
 
     let config = Arc::new(match cli.parse_config() {
@@ -63,8 +60,8 @@ async fn main() -> Result<()> {
 
     // Run the command:
     match &cli.command {
-        CommandMode::Serve {port, address } => tasks.spawn(serve_cli(
-            port.clone(),
+        CommandMode::Serve { port, address } => tasks.spawn(serve_cli(
+            *port,
             address.clone(),
             config.clone(),
             updater_handle,

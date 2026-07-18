@@ -19,11 +19,11 @@ impl TerminalState {
     pub fn get_paging_lines(&self, config: &Config) -> i16 {
         if self.size.0 > MIN_HOR_WIDTH {
             // Handle horizontal paging.
-            return self.size.1 as i16 - (2 * config.read.scroll_buffer) as i16;
+            self.size.1 as i16 - (2 * config.read.scroll_buffer) as i16
         } else {
             // Handle vertical paging.
-            return (self.size.1 / 2) as i16
-                - (2 * config.read.scroll_buffer) as i16;
+            (self.size.1 / 2) as i16
+                - (2 * config.read.scroll_buffer) as i16
         }
     }
 }
@@ -65,7 +65,7 @@ impl InteractionState {
                 .min(max_index);
         } else {
             self.selection =
-                self.selection.saturating_sub(amount.abs() as usize);
+                self.selection.saturating_sub(amount.unsigned_abs() as usize);
         }
     }
 }
@@ -128,6 +128,12 @@ pub struct LastFrameInputs {
     scroll: Option<ScrollDirection>,
 }
 
+impl Default for LastFrameInputs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LastFrameInputs {
     pub fn new() -> Self {
         Self {
@@ -170,14 +176,14 @@ impl LastFrameInputs {
         if let Some(ScrollDirection::Up) = self.scroll {
             return true;
         }
-        return false;
+        false
     }
 
     pub fn scrolled_down(&self) -> bool {
         if let Some(ScrollDirection::Down) = self.scroll {
             return true;
         }
-        return false;
+        false
     }
 
     /// Check if area was just clicked.
@@ -185,7 +191,7 @@ impl LastFrameInputs {
         if let Some((x, y)) = self.click {
             return area.contains(ratatui::layout::Position { x, y });
         }
-        return false;
+        false
     }
 
     /// Check if area is currently being hovered.
@@ -193,7 +199,7 @@ impl LastFrameInputs {
         if let Some((x, y)) = self.mouse {
             return area.contains(ratatui::layout::Position { x, y });
         }
-        return false;
+        false
     }
 
     /// Check if area was just hovered.
@@ -201,7 +207,7 @@ impl LastFrameInputs {
         if let Some((x, y)) = self.hover {
             return area.contains(ratatui::layout::Position { x, y });
         }
-        return false;
+        false
     }
 }
 

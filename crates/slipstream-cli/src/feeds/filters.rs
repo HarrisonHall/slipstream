@@ -4,6 +4,7 @@ use super::*;
 
 /// Filter configuration.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct FiltersConfig {
     /// Exclude from all fields.
     #[serde(alias = "exclude", alias = "exclude-substrings")]
@@ -110,45 +111,23 @@ impl FiltersConfig {
     }
 }
 
-impl Default for FiltersConfig {
-    fn default() -> Self {
-        Self {
-            exclude: None,
-            exclude_re: None,
-            exclude_all: None,
-            include: None,
-            include_re: None,
-            include_all: None,
-            exclude_titles: None,
-            include_titles: None,
-            exclude_contents: None,
-            include_contents: None,
-            exclude_links: None,
-            include_links: None,
-            exclude_tags: None,
-            include_tags: None,
-            exclude_tags_strict: None,
-            include_tags_strict: None,
-        }
-    }
-}
 
 fn exclude_any_generic(
     items: Vec<String>,
     f: fn(&str, &slipfeed::Entry) -> bool,
 ) -> Option<slipfeed::Filter> {
-    return Some(Arc::new(move |_feed, entry| {
-        !items.iter().any(|i| f(&i, entry))
-    }));
+    Some(Arc::new(move |_feed, entry| {
+        !items.iter().any(|i| f(i, entry))
+    }))
 }
 
 fn exclude_all_generic(
     items: Vec<String>,
     f: fn(&str, &slipfeed::Entry) -> bool,
 ) -> Option<slipfeed::Filter> {
-    return Some(Arc::new(move |_feed, entry| {
-        !items.iter().all(|i| f(&i, entry))
-    }));
+    Some(Arc::new(move |_feed, entry| {
+        !items.iter().all(|i| f(i, entry))
+    }))
 }
 
 fn include_any_generic(
@@ -156,9 +135,9 @@ fn include_any_generic(
     f: fn(&str, &slipfeed::Entry) -> bool,
 ) -> Option<slipfeed::Filter> {
     let items = items.clone();
-    return Some(Arc::new(move |_feed, entry| {
-        items.iter().any(|i| f(&i, entry))
-    }));
+    Some(Arc::new(move |_feed, entry| {
+        items.iter().any(|i| f(i, entry))
+    }))
 }
 
 fn include_all_generic(
@@ -166,9 +145,9 @@ fn include_all_generic(
     f: fn(&str, &slipfeed::Entry) -> bool,
 ) -> Option<slipfeed::Filter> {
     let items = items.clone();
-    return Some(Arc::new(move |_feed, entry| {
-        items.iter().all(|i| f(&i, entry))
-    }));
+    Some(Arc::new(move |_feed, entry| {
+        items.iter().all(|i| f(i, entry))
+    }))
 }
 
 fn exclude(items: &Option<Vec<String>>) -> Option<slipfeed::Filter> {

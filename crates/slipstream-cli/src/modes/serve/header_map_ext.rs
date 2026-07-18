@@ -89,7 +89,7 @@ impl HeaderMapExt for HeaderMap {
             }
         }
 
-        return None;
+        None
     }
 
     fn cache_behavior(&self) -> CacheBehavior {

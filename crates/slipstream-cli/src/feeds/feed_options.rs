@@ -33,10 +33,7 @@ impl FeedOptions {
     }
 
     pub fn freq(&self) -> Option<slipfeed::Duration> {
-        match self.freq {
-            Some(freq) => Some(slipfeed::Duration::from_std(freq)),
-            None => None,
-        }
+        self.freq.map(slipfeed::Duration::from_std)
     }
 
     pub fn freq_or_default(&self) -> slipfeed::Duration {
@@ -91,16 +88,16 @@ impl FeedOptions {
 
     pub(crate) fn merge(&mut self, other: &Self) {
         if let Some(max) = &other.max {
-            self.max = Some(max.clone());
+            self.max = Some(*max);
         }
         if let Some(freq) = &other.freq {
-            self.freq = Some(freq.clone());
+            self.freq = Some(*freq);
         }
         if let Some(oldest) = &other.oldest {
-            self.oldest = Some(oldest.clone());
+            self.oldest = Some(*oldest);
         }
         if let Some(step) = &other.step {
-            self.step = Some(step.clone());
+            self.step = Some(*step);
         }
         self.keep_empty = other.keep_empty;
         self.apply_tags = other.apply_tags;

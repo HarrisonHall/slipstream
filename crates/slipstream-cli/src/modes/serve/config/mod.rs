@@ -30,15 +30,12 @@ impl ServeConfig {
 
 /// The export format for serving content.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ExportFormat {
     #[serde(alias = "html")]
+    #[default]
     HTML,
     #[serde(alias = "markdown")]
     Markdown,
 }
 
-impl Default for ExportFormat {
-    fn default() -> Self {
-        Self::HTML
-    }
-}

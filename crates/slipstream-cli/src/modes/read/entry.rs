@@ -63,8 +63,9 @@ impl DatabaseEntry {
                 result.vertical_scroll =
                     result.vertical_scroll.saturating_add(by as usize);
             } else {
-                result.vertical_scroll =
-                    result.vertical_scroll.saturating_sub(by.abs() as usize);
+                result.vertical_scroll = result
+                    .vertical_scroll
+                    .saturating_sub(by.unsigned_abs() as usize);
             }
         }
     }
@@ -75,15 +76,14 @@ impl DatabaseEntry {
             if by > 0 {
                 self.result_selection_index =
                     self.result_selection_index.wrapping_add(by as usize);
-                if self.result_selection_index >= self.command_results.len() + 1
-                {
+                if self.result_selection_index > self.command_results.len() {
                     self.result_selection_index = 0;
                 }
             } else {
-                self.result_selection_index =
-                    self.result_selection_index.wrapping_sub(by.abs() as usize);
-                if self.result_selection_index >= self.command_results.len() + 1
-                {
+                self.result_selection_index = self
+                    .result_selection_index
+                    .wrapping_sub(by.unsigned_abs() as usize);
+                if self.result_selection_index > self.command_results.len() {
                     self.result_selection_index = self.command_results.len();
                 }
             }
@@ -108,7 +108,7 @@ impl EntryExt for DatabaseEntry {
     fn to_atom(&self, config: &Config) -> atom_syndication::Entry {
         let mut atom_entry = self.entry.to_atom(config);
         atom_entry.id = format!("{}", self.db_id);
-        return atom_entry;
+        atom_entry
     }
 }
 
@@ -162,11 +162,11 @@ impl<'a> Widget for EntryViewWidget<'a> {
         // Render loaded entry.
         let tab_layouts = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(&[Constraint::Min(1), Constraint::Percentage(100)])
+            .constraints([Constraint::Min(1), Constraint::Percentage(100)])
             .split(inner_block);
         let commands = ["info"]
             .iter()
-            .map(|info| *info)
+            .copied()
             .chain(self.entry.get_commands().iter().map(|tab| (*tab).as_str()));
         {
             let mut rect = tab_layouts[0];
@@ -185,7 +185,7 @@ impl<'a> Widget for EntryViewWidget<'a> {
 
         let commands = ["info"]
             .iter()
-            .map(|info| *info)
+            .copied()
             .chain(self.entry.get_commands().iter().map(|tab| (*tab).as_str()));
         let tabs =
             ratatui::widgets::Tabs::new(commands.map(|tab| tab.to_uppercase()))
@@ -308,16 +308,14 @@ impl<'a> Widget for EntryInfoWidget<'a> {
         }
 
         // Bottom text lines.
-        let mut bottom_lines: Vec<Line> = Vec::new();
-
-        // Add date:
-        bottom_lines.push(
+        let bottom_lines: Vec<Line> = vec![
+            // Add date:
             Line::from(Span::styled(
                 self.1.timezone.format(self.0.date()),
                 Style::default(),
             ))
             .right_aligned(),
-        );
+        ];
 
         Paragraph::new(bottom_lines).render(layouts[2], buf);
     }
@@ -355,6 +353,11 @@ impl DatabaseEntryList {
     /// Get the length of the list.
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    /// Check if list is empty.
+    pub fn is_empty(&self) -> bool {
+        self.entries.len() == 0
     }
 
     /// Get an entry in the list, by id.

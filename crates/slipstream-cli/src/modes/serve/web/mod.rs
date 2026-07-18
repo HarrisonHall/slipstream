@@ -52,7 +52,7 @@ impl HtmlServer {
 
     fn read_file_bytes(name: impl AsRef<str>) -> Result<Arc<Vec<u8>>> {
         match Content::get(name.as_ref()) {
-            Some(f) => Ok(Arc::new(Vec::from(f.data.into_owned()))),
+            Some(f) => Ok(Arc::new(f.data.into_owned())),
             None => bail!("Invalid file {}.", name.as_ref()),
         }
     }
@@ -89,7 +89,7 @@ impl HtmlServer {
                         for source in e.feeds() {
                             sources.push((*source.name).clone());
                         }
-                        if sources.len() > 0 {
+                        if !sources.is_empty() {
                             min.sources = sources.join(", ");
                         } else {
                             min.sources = "<Unknown Source>".into();

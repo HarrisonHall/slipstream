@@ -61,7 +61,7 @@ pub async fn read_cli(
     reader
         .handle_command_mode_command(&format!(
             "search {}",
-            &config.read.initial_search
+            config.read.initial_search
         ))
         .await?;
 
@@ -175,7 +175,7 @@ impl Reader {
             return Some(&mut self.entries[self.interaction_state.selection]);
         }
 
-        return None;
+        None
     }
 
     /// Check the size.
@@ -200,7 +200,7 @@ impl Reader {
                 .render(area, buf);
             return false;
         }
-        return true;
+        true
     }
 
     /// Handle input.
@@ -344,7 +344,7 @@ impl Reader {
             },
             ReadCommandLiteral::Up => match self.interaction_state.focus {
                 Focus::List => {
-                    if (self.interaction_state.selection as isize) - 1 >= 0 {
+                    if (self.interaction_state.selection as isize) > 0 {
                         self.interaction_state.selection -= 1;
                     }
                 }
@@ -689,7 +689,7 @@ impl Reader {
                 command.push(c);
             }
             KeyCode::Backspace => {
-                if command.len() > 0 {
+                if !command.is_empty() {
                     command.pop();
                 } else {
                     self.interaction_state.focus = Focus::List;
@@ -788,7 +788,7 @@ impl Reader {
                         &mut self.entries[self.interaction_state.selection];
                     entry.entry.add_tag(&slipfeed::Tag::new(tag));
                     let tags: Vec<slipfeed::Tag> =
-                        entry.entry.tags().iter().map(|t| t.clone()).collect();
+                        entry.entry.tags().iter().cloned().collect();
                     self.updater.update_tags(entry.db_id, tags).await;
                 }
             }
@@ -796,7 +796,7 @@ impl Reader {
                 let entry = &mut self.entries[self.interaction_state.selection];
                 entry.entry.remove_tag(&slipfeed::Tag::new(tag));
                 let tags: Vec<slipfeed::Tag> =
-                    entry.entry.tags().iter().map(|t| t.clone()).collect();
+                    entry.entry.tags().iter().cloned().collect();
                 self.updater.update_tags(entry.db_id, tags).await;
             }
             command_mode::Command::TagToggle { tag } => {
@@ -808,7 +808,7 @@ impl Reader {
                     entry.entry.add_tag(&tag);
                 }
                 let tags: Vec<slipfeed::Tag> =
-                    entry.entry.tags().iter().map(|t| t.clone()).collect();
+                    entry.entry.tags().iter().cloned().collect();
                 self.updater.update_tags(entry.db_id, tags).await;
             }
             command_mode::Command::Command { command } => {
@@ -894,7 +894,7 @@ impl<'a> Widget for ReaderWidget<'a> {
         if area.width > MIN_HOR_WIDTH {
             let vert_layouts = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints(&[Constraint::Min(1), Constraint::Percentage(100)])
+                .constraints([Constraint::Min(1), Constraint::Percentage(100)])
                 .split(area);
             title_layout = vert_layouts[0];
             let hor_layouts = Layout::default()
@@ -909,7 +909,7 @@ impl<'a> Widget for ReaderWidget<'a> {
         } else {
             let layouts = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints(&[
+                .constraints([
                     Constraint::Min(1),
                     Constraint::Percentage(50),
                     Constraint::Percentage(50),
@@ -991,7 +991,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                             self.reader.interaction_state.selection + 1,
                             self.reader.entries.len()
                         ),
-                        width = &(title_layout.width as usize),
+                        width = (title_layout.width as usize),
                     ),
                     Style::new()
                         .bg(
@@ -1073,17 +1073,14 @@ impl<'a> Widget for ReaderWidget<'a> {
                 }
 
                 // Selected, hovering, and focused state affects style.
-                if hovering {
-                    if self.reader.terminal_state.has_focus {
-                        entry_style = match self.reader.interaction_state.focus
-                        {
-                            Focus::Entry => {
-                                Style::new().bg(Color::Black).fg(Color::Gray)
-                            }
-                            _ => Style::new().bg(Color::Gray).fg(Color::Black),
-                        };
-                        line_style = entry_style;
-                    }
+                if hovering && self.reader.terminal_state.has_focus {
+                    entry_style = match self.reader.interaction_state.focus {
+                        Focus::Entry => {
+                            Style::new().bg(Color::Black).fg(Color::Gray)
+                        }
+                        _ => Style::new().bg(Color::Gray).fg(Color::Black),
+                    };
+                    line_style = entry_style;
                 }
                 if selected {
                     entry_style = if self.reader.terminal_state.has_focus {
@@ -1119,7 +1116,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                             let summary_layout = if !last_token {
                                 Layout::default()
                                     .direction(Direction::Horizontal)
-                                    .constraints(&[
+                                    .constraints([
                                         Constraint::Fill(1),
                                         Constraint::Length(1),
                                     ])
@@ -1127,7 +1124,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                             } else {
                                 Layout::default()
                                     .direction(Direction::Horizontal)
-                                    .constraints(&[Constraint::Fill(1)])
+                                    .constraints([Constraint::Fill(1)])
                                     .split(split_line_layout[i])
                             };
 
@@ -1155,7 +1152,9 @@ impl<'a> Widget for ReaderWidget<'a> {
                         }
                         PreviewToken::Feed => {
                             let feed: String = 'feed: {
-                                for feed_ref in entry.feeds().iter() {
+                                if let Some(feed_ref) =
+                                    entry.feeds().iter().next()
+                                {
                                     break 'feed (*feed_ref.name).clone();
                                 }
                                 "???".to_owned()
@@ -1164,7 +1163,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                             let feed_layout = if !last_token {
                                 Layout::default()
                                     .direction(Direction::Horizontal)
-                                    .constraints(&[
+                                    .constraints([
                                         Constraint::Fill(1),
                                         Constraint::Length(1),
                                     ])
@@ -1172,7 +1171,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                             } else {
                                 Layout::default()
                                     .direction(Direction::Horizontal)
-                                    .constraints(&[Constraint::Fill(1)])
+                                    .constraints([Constraint::Fill(1)])
                                     .split(split_line_layout[i])
                             };
 
@@ -1196,7 +1195,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                             let date_layout = if !last_token {
                                 Layout::default()
                                     .direction(Direction::Horizontal)
-                                    .constraints(&[
+                                    .constraints([
                                         Constraint::Fill(1),
                                         Constraint::Length(1),
                                     ])
@@ -1204,7 +1203,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                             } else {
                                 Layout::default()
                                     .direction(Direction::Horizontal)
-                                    .constraints(&[Constraint::Fill(1)])
+                                    .constraints([Constraint::Fill(1)])
                                     .split(split_line_layout[i])
                             };
 
@@ -1229,17 +1228,16 @@ impl<'a> Widget for ReaderWidget<'a> {
                                     break;
                                 }
                             }
-                            if priority_tag.len() == 0 {
-                                for tag in entry.tags() {
+                            if priority_tag.is_empty() {
+                                if let Some(tag) = entry.tags().iter().next() {
                                     priority_tag = tag.to_string();
-                                    break;
                                 }
                             }
 
                             let primary_tag_layout = if !last_token {
                                 Layout::default()
                                     .direction(Direction::Horizontal)
-                                    .constraints(&[
+                                    .constraints([
                                         Constraint::Fill(1),
                                         Constraint::Length(1),
                                     ])
@@ -1247,12 +1245,12 @@ impl<'a> Widget for ReaderWidget<'a> {
                             } else {
                                 Layout::default()
                                     .direction(Direction::Horizontal)
-                                    .constraints(&[Constraint::Fill(1)])
+                                    .constraints([Constraint::Fill(1)])
                                     .split(split_line_layout[i])
                             };
 
                             Span::styled(
-                                if priority_tag.len() > 0 {
+                                if !priority_tag.is_empty() {
                                     format!("#{priority_tag}")
                                 } else {
                                     priority_tag
@@ -1269,7 +1267,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                             let author_layout = if !last_token {
                                 Layout::default()
                                     .direction(Direction::Horizontal)
-                                    .constraints(&[
+                                    .constraints([
                                         Constraint::Fill(1),
                                         Constraint::Length(1),
                                     ])
@@ -1277,7 +1275,7 @@ impl<'a> Widget for ReaderWidget<'a> {
                             } else {
                                 Layout::default()
                                     .direction(Direction::Horizontal)
-                                    .constraints(&[Constraint::Fill(1)])
+                                    .constraints([Constraint::Fill(1)])
                                     .split(split_line_layout[i])
                             };
 

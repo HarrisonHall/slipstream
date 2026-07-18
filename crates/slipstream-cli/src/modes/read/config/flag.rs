@@ -28,7 +28,7 @@ impl FlagConfig {
             span = span.fg(color);
         }
 
-        return Some(span);
+        Some(span)
     }
 
     /// Convert color config into ANSI style.
@@ -39,16 +39,13 @@ impl FlagConfig {
 
 impl From<&FlagConfig> for Style {
     fn from(value: &FlagConfig) -> Self {
-        return Self {
-            fg: match &value.color {
-                Some(col) => Some(col.into()),
-                None => None,
-            },
+        Self {
+            fg: value.color.as_ref().map(|col| col.into()),
             bg: None,
             underline_color: None,
             add_modifier: ratatui::style::Modifier::empty(),
             sub_modifier: ratatui::style::Modifier::empty(),
-        };
+        }
     }
 }
 

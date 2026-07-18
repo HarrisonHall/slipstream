@@ -45,22 +45,13 @@ impl From<&ColorConfig> for Style {
             modi = modi.union(ratatui::style::Modifier::UNDERLINED);
         }
 
-        return Self {
-            fg: match &value.fg {
-                Some(col) => Some(col.into()),
-                None => None,
-            },
-            bg: match &value.bg {
-                Some(col) => Some(col.into()),
-                None => None,
-            },
-            underline_color: match &value.underline {
-                Some(col) => Some(col.into()),
-                None => None,
-            },
+        Self {
+            fg: value.fg.as_ref().map(|col| col.into()),
+            bg: value.bg.as_ref().map(|col| col.into()),
+            underline_color: value.underline.as_ref().map(|col| col.into()),
             add_modifier: modi,
             sub_modifier: ratatui::style::Modifier::empty(),
-        };
+        }
     }
 }
 

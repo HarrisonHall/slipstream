@@ -59,16 +59,13 @@ struct CacheEntry {
 }
 
 /// Behavior for utilizing cache.
+#[derive(Default)]
 pub enum CacheBehavior {
     /// Use the cached data or write result to cache.
+    #[default]
     UseOrWrite,
     /// Do not use the cache. Do not use the cached data. Do not write result
     /// to cache.
     Skip,
 }
 
-impl Default for CacheBehavior {
-    fn default() -> Self {
-        Self::UseOrWrite
-    }
-}

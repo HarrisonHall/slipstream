@@ -2,9 +2,9 @@
 
 use super::*;
 
-const RUNNING_TEXT: &'static str = "Running...";
-const FAILED_TEXT: &'static str = "Failed to execute command.";
-const BAD_OUTPUT_TEXT: &'static str = "Unable to parse command output.";
+const RUNNING_TEXT: &str = "Running...";
+const FAILED_TEXT: &str = "Failed to execute command.";
+const BAD_OUTPUT_TEXT: &str = "Unable to parse command output.";
 
 /// Results from a shell command.
 #[derive(Debug, Clone)]

@@ -29,7 +29,7 @@ pub fn config_cli(
 
 fn read_config(config_path: &std::path::PathBuf) -> Result<Config> {
     // Read file.
-    let config_data = match std::fs::read_to_string(&config_path) {
+    let config_data = match std::fs::read_to_string(config_path) {
         Ok(data) => data,
         Err(e) => {
             bail!(
@@ -42,13 +42,11 @@ fn read_config(config_path: &std::path::PathBuf) -> Result<Config> {
 
     // Parse.
     match toml::from_str::<Config>(&config_data) {
-        Ok(config) => {
-            return Ok(config);
-        }
+        Ok(config) => Ok(config),
         Err(e) => {
             bail!("Configuration file is not valid: {}.", e);
         }
-    };
+    }
 }
 
 fn verify_config(config_path: std::path::PathBuf) -> Result<()> {
@@ -58,7 +56,7 @@ fn verify_config(config_path: std::path::PathBuf) -> Result<()> {
                 "Successfully parsed config at {}.",
                 config_path.to_string_lossy()
             );
-            return Ok(());
+            Ok(())
         }
         Err(e) => bail!(e),
     }
@@ -78,14 +76,16 @@ fn export_config(
             }
         }
         ConfigDestination::Opml => {
-            let mut opml_data = opml::OPML::default();
-            opml_data.version = "1.0".into();
+            let mut opml_data = opml::OPML {
+                version: "1.0".into(),
+                ..Default::default()
+            };
             match &config.feeds {
                 Some(feeds) => {
                     for (feed_name, feed) in feeds.iter() {
                         match feed.feed() {
                             RawFeed::Raw { url } => {
-                                opml_data.add_feed(&feed_name, url);
+                                opml_data.add_feed(feed_name, url);
                                 if let Some(added_feed) =
                                     opml_data.body.outlines.last_mut()
                                 {
@@ -134,7 +134,7 @@ fn export_config(
 
             match &config.feeds {
                 Some(feeds) => {
-                    for (_feed_name, feed) in feeds.iter() {
+                    for feed in feeds.values() {
                         match feed.feed() {
                             RawFeed::Raw { url } => {
                                 converted_feeds.push(url.clone());
@@ -281,9 +281,8 @@ fn import_config(
                 // Add mastodon feeds.
                 if line.starts_with("mastodon://") {
                     let schemeless = line.replace("mastodon://", "");
-                    let base: String = schemeless[..schemeless
-                        .find("/")
-                        .unwrap_or_else(|| schemeless.len())]
+                    let base: String = schemeless
+                        [..schemeless.find("/").unwrap_or(schemeless.len())]
                         .into();
                     let remaining: String = schemeless[base.len()..].into();
 

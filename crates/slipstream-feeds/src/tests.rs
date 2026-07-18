@@ -54,34 +54,34 @@ async fn standard_syndications() {
     }
 }
 
-#[tokio::test]
-async fn mastodon() {
-    tracing_subscriber::fmt::try_init().ok();
+// #[tokio::test]
+// async fn mastodon() {
+//     tracing_subscriber::fmt::try_init().ok();
 
-    let mut updater = Updater::new(Duration::from_seconds(1_000), 5);
-    let mast = MastodonFeed::new(
-        "https://mastodon.social",
-        MastodonFeedType::PublicTimeline,
-        None,
-    );
-    updater.add_feed(
-        mast,
-        FeedAttributes {
-            display_name: Arc::new("Mastodon".into()),
-            timeout: Duration::from_days(365),
-            freq: None,
-            step: 1,
-            tags: std::collections::HashSet::from([Tag::new("mastodon")]),
-            filters: vec![],
-            keep_empty: false,
-            apply_tags: true,
-            headers: BTreeMap::new(),
-        },
-    );
+//     let mut updater = Updater::new(Duration::from_seconds(1_000), 5);
+//     let mast = MastodonFeed::new(
+//         "https://mastodon.social",
+//         MastodonFeedType::PublicTimeline,
+//         Some("<your-token-here>"),
+//     );
+//     updater.add_feed(
+//         mast,
+//         FeedAttributes {
+//             display_name: Arc::new("Mastodon".into()),
+//             timeout: Duration::from_days(365),
+//             freq: None,
+//             step: 1,
+//             tags: std::collections::HashSet::from([Tag::new("mastodon")]),
+//             filters: vec![],
+//             keep_empty: false,
+//             apply_tags: true,
+//             headers: BTreeMap::new(),
+//         },
+//     );
 
-    let entries = updater.update().await;
-    assert!(entries.len() > 0);
-}
+//     let entries = updater.update().await;
+//     assert!(entries.len() > 0);
+// }
 
 #[tokio::test]
 async fn parsing() {

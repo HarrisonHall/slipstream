@@ -68,7 +68,7 @@ impl Cli {
     pub fn config_path(&self) -> Result<PathBuf> {
         Ok(match &self.config {
             Some(path) => path.clone(),
-            None => match PathBuf::from_str(&*DEFAULT_CONFIG_DIR) {
+            None => match PathBuf::from_str(&DEFAULT_CONFIG_DIR) {
                 Ok(p) => p,
                 Err(e) => {
                     bail!(

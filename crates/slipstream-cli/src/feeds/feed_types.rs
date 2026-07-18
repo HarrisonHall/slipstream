@@ -130,7 +130,7 @@ impl EntryExt for slipfeed::Entry {
         }
 
         if config.serve.show_source_in_title {
-            if self.feeds().len() > 0 {
+            if !self.feeds().is_empty() {
                 atom_entry.title(format!(
                     "[{}] {}",
                     self.feeds()
@@ -146,7 +146,7 @@ impl EntryExt for slipfeed::Entry {
         } else {
             atom_entry.title(self.title().clone());
         }
-        if self.source().url != "" {
+        if !self.source().url.is_empty() {
             atom_entry.link(
                 atom::LinkBuilder::default()
                     .href(&self.source().url)
@@ -155,7 +155,7 @@ impl EntryExt for slipfeed::Entry {
                     .build(),
             );
         }
-        if self.comments().url != "" {
+        if !self.comments().url.is_empty() {
             atom_entry.link(
                 atom::LinkBuilder::default()
                     .href(&self.comments().url)
@@ -289,9 +289,9 @@ pub struct AggregateFeed {
 
 impl AggregateFeed {
     pub fn new() -> Box<Self> {
-        return Box::new(Self {
+        Box::new(Self {
             feed_ids: Vec::new(),
-        });
+        })
     }
 
     async fn owns_entry(
@@ -318,16 +318,16 @@ impl slipfeed::Feed for AggregateFeed {
         feed_id: slipfeed::FeedId,
         attr: &slipfeed::FeedAttributes,
     ) {
-        if self.owns_entry(feed_id, entry).await {
-            if attr.passes_filters(self, entry) {
-                for tag in attr.get_tags() {
-                    entry.add_tag(tag);
-                }
-                entry.add_feed(slipfeed::FeedRef {
-                    id: feed_id,
-                    name: attr.display_name.clone(),
-                });
+        if self.owns_entry(feed_id, entry).await
+            && attr.passes_filters(self, entry)
+        {
+            for tag in attr.get_tags() {
+                entry.add_tag(tag);
             }
+            entry.add_feed(slipfeed::FeedRef {
+                id: feed_id,
+                name: attr.display_name.clone(),
+            });
         }
     }
 }
@@ -342,14 +342,14 @@ pub struct AggregateTagFeed {
 
 impl AggregateTagFeed {
     pub fn new() -> Box<Self> {
-        return Box::new(Self {
+        Box::new(Self {
             allowlist: Vec::new(),
             blocklist: Vec::new(),
-        });
+        })
     }
 
     fn in_allowlist(&self, entry: &slipfeed::Entry) -> bool {
-        if self.allowlist.len() == 0 {
+        if self.allowlist.is_empty() {
             return true;
         }
 
@@ -385,16 +385,14 @@ impl slipfeed::Feed for AggregateTagFeed {
         feed_id: slipfeed::FeedId,
         attr: &slipfeed::FeedAttributes,
     ) {
-        if self.matches(entry) {
-            if attr.passes_filters(self, entry) {
-                for tag in attr.get_tags() {
-                    entry.add_tag(tag);
-                }
-                entry.add_feed(slipfeed::FeedRef {
-                    id: feed_id,
-                    name: attr.display_name.clone(),
-                });
+        if self.matches(entry) && attr.passes_filters(self, entry) {
+            for tag in attr.get_tags() {
+                entry.add_tag(tag);
             }
+            entry.add_feed(slipfeed::FeedRef {
+                id: feed_id,
+                name: attr.display_name.clone(),
+            });
         }
     }
 }

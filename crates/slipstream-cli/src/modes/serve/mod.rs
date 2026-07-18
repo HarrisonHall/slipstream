@@ -58,7 +58,7 @@ pub async fn serve_cli(
     let address = address.unwrap_or(config.serve.address.clone().unwrap_or(DEFAULT_ADDRESS.into()));
     let listener = tokio::net::TcpListener::bind(format!("{address}:{port}"))
         .await
-        .expect(&format!("Unable to bind to port {}", port));
+        .unwrap_or_else(|_| panic!("Unable to bind to port {}", port));
 
     // Serve.
     tracing::info!("slipstream serve");
@@ -269,7 +269,7 @@ async fn get_config(
             String::new()
         }
     };
-    return (HeaderMap::toml_headers(), serialized);
+    (HeaderMap::toml_headers(), serialized)
 }
 
 /// Get the styles for the web view.
@@ -278,7 +278,7 @@ async fn get_styles(
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("/styles.css");
     let html = state.html.lock().await;
-    return (HeaderMap::css_headers(), (*html.styles).clone());
+    (HeaderMap::css_headers(), (*html.styles).clone())
 }
 
 /// Get the robots.txt.
@@ -287,7 +287,7 @@ async fn get_robots_txt(
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("/robots.txt");
     let html = state.html.lock().await;
-    return (HeaderMap::plaintext_headers(), (*html.robots_txt).clone());
+    (HeaderMap::plaintext_headers(), (*html.robots_txt).clone())
 }
 
 /// Get the slipstream favicon.
@@ -296,5 +296,5 @@ async fn get_favicon(
 ) -> impl axum::response::IntoResponse {
     tracing::debug!("/favicon.ico");
     let html = state.html.lock().await;
-    return (HeaderMap::favicon_headers(), (*html.favicon).clone());
+    (HeaderMap::favicon_headers(), (*html.favicon).clone())
 }

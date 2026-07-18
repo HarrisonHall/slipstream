@@ -29,17 +29,7 @@ pub struct FeedAttributes {
 impl FeedAttributes {
     /// Generate empty feed info.
     pub fn new() -> Self {
-        Self {
-            display_name: Arc::new(":empty:".into()),
-            timeout: Duration::from_seconds(15),
-            freq: None,
-            step: 5,
-            headers: BTreeMap::new(),
-            tags: HashSet::new(),
-            filters: Vec::new(),
-            keep_empty: false,
-            apply_tags: true,
-        }
+        Self::default()
     }
 
     /// Add a filter.
@@ -56,12 +46,28 @@ impl FeedAttributes {
     pub fn get_tags<'a>(
         &'a self,
     ) -> std::collections::hash_set::Iter<'a, tag::Tag> {
-        return self.tags.iter();
+        self.tags.iter()
     }
 
     /// Check if entry passes filters.
     pub fn passes_filters(&self, feed: &dyn Feed, entry: &Entry) -> bool {
         self.filters.iter().all(|filter| filter(feed, entry))
+    }
+}
+
+impl Default for FeedAttributes {
+    fn default() -> Self {
+        Self {
+            display_name: Arc::new(":empty:".into()),
+            timeout: Duration::from_seconds(15),
+            freq: None,
+            step: 5,
+            headers: BTreeMap::new(),
+            tags: HashSet::new(),
+            filters: Vec::new(),
+            keep_empty: false,
+            apply_tags: true,
+        }
     }
 }
 

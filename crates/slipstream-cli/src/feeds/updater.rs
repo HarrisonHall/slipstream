@@ -52,7 +52,7 @@ async fn run_updater(
             }
         }
     }
-    ()
+    
 }
 
 /// Slipstream updater.
@@ -162,10 +162,10 @@ impl Updater {
                                 if config.global.limits.too_old(entry.date()) {
                                     continue;
                                 }
-                                if !self.passes_global_filters(&entry) {
+                                if !self.passes_global_filters(entry) {
                                     continue;
                                 }
-                                if !self.passes_all_filters(&entry) {
+                                if !self.passes_all_filters(entry) {
                                     continue;
                                 }
                                 entries.add(entry.clone()).ok();
@@ -192,7 +192,7 @@ impl Updater {
                                 if config.global.limits.too_old(entry.date()) {
                                     continue;
                                 }
-                                if !self.passes_global_filters(&entry) {
+                                if !self.passes_global_filters(entry) {
                                     continue;
                                 }
                                 entries.add(entry.clone()).ok();
@@ -232,7 +232,7 @@ impl Updater {
                                     {
                                         continue;
                                     }
-                                    if !self.passes_global_filters(&entry) {
+                                    if !self.passes_global_filters(entry) {
                                         continue;
                                     }
                                     // NOTE: Individual feed filters are already checked by the underlying
@@ -250,7 +250,7 @@ impl Updater {
             }
             UpdaterRequest::FeedName { tx, feed } => {
                 // config.feed(feed)
-                tx.send(self.feeds_ids.get(&feed).map(|f| f.clone())).ok();
+                tx.send(self.feeds_ids.get(&feed).cloned()).ok();
             }
         }
     }

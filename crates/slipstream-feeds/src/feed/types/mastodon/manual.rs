@@ -70,11 +70,11 @@ impl MastodonFeed {
         if !instance_url.starts_with("https://") {
             instance_url = format!("https://{instance_url}");
         }
-        return Box::new(Self {
+        Box::new(Self {
             instance_url,
             feed_type,
             token,
-        });
+        })
     }
 
     /// Grab body from endpoint.
@@ -91,19 +91,19 @@ impl MastodonFeed {
             }
         };
 
-        return match client.execute(request).await {
+        match client.execute(request).await {
             Ok(resp) => match resp.text().await {
                 Ok(body) => Some(body),
                 Err(e) => {
                     tracing::error!("Failed to parse body: {e}");
-                    return None;
+                    None
                 }
             },
             Err(e) => {
                 tracing::error!("Failed to execute: {e}");
-                return None;
+                None
             }
-        };
+        }
     }
 
     /// Fetch account id from username.
@@ -116,7 +116,7 @@ impl MastodonFeed {
             client,
             &format!(
                 "{}/api/v1/accounts/search?q={}",
-                &self.instance_url, username
+                self.instance_url, username
             ),
         )
         .await
@@ -131,11 +131,11 @@ impl MastodonFeed {
                     return None;
                 }
             };
-            for account in accounts.0 {
+            if let Some(account) = accounts.0.into_iter().next() {
                 return Some(account.id);
             }
         }
-        return None;
+        None
     }
 
     /// Parse status to entry.
@@ -158,13 +158,13 @@ impl MastodonFeed {
 
         builder.title(format!(
             "{}: \"{}\" ({})",
-            &status.account.display_name,
+            status.account.display_name,
             htmd::convert(&status.content)
                 .unwrap_or(status.content.clone())
                 .chars()
                 .take(40)
                 .collect::<String>(),
-            &status.id
+            status.id
         ));
         builder.author(&status.account.username);
         builder.date(
@@ -178,7 +178,7 @@ impl MastodonFeed {
             if attachment.attachment_type == "image" {
                 content = format!(
                     "{}<br></br><img src=\"{}\" alt=\"{}\"></img>",
-                    &content,
+                    content,
                     match &attachment.preview_url {
                         Some(url) => url,
                         None => &attachment.url,
@@ -192,7 +192,7 @@ impl MastodonFeed {
         }
         if let Some(card) = &status.card {
             builder.other_link(Link::new(&card.url, &card.title));
-            content = format!("{}<br></br>{}", &content, &card.html);
+            content = format!("{}<br></br>{}", content, card.html);
         }
         builder.source_id(&status.id);
         builder.content(htmd::convert(&content).unwrap_or(content.clone()));
@@ -279,21 +279,21 @@ impl Feed for MastodonFeed {
             MastodonFeedType::PublicTimeline => {
                 if let Some(body) = MastodonFeed::fetch(
                     &mut client,
-                    &format!("{}/api/v1/timelines/public", &self.instance_url),
+                    &format!("{}/api/v1/timelines/public", self.instance_url),
                 )
                 .await
                 {
-                    self.parse_statuses(&body, &ctx, attr, tx);
+                    self.parse_statuses(&body, ctx, attr, tx);
                 }
             }
             MastodonFeedType::HomeTimeline => {
                 if let Some(body) = MastodonFeed::fetch(
                     &mut client,
-                    &format!("{}/api/v1/timelines/home", &self.instance_url),
+                    &format!("{}/api/v1/timelines/home", self.instance_url),
                 )
                 .await
                 {
-                    self.parse_statuses(&body, &ctx, attr, tx);
+                    self.parse_statuses(&body, ctx, attr, tx);
                 }
             }
             MastodonFeedType::UserStatuses { user, id } => {
@@ -310,12 +310,12 @@ impl Feed for MastodonFeed {
                     &mut client,
                     &format!(
                         "{}/api/v1/accounts/{}/statuses",
-                        &self.instance_url, &id
+                        self.instance_url, id
                     ),
                 )
                 .await
                 {
-                    self.parse_statuses(&body, &ctx, attr, tx);
+                    self.parse_statuses(&body, ctx, attr, tx);
                 }
             }
         }
@@ -348,6 +348,6 @@ impl Feed for MastodonFeed {
 
 impl std::fmt::Display for MastodonFeed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<MastodonStatus url={}>", &self.instance_url)
+        write!(f, "<MastodonStatus url={}>", self.instance_url)
     }
 }

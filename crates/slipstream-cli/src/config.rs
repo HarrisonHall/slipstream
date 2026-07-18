@@ -9,6 +9,7 @@ const DEFAULT_FEED_TAG_STEP: u8 = 7;
 /// Configuration for slipstream.
 /// This is parsed from the toml slipstream configuration file.
 #[derive(Debug, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct Config {
     /// Global updater frequency.
     /// This is duration between calls to update. This is not the default feed
@@ -39,22 +40,6 @@ pub struct Config {
     pub read: ReadConfig,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            freq: None,
-            workers: None,
-            timezone: TimeZone::default(),
-            feeds: None,
-            storage: None,
-            database: None,
-            global: GlobalConfig::default(),
-            log: None,
-            serve: ServeConfig::default(),
-            read: ReadConfig::default(),
-        }
-    }
-}
 
 impl Config {
     /// Create a slipstream updater from the parsed configuration.
@@ -98,7 +83,7 @@ impl Config {
                 feed_def
                     .tags()
                     .clone()
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_else(Vec::new)
                     .iter()
                     .for_each(|tag| attr.add_tag(tag.clone().into()));
                 feed_def
@@ -133,11 +118,11 @@ impl Config {
                         attr.step = options.step(DEFAULT_FEED_TAG_STEP);
                         let mut feed = AggregateTagFeed::new();
                         feed.allowlist = tag_allowlist
-                            .into_iter()
+                            .iter()
                             .map(|t| slipfeed::Tag::from(t.as_str()))
                             .collect();
                         feed.blocklist = tag_blocklist
-                            .into_iter()
+                            .iter()
                             .map(|t| slipfeed::Tag::from(t.as_str()))
                             .collect();
                         let mut inner_updater = updater.updater.write().await;
@@ -354,7 +339,7 @@ impl<'de> Deserialize<'de> for TimeZone {
             });
         }
 
-        if lower_text == "local" || lower_text == "" {
+        if lower_text == "local" || lower_text.is_empty() {
             return Ok(Self {
                 timezone: lower_text,
                 inner: TimeZoneInner::Local,
@@ -400,6 +385,6 @@ impl TimeZone {
             TimeZoneInner::Local => &chrono::Local,
         });
 
-        return c.format("%Y-%m-%d %H:%M").to_string();
+        c.format("%Y-%m-%d %H:%M").to_string()
     }
 }

@@ -25,7 +25,7 @@ impl CommandParser {
             command = "command ".to_string() + &command[1..];
         }
 
-        match shlex::split(&format!("__PARSER__ {}", &command)) {
+        match shlex::split(&format!("__PARSER__ {}", command)) {
             Some(split) => match CommandParser::try_parse_from(split.clone()) {
                 Ok(command) => Ok(command),
                 Err(e) => bail!("{}", e),
@@ -59,6 +59,7 @@ pub enum Command {
     #[command(alias = "toggle-tag")]
     TagToggle { tag: String },
     /// Run a user-defined command.
+    #[allow(clippy::enum_variant_names)]
     #[command(alias = "run")]
     Command { command: String },
     /// Page forwards.

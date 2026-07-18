@@ -25,6 +25,11 @@ impl EntrySet {
         self.entries.len()
     }
 
+    /// Check if set is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Clear all entries in the set.
     pub fn clear(&mut self) {
         self.entries.clear();
@@ -95,7 +100,7 @@ impl<'a> Iterator for EntrySetIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             EntrySetIter::All { set, next } => {
-                for entry in &set.entries[*next..] {
+                if let Some(entry) = set.entries[*next..].iter().next() {
                     *next += 1;
                     return Some(entry);
                 }

@@ -47,7 +47,7 @@ impl std::fmt::Display for Commandish {
             Commandish::Literal(literal) => write!(f, ":{:?}", literal),
             Commandish::CustomCommandRef(command) => write!(f, "!{}", command),
             Commandish::CustomCommandFull(command) => {
-                write!(f, "!{}", &command.name)
+                write!(f, "!{}", command.name)
             }
         }
     }
@@ -72,7 +72,7 @@ impl Serialize for Commandish {
                 serializer.serialize_str(&format!("!{}", custom))
             }
             Commandish::CustomCommandFull(custom) => {
-                serializer.serialize_str(&format!("!{}", &custom.name))
+                serializer.serialize_str(&format!("!{}", custom.name))
             }
         }
     }
@@ -85,15 +85,15 @@ impl<'de> Deserialize<'de> for Commandish {
     {
         let text = String::deserialize(deserializer)?;
 
-        if text.starts_with(":") {
+        if let Some(command) = text.strip_prefix(":") {
             return Ok(Commandish::Literal(ReadCommandLiteral::Command(
-                text[1..].trim().into(),
+                command.trim().into(),
             )));
         }
 
-        if text.starts_with("!") {
+        if let Some(command) = text.strip_prefix("!") {
             return Ok(Commandish::CustomCommandRef(Arc::new(
-                text[1..].trim().into(),
+                command.trim().into(),
             )));
         }
 
@@ -104,10 +104,10 @@ impl<'de> Deserialize<'de> for Commandish {
                 return Err(<D::Error as serde::de::Error>::custom(e));
             }
         };
-        return match ReadCommandLiteral::deserialize(de) {
+        match ReadCommandLiteral::deserialize(de) {
             Ok(literal) => Ok(Commandish::Literal(literal)),
             Err(e) => Err(<D::Error as serde::de::Error>::custom(e)),
-        };
+        }
     }
 }
 

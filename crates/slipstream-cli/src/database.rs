@@ -76,7 +76,7 @@ impl Database {
         )
         .fetch_one(pool)
         .await
-        .unwrap_or_else(|_| (None,));
+        .unwrap_or((None,));
         match version_res.0 {
             Some(v) => match semver::Version::parse(&v) {
                 Ok(v) => Some(v),
@@ -194,8 +194,8 @@ impl Database {
                     UPDATE entries SET modified_timestamp = timestamp WHERE modified_timestamp = 0;
                     ",
                 )
-                .bind(&semver::Version::new(2, 10, 0).to_string())
-                .bind(&slipfeed::DateTime::now().to_chrono())
+                .bind(semver::Version::new(2, 10, 0).to_string())
+                .bind(slipfeed::DateTime::now().to_chrono())
                 .execute(pool)
                 .await;
 
@@ -218,8 +218,8 @@ impl Database {
                     CREATE INDEX IF NOT EXISTS entries_link_idx ON entries(link);
                     ",
                 )
-                .bind(&semver::Version::new(2, 23, 0).to_string())
-                .bind(&slipfeed::DateTime::now().to_chrono())
+                .bind(semver::Version::new(2, 23, 0).to_string())
+                .bind(slipfeed::DateTime::now().to_chrono())
                 .execute(pool)
                 .await;
 
@@ -254,7 +254,7 @@ impl Database {
                     .bind(sqlx::types::Json::from(&serialized_entry))
                     .fetch_one(&self.pool)
                     .await
-                    .unwrap_or_else(|_| (None,));
+                    .unwrap_or((None,));
             }
             // Search by primary-feed+primary-link.
             if id.0.is_none() && !entry.source().url.is_empty() {
@@ -265,7 +265,7 @@ impl Database {
                 .bind(&entry.source().url)
                 .fetch_one(&self.pool)
                 .await
-                .unwrap_or_else(|_| (None,));
+                .unwrap_or((None,));
             }
             // Search by title+author.
             if id.0.is_none()
@@ -279,7 +279,7 @@ impl Database {
                 .bind(entry.author())
                 .fetch_one(&self.pool)
                 .await
-                .unwrap_or_else(|_| (None,));
+                .unwrap_or((None,));
             }
             // Search by author+source_id.
             if id.0.is_none()
@@ -293,7 +293,7 @@ impl Database {
                 .bind(entry.source_id())
                 .fetch_one(&self.pool)
                 .await
-                .unwrap_or_else(|_| (None,));
+                .unwrap_or((None,));
             }
 
             match id {
@@ -313,8 +313,8 @@ impl Database {
                         RETURNING id
                         ",
                         )
-                        .bind(&entry.date().to_chrono())
-                        .bind(&slipfeed::DateTime::now().to_chrono())
+                        .bind(entry.date().to_chrono())
+                        .bind(slipfeed::DateTime::now().to_chrono())
                         .bind(sqlx::types::Json::from(&serialized_entry))
                         .bind(entry.title())
                         .bind(entry.author())
@@ -366,7 +366,7 @@ impl Database {
             }
         }
 
-        return entry_id;
+        entry_id
     }
 
     pub async fn get_entries(
@@ -571,7 +571,7 @@ impl Database {
             let res =
                 sqlx::query("INSERT INTO tags (entry_id, tag) VALUES(?, ?)")
                     .bind(entry_id)
-                    .bind(&String::from(tag))
+                    .bind(String::from(tag))
                     .execute(&self.pool)
                     .await;
 

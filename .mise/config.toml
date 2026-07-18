@@ -46,7 +46,9 @@ run = [
 
 [tasks.test]
 description = "Test the repo."
-run = "RUST_LOG=\"trace\" cargo test -- --nocapture"
+run = [
+  "RUST_LOG=\"trace\" cargo test -- --nocapture",
+]
 
 [tasks.test-import-export]
 description = "Test import and export."
@@ -62,6 +64,16 @@ run = [
     "cargo run --bin slipstream -- --debug -c ./test/slipreader.export.toml config import opml ./test/slipstream.export.opml ./test/slipreader.import.opml.toml",
     "cargo run --bin slipstream -- --debug -c ./test/slipreader.export.toml config import list ./test/slipstream.export.list ./test/slipreader.import.list.toml",
 ]
+
+[tasks.lint]
+description = "Test the repo."
+run = [
+  "cargo clippy",
+]
+
+[tasks.cicd]
+description = "Test the repo."
+depends = ["lint", "test", "test-import-export"]
 
 [tasks.build]
 description = "Build static release for many versions of linux."

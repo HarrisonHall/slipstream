@@ -12,7 +12,7 @@ use tracing::{Level, level_filters::LevelFilter};
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::SubscriberExt;
 
-static LOGGER: LazyLock<Logger> = LazyLock::new(|| Logger::new());
+static LOGGER: LazyLock<Logger> = LazyLock::new(Logger::new);
 
 pub fn get_logger() -> Logger {
     LOGGER.clone()
@@ -80,7 +80,7 @@ impl std::io::Write for Logger {
         if self.writing.load(Ordering::Acquire) {
             self.flush()?;
         }
-        return Ok(buf.len());
+        Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
@@ -116,7 +116,7 @@ pub fn setup_logging(cli: &Cli, config: &Config) -> Result<()> {
 
     // CLI layer (to stderr).
     let cli_logger = match cli.command {
-        CommandMode::Read { .. } => {
+        CommandMode::Read => {
             if cli.debug || cli.verbose {
                 Some(
                     tracing_subscriber::fmt::layer()
@@ -142,21 +142,19 @@ pub fn setup_logging(cli: &Cli, config: &Config) -> Result<()> {
     let file_logger = match config.log.as_ref() {
         Some(log_file) => {
             let filename = shellexpand::full(log_file)
-                .expect(&format!("Unable to expand log file {}", log_file))
+                .unwrap_or_else(|_| panic!("Unable to expand log file {}", log_file))
                 .into_owned();
             let path = std::path::PathBuf::from_str(&filename)
-                .expect(&format!("Log file at invalid path {}", filename));
+                .unwrap_or_else(|_| panic!("Log file at invalid path {}", filename));
             if let Some(parent_dir) = path.parent() {
-                std::fs::create_dir_all(parent_dir).expect(&format!(
-                    "Unable to initialize path for {}",
-                    filename
-                ));
+                std::fs::create_dir_all(parent_dir).unwrap_or_else(|_| panic!("Unable to initialize path for {}",
+                    filename));
             }
             let file = std::fs::OpenOptions::new()
                 .append(true)
                 .create(true)
                 .open(&filename)
-                .expect(&format!("Failed to create log file {}", log_file));
+                .unwrap_or_else(|_| panic!("Failed to create log file {}", log_file));
             Some(
                 tracing_subscriber::fmt::layer()
                     .compact()
@@ -174,7 +172,7 @@ pub fn setup_logging(cli: &Cli, config: &Config) -> Result<()> {
         .with(file_logger);
 
     // Set this logger as global.
-    if let Err(_) = tracing::subscriber::set_global_default(subscriber) {
+    if tracing::subscriber::set_global_default(subscriber).is_err() {
         bail!("Unable to initialize logging.");
     }
 

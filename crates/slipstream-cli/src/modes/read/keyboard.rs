@@ -27,7 +27,7 @@ pub const SEARCH_MODE: KeyEvent =
     KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE);
 
 /// Keyboard key.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BindingKey {
     /// Specified binding.
     binding: String,
@@ -201,6 +201,12 @@ impl<'de> Deserialize<'de> for BindingKey {
     }
 }
 
+impl PartialOrd for BindingKey {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl Ord for BindingKey {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.binding.cmp(&other.binding)
@@ -215,7 +221,7 @@ impl MouseCapture {
             std::io::stdout(),
             crossterm::event::EnableMouseCapture
         )?;
-        return Ok(Self);
+        Ok(Self)
     }
 }
 

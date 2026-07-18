@@ -46,7 +46,7 @@ impl<'a> Widget for MenuWidget<'a> {
                     self.reader.interaction_state.selection + 1,
                     self.reader.entries.len()
                 ),
-                width = &(title_layout.width as usize),
+                width = (title_layout.width as usize),
             ),
             Style::new().bg(Color::Red).fg(Color::Black),
         )

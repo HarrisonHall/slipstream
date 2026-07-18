@@ -22,7 +22,7 @@ pub trait Feed: std::fmt::Debug + Send + Sync + DowncastSync + 'static {
         // By default, we only tag our own entries.
         if entry.is_from_feed(feed_id) {
             for tag in attr.get_tags() {
-                entry.add_tag(&tag);
+                entry.add_tag(tag);
             }
         }
     }

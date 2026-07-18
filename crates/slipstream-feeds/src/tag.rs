@@ -10,7 +10,7 @@ pub struct Tag(String);
 impl Tag {
     /// Generate a new tag.
     pub fn new(from: impl Into<String>) -> Self {
-        Self(String::from(from.into()).to_lowercase())
+        Self(from.into().to_lowercase())
     }
 }
 
@@ -22,7 +22,7 @@ impl std::fmt::Display for Tag {
 
 impl PartialOrd for Tag {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 

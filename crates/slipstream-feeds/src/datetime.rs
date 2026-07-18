@@ -1,8 +1,9 @@
-use chrono::TimeZone;
+//! Best-effort DateTime handling generalization for parsing feeds and handling
+//! conversions between std, chrono, and tokio.
 
-///! Best-effort DateTime handling generalization for parsing feeds and handling
-///! conversions between std, chrono, and tokio.
 use super::*;
+
+use chrono::TimeZone;
 
 /// Datetime generalization for conversion between libraries.
 /// This attempts to support millisecond resolution.
@@ -33,7 +34,7 @@ impl DateTime {
 
     /// Convert to chrono::DateTime.
     pub fn to_chrono(&self) -> chrono::DateTime<chrono::Utc> {
-        self.0.clone()
+        self.0
     }
 
     /// Convert to tokio::Instant.
@@ -44,14 +45,14 @@ impl DateTime {
             let dur = std::time::Duration::from_millis(millis as u64);
             tokio::time::Instant::now() + dur
         } else {
-            let dur = std::time::Duration::from_millis(millis.abs() as u64);
+            let dur = std::time::Duration::from_millis(millis.unsigned_abs());
             tokio::time::Instant::now() - dur
         }
     }
 
     /// Convert to ISO-8601 string.
     pub fn to_iso8601(&self) -> String {
-        return self.0.format("%+").to_string();
+        self.0.format("%+").to_string()
     }
 
     /// Convert intof-Modified-Since header.
@@ -137,7 +138,7 @@ impl TryFrom<&str> for DateTime {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let date = value;
 
-        if date.len() == 0 {
+        if date.is_empty() {
             return Err(());
         }
 
@@ -292,7 +293,7 @@ impl Duration {
 
     /// Convert duration to chrono.
     pub fn to_chrono(&self) -> chrono::Duration {
-        self.0.clone()
+        self.0
     }
 
     /// Convert duration to tokio.

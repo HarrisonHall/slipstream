@@ -12,7 +12,7 @@ pub struct StandardSyndication {
 impl StandardSyndication {
     /// Create a new standard syndication.
     pub fn new(url: impl Into<String>) -> Box<Self> {
-        return Box::new(Self { url: url.into() });
+        Box::new(Self { url: url.into() })
     }
 
     /// Parse a feed from the body text.
@@ -133,11 +133,11 @@ impl StandardSyndication {
 
         if attr.apply_tags {
             for category in atom_entry.categories() {
-                entry.add_tag(&Tag::new(String::from(category.term.clone())));
+                entry.add_tag(&Tag::new(category.term.clone()));
             }
         }
 
-        return entry;
+        entry
     }
 
     /// Parse an rss entry.
@@ -190,7 +190,7 @@ impl StandardSyndication {
                 }
             }
         }
-        return entry;
+        entry
     }
 }
 
@@ -209,7 +209,7 @@ impl Feed for StandardSyndication {
             match tokio::fs::read(filename).await {
                 Ok(buf) => {
                     if let Ok(body) = str::from_utf8(buf.as_slice()) {
-                        self.parse(body, &ctx, attr, tx);
+                        self.parse(body, ctx, attr, tx);
                     } else {
                         tracing::warn!(
                             "Unable to read binary file `{filename}`."
@@ -287,7 +287,7 @@ impl Feed for StandardSyndication {
             match client.execute(request).await {
                 Ok(req_result) => match req_result.text().await {
                     Ok(body) => {
-                        self.parse(body.as_str(), &ctx, attr, tx);
+                        self.parse(body.as_str(), ctx, attr, tx);
                     }
                     Err(e) => {
                         tracing::error!("Failed to get body from response: {e}")
@@ -325,6 +325,6 @@ impl Feed for StandardSyndication {
 
 impl std::fmt::Display for StandardSyndication {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<StandardSyndication url={}>", &self.url)
+        write!(f, "<StandardSyndication url={}>", self.url)
     }
 }

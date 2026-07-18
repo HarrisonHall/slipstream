@@ -98,12 +98,9 @@ impl Updater {
         let now = DateTime::now();
 
         // Wait until time to update.
-        match &self.last_update_check {
-            Some(last_time) => {
-                let next_time = last_time.clone() + self.freq.clone();
-                tokio::time::sleep_until(next_time.to_tokio()).await;
-            }
-            None => {}
+        if let Some(last_time) = &self.last_update_check {
+            let next_time = last_time.clone() + self.freq.clone();
+            tokio::time::sleep_until(next_time.to_tokio()).await;
         };
 
         // Perform updates.
@@ -138,7 +135,7 @@ impl Updater {
 
                     true
                 })
-                .map(|(id, feed_info)| (id.clone(), feed_info.clone()))
+                .map(|(id, feed_info)| (*id, feed_info.clone()))
                 .collect();
 
             // Update parse times.
@@ -163,10 +160,9 @@ impl Updater {
                     .map(|(id, feed_info)| {
                         let feed_info = feed_info.clone();
                         let tx = tx.clone();
-                        let id = id.clone();
                         let feed = feed_info.feed.clone();
                         let ctx = UpdaterContext {
-                            feed_id: id.clone(),
+                            feed_id: id,
                             parse_time: now.clone(),
                             last_update: feed_info.last_update.clone(),
                             sender: tx.clone(),
@@ -174,11 +170,12 @@ impl Updater {
 
                         async move {
                             let mut feed = feed.write().await;
-                            if let Err(_) = tokio::time::timeout(
+                            if tokio::time::timeout(
                                 feed_info.attr.timeout.to_tokio(),
                                 feed.update(&ctx, &feed_info.attr),
                             )
                             .await
+                            .is_err()
                             {
                                 tracing::warn!(
                                     "Update timed out for {:?}",
@@ -191,7 +188,7 @@ impl Updater {
 
                 // Wait for all updates.
                 tracing::info!("Gathering entries: step={}", step);
-                while let Some(_) = updates.next().await {}
+                while updates.next().await.is_some() {}
 
                 // Gather entries, tag, and transform.
                 tracing::debug!("Applying tags: step={}", step);
@@ -232,28 +229,28 @@ impl Updater {
 
     /// Iterate all entries.
     pub fn iter<'a>(&'a self) -> EntrySetIter<'a> {
-        return EntrySetIter::All {
+        EntrySetIter::All {
             set: &self.entries,
             next: 0,
-        };
+        }
     }
 
     /// Iterate all entries with a tag.
     pub fn with_tags<'a>(&'a self, tag: impl Into<Tag>) -> EntrySetIter<'a> {
-        return EntrySetIter::Tag {
+        EntrySetIter::Tag {
             set: &self.entries,
             tag: tag.into(),
             next: 0,
-        };
+        }
     }
 
     /// Iterate all entries from a feed.
     pub fn from_feed<'a>(&'a self, feed: FeedId) -> EntrySetIter<'a> {
-        return EntrySetIter::Feed {
+        EntrySetIter::Feed {
             set: &self.entries,
             feed,
             next: 0,
-        };
+        }
     }
 
     /// Get a feed from the id.
