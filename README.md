@@ -16,7 +16,7 @@ Feed fetcher, filterer, and aggregator.
 
 ## Getting Started
 
-### slipstream
+### Slipstream
 
 `slipstream` is a command-line application for serving filtered/aggregated feeds
 from existing feeds a la Yahoo Pipes. A simple configuration file (e.g.

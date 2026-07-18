@@ -9,7 +9,7 @@ pub struct FeedDefinition {
     #[serde(default)]
     tags: Option<Vec<String>>,
     #[serde(default, flatten)]
-    filters: Filters,
+    filters: FiltersConfig,
     #[serde(default, flatten)]
     options: FeedOptions,
 }
@@ -20,7 +20,7 @@ impl FeedDefinition {
         Self {
             feed,
             tags: None,
-            filters: Filters::default(),
+            filters: FiltersConfig::default(),
             options: FeedOptions::default(),
         }
     }
@@ -33,7 +33,7 @@ impl FeedDefinition {
         &self.tags
     }
 
-    pub fn filters(&self) -> &Filters {
+    pub fn filters(&self) -> &FiltersConfig {
         &self.filters
     }
 

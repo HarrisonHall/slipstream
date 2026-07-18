@@ -2,8 +2,9 @@
 
 use super::*;
 
+/// Filter configuration.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Filters {
+pub struct FiltersConfig {
     /// Exclude from all fields.
     #[serde(alias = "exclude", alias = "exclude-substrings")]
     pub exclude: Option<Vec<String>>,
@@ -54,7 +55,7 @@ pub struct Filters {
     pub include_tags_strict: Option<Vec<String>>,
 }
 
-impl Filters {
+impl FiltersConfig {
     pub fn get_filters(&self) -> Vec<slipfeed::Filter> {
         let mut filters: Vec<slipfeed::Filter> = Vec::new();
         if let Some(filter) = exclude(&self.exclude) {
@@ -109,7 +110,7 @@ impl Filters {
     }
 }
 
-impl Default for Filters {
+impl Default for FiltersConfig {
     fn default() -> Self {
         Self {
             exclude: None,
