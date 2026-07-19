@@ -148,7 +148,7 @@ impl Reader {
 
             // Poll input.
             self.terminal_state.last_frame_inputs.clear();
-            if self.handle_input().await.is_err() {
+            if self.handle_input(terminal).await.is_err() {
                 self.cancel_token.cancel();
                 break 'reader Ok(());
             }
@@ -205,7 +205,7 @@ impl Reader {
 
     /// Handle input.
     /// Quits on error.
-    async fn handle_input(&mut self) -> Result<()> {
+    async fn handle_input(&mut self, terminal: &mut Terminal) -> Result<()> {
         // Wait for input for REFRESH_DELTA.
         if terminal_input_ready(REFRESH_DELTA).await {
             // It's guaranteed that the `read()` won't block when the `poll()`
@@ -225,7 +225,7 @@ impl Reader {
                         _ => {
                             let command =
                                 self.config.read.get_key_command(&key);
-                            self.run_command(command).await?;
+                            self.run_command(command, terminal).await?;
                         }
                     }
                 }
@@ -273,7 +273,11 @@ impl Reader {
     }
 
     /// Run command.
-    async fn run_command(&mut self, command: Commandish) -> Result<()> {
+    async fn run_command(
+        &mut self,
+        command: Commandish,
+        terminal: &mut Terminal,
+    ) -> Result<()> {
         match command {
             Commandish::CustomCommandRef(name) => {
                 tracing::error!("Invalid command name: {}", name.as_str());
@@ -293,7 +297,7 @@ impl Reader {
                 ));
             }
             Commandish::Literal(command) => {
-                self.run_command_literal(command).await?
+                self.run_command_literal(command, terminal).await?
             }
         }
         Ok(())
@@ -303,6 +307,7 @@ impl Reader {
     async fn run_command_literal(
         &mut self,
         command: ReadCommandLiteral,
+        terminal: &mut Terminal,
     ) -> Result<()> {
         match command {
             ReadCommandLiteral::None => {}
@@ -312,6 +317,10 @@ impl Reader {
                 } else {
                     self.cancel_token.cancel();
                 }
+                return Ok(());
+            }
+            ReadCommandLiteral::Clear => {
+                terminal.clear().ok();
                 return Ok(());
             }
             ReadCommandLiteral::Update => {

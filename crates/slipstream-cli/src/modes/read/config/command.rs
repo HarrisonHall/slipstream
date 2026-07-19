@@ -120,6 +120,9 @@ pub enum ReadCommandLiteral {
     /// Quit the read mode.
     #[serde(alias = "quit")]
     Quit,
+    /// Clear the terminal.
+    #[serde(alias = "clear", alias = "redraw")]
+    Clear,
     /// Update the feeds.
     #[serde(alias = "update")]
     Update,
