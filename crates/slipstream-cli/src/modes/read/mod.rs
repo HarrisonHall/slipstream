@@ -783,6 +783,14 @@ impl Reader {
                 )
                 .await
             }
+            command_mode::Command::SearchNew => {
+                self.update_entries(
+                    vec![DatabaseSearch::New],
+                    OffsetCursor::LatestId,
+                    true,
+                )
+                .await
+            }
             command_mode::Command::SearchLive => {
                 self.update_entries(
                     vec![DatabaseSearch::Live],

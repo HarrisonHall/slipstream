@@ -99,6 +99,14 @@ fn author(template: &Option<String>) -> Option<slipfeed::Transform> {
             if author.contains("{feed}") {
                 author = author.replace("{feed}", &entry.primary_feed().name);
             }
+            if author.contains("{feed_fallback}") {
+                if entry.author().len() == 0 {
+                    author = author
+                        .replace("{feed_fallback}", &entry.primary_feed().name);
+                } else {
+                    author = author.replace("{feed_fallback}", &entry.author());
+                }
+            }
 
             entry.set_author(author);
         }));

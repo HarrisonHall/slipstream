@@ -3,7 +3,6 @@
 use std::ops::Deref;
 
 use ratatui::{
-    layout::Flex,
     text::ToText,
     widgets::{Clear, Wrap},
 };
@@ -158,18 +157,23 @@ impl<'a> Widget for EntryViewWidget<'a> {
             });
         let inner_block = block.inner(area);
         block.render(area, buf);
+        // TODO: Render block outline last.
 
         // Render loaded entry.
         let tab_layouts = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Percentage(100)])
+            .constraints([
+                Constraint::Max(5),
+                Constraint::Max(1),
+                Constraint::Fill(1),
+            ])
             .split(inner_block);
-        let commands = ["info"]
+        let commands = ["content"]
             .iter()
             .copied()
             .chain(self.entry.get_commands().iter().map(|tab| (*tab).as_str()));
         {
-            let mut rect = tab_layouts[0];
+            let mut rect = tab_layouts[1];
             let mut idx = self.entry.result_selection_index;
             rect.height = 1;
             for (i, command) in commands.enumerate() {
@@ -183,7 +187,96 @@ impl<'a> Widget for EntryViewWidget<'a> {
             self.entry.result_selection_index = idx;
         }
 
-        let commands = ["info"]
+        // Render base info.
+        {
+            // All text lines.
+            let mut top_lines: Vec<Line> = Vec::new();
+
+            // Add author:
+            top_lines.push(
+                Span::styled(
+                    format!(
+                        "Author: {}",
+                        match !self.entry.author().is_empty() {
+                            true => self.entry.author().as_str(),
+                            false => "---",
+                        }
+                    ),
+                    Style::default().fg(Color::LightGreen),
+                )
+                .into(),
+            );
+
+            // Add tags:
+            let mut tags: Vec<String> = self
+                .entry
+                .tags()
+                .iter()
+                .filter(|t| !self.config.read.tags.hidden.contains(t.as_ref()))
+                .map(|t| format!("#{t}"))
+                .collect::<Vec<String>>();
+            tags.sort();
+            top_lines.push(Line::styled(
+                tags.join(", "),
+                Style::default().fg(Color::Yellow),
+            ));
+
+            // Add links:
+            let mut link_count = 0;
+            if !self.entry.source().url.is_empty() {
+                link_count += 1;
+                top_lines.push(
+                    Span::styled(
+                        format!("[{}] {}", link_count, self.entry.source().url),
+                        Style::default().fg(Color::Red),
+                    )
+                    .into(),
+                );
+            }
+            if !self.entry.comments().url.is_empty() {
+                link_count += 1;
+                top_lines.push(
+                    Span::styled(
+                        format!(
+                            "[{}] {}",
+                            link_count,
+                            self.entry.comments().url
+                        ),
+                        Style::default().fg(Color::Red),
+                    )
+                    .into(),
+                );
+            }
+            for i in 0..self.entry.other_links().len() {
+                if link_count > 2 {
+                    break;
+                }
+                link_count += 1;
+                top_lines.push(
+                    Span::styled(
+                        format!(
+                            "[{}] {}",
+                            link_count,
+                            self.entry.other_links()[i].url
+                        ),
+                        Style::default().fg(Color::Red),
+                    )
+                    .into(),
+                );
+            }
+            for _ in 0..(2i32 - link_count).max(0) {
+                top_lines.push(Line::from(""));
+            }
+
+            top_lines.push(Line::from(Span::styled(
+                self.config.timezone.format(self.entry.date()),
+                Style::default(),
+            )));
+
+            Paragraph::new(top_lines).render(tab_layouts[0], buf);
+        }
+
+        let commands = ["content"]
             .iter()
             .copied()
             .chain(self.entry.get_commands().iter().map(|tab| (*tab).as_str()));
@@ -194,23 +287,25 @@ impl<'a> Widget for EntryViewWidget<'a> {
                 // .bg(Color::Green)
                 .select(self.entry.result_selection_index)
                 .highlight_style((Color::Black, Color::Blue));
-        tabs.render(tab_layouts[0], buf);
+        tabs.render(tab_layouts[1], buf);
+
         match self.entry.get_result() {
             None => {
-                EntryInfoWidget(self.entry, self.config)
-                    .render(tab_layouts[1], buf);
+                EntryContentWidget(self.entry, self.config)
+                    .render(tab_layouts[2], buf);
             }
             Some(selected_result) => {
-                selected_result.widget().render(tab_layouts[1], buf);
+                selected_result.widget().render(tab_layouts[2], buf);
             }
         };
     }
 }
 
 /// Widget for displaying entry info.
-struct EntryInfoWidget<'a>(&'a slipfeed::Entry, &'a Config);
+#[allow(unused)]
+struct EntryContentWidget<'a>(&'a slipfeed::Entry, &'a Config);
 
-impl<'a> Widget for EntryInfoWidget<'a> {
+impl<'a> Widget for EntryContentWidget<'a> {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
@@ -218,106 +313,15 @@ impl<'a> Widget for EntryInfoWidget<'a> {
         // Clear this space!
         Clear.render(area, buf);
 
-        let layouts = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![
-                Constraint::Max(5),
-                Constraint::Fill(1),
-                Constraint::Max(1),
-            ])
-            .flex(Flex::Legacy)
-            .split(area);
-
-        // All text lines.
-        let mut top_lines: Vec<Line> = Vec::new();
-
-        // Add author:
-        top_lines.push(
-            Span::styled(
-                format!(
-                    "Author: {}",
-                    match !self.0.author().is_empty() {
-                        true => self.0.author().as_str(),
-                        false => "---",
-                    }
-                ),
-                Style::default().fg(Color::LightGreen),
-            )
-            .into(),
-        );
-
-        // Add tags:
-        let mut tags: Vec<String> = self
-            .0
-            .tags()
-            .iter()
-            .filter(|t| !self.1.read.tags.hidden.contains(t.as_ref()))
-            .map(|t| format!("#{t}"))
-            .collect::<Vec<String>>();
-        tags.sort();
-        top_lines.push(Line::styled(
-            tags.join(", "),
-            Style::default().fg(Color::Yellow),
-        ));
-
-        // Add links:
-        let mut link_count = 0;
-        if !self.0.source().url.is_empty() {
-            link_count += 1;
-            top_lines.push(
-                Span::styled(
-                    format!("[{}] {}", link_count, self.0.source().url),
-                    Style::default().fg(Color::Red),
-                )
-                .into(),
-            );
-        }
-        if !self.0.comments().url.is_empty() {
-            link_count += 1;
-            top_lines.push(
-                Span::styled(
-                    format!("[{}] {}", link_count, self.0.comments().url),
-                    Style::default().fg(Color::Red),
-                )
-                .into(),
-            );
-        }
-        for i in 0..self.0.other_links().len() {
-            link_count += 1;
-            top_lines.push(
-                Span::styled(
-                    format!("[{}] {}", link_count, self.0.other_links()[i].url),
-                    Style::default().fg(Color::Red),
-                )
-                .into(),
-            );
-        }
-
-        Paragraph::new(top_lines)
-            .wrap(Wrap { trim: false })
-            .render(layouts[0], buf);
-
         if !self.0.content().is_empty() {
             Paragraph::new(tui_markdown::from_str(self.0.content()).to_text())
                 .left_aligned()
                 .wrap(Wrap { trim: false })
-                .render(layouts[1], buf);
+                .render(area, buf);
         } else {
             Span::styled("---", Style::default().fg(Color::Gray))
-                .render(layouts[1], buf);
+                .render(area, buf);
         }
-
-        // Bottom text lines.
-        let bottom_lines: Vec<Line> = vec![
-            // Add date:
-            Line::from(Span::styled(
-                self.1.timezone.format(self.0.date()),
-                Style::default(),
-            ))
-            .right_aligned(),
-        ];
-
-        Paragraph::new(bottom_lines).render(layouts[2], buf);
     }
 }
 

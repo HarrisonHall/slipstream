@@ -4,14 +4,24 @@
 
 ### Added
 
-- Support for If-Modified-Since in `slipstream serve`
-- Support for "live" mode in slipstream
+- Support for If-Modified-Since in `slipstream serve`.
+- Support for "live" mode in slipstream.
+- Support for "new" mode in slipstream.
+- Flags (icon) support for matched feeds.
+- Transforms have been added in addition to filters:
+  - `author` replaces the author given a templated string.
+  - `tag-derivations` adds tag based on a match.
+  - `tag-aliases` replaces tag based on a match.
+- Improve mouse support
 
 ### Changed
 
 - Changed the `include-tags` and `exclude-tags` filters to utilize fuzzy
   matching, where strict matching is now utilized in `include-tags-strict` and
-  `exclude-tags-strict`
+  `exclude-tags-strict`.
+- All include & exclude tags have been reworked and include a basic test-suite.
+- Reworked feed fetch order
+  - Removed "worlds" from aggregate feeds
 
 ### Deprecated
 
@@ -23,7 +33,9 @@
 
 ### Fixed
 
-- N/A
+- Improved heuristic for entry deduplication
+- Add better support for rfc2822 timestamps
+- Improved markdown parsing & output
 
 ### Security
 

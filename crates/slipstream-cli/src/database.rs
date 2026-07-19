@@ -231,7 +231,30 @@ impl Database {
                 continue;
             }
 
-            tracing::debug!("Database is already up-to-date.");
+            if current_version < semver::Version::new(2, 25, 0) {
+                let res = sqlx::query(
+                    "
+                    INSERT INTO version_history(version, timestamp) VALUES(?, unixepoch(?));
+
+                    ALTER TABLE entries ADD COLUMN created_timestamp INTEGER NOT NULL DEFAULT 0;
+                    CREATE INDEX IF NOT EXISTS entries_created_timestamp_idx ON entries(created_timestamp);
+                    UPDATE entries SET created_timestamp = timestamp WHERE created_timestamp = 0;
+                    ",
+                )
+                .bind(semver::Version::new(2, 25, 0).to_string())
+                .bind(slipfeed::DateTime::now().to_chrono())
+                .execute(pool)
+                .await;
+
+                if let Err(e) = res {
+                    bail!("Failed to upgrade database to v2.25.0: {e}");
+                }
+
+                current_version = semver::Version::new(2, 25, 0);
+                continue;
+            }
+
+            tracing::debug!("Database is up-to-date.");
             break;
         }
 
@@ -308,12 +331,13 @@ impl Database {
                     let id_res: Result<(Option<EntryDbId>,), _> =
                         sqlx::query_as(
                         "
-                        INSERT INTO entries (timestamp, modified_timestamp, entry, title, author, link, content, source_feed, source_id)
-                        VALUES (unixepoch(?), unixepoch(?), ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO entries (timestamp, created_timestamp, modified_timestamp, entry, title, author, link, content, source_feed, source_id)
+                        VALUES (unixepoch(?), unixepoch(?), unixepoch(?), ?, ?, ?, ?, ?, ?, ?)
                         RETURNING id
                         ",
                         )
                         .bind(entry.date().to_chrono())
+                        .bind(slipfeed::DateTime::now().to_chrono())
                         .bind(slipfeed::DateTime::now().to_chrono())
                         .bind(sqlx::types::Json::from(&serialized_entry))
                         .bind(entry.title())
@@ -403,6 +427,10 @@ impl Database {
                 DatabaseSearch::Live => {
                     order_clause = " ORDER BY entries.id DESC".into();
                 }
+                DatabaseSearch::New => {
+                    order_clause =
+                        " ORDER BY entries.created_timestamp DESC".into();
+                }
                 DatabaseSearch::Raw(raw_clause) => {
                     query.push(format!(" AND {}", raw_clause));
                 }
@@ -429,12 +457,12 @@ impl Database {
                     query.push(",'%') AND tags.entry_id = entries.id)");
                 }
                 DatabaseSearch::Feed(feed) => {
-                    query.push(" AND EXISTS(SELECT id FROM tags WHERE sources.source LIKE CONCAT('%',");
+                    query.push(" AND EXISTS(SELECT id FROM sources WHERE sources.source LIKE CONCAT('%',");
                     query.push_bind(feed);
                     query.push(",'%') AND sources.entry_id = entries.id)");
                 }
                 DatabaseSearch::NotFeed(feed) => {
-                    query.push(" AND NOT EXISTS(SELECT id FROM tags WHERE sources.source LIKE CONCAT('%',");
+                    query.push(" AND NOT EXISTS(SELECT id FROM sources WHERE sources.source LIKE CONCAT('%',");
                     query.push_bind(feed);
                     query.push(",'%') AND sources.entry_id = entries.id)");
                 }
@@ -607,6 +635,8 @@ impl Database {
 pub enum DatabaseSearch {
     /// Search latest (timestamp).
     Latest,
+    /// Search new (created-timestamp).
+    New,
     /// Search live (modified-timestamp).
     Live,
     /// Raw sql search.

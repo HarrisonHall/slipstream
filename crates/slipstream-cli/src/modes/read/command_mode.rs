@@ -46,6 +46,9 @@ pub enum Command {
     /// Search for specific text in entries.
     #[command(alias = "search")]
     SearchAny(SearchContext),
+    /// Use new-view.
+    #[command(alias = "new", alias = "new-view")]
+    SearchNew,
     /// Use live-view.
     #[command(alias = "live", alias = "live-view")]
     SearchLive,
