@@ -305,11 +305,6 @@ impl Feed for StandardSyndication {
                 continue;
             }
 
-            let passes_filters = attr.passes_filters(self, &entry);
-            if !passes_filters {
-                continue;
-            }
-
             ctx.sender
                 .send((
                     entry.clone(),

@@ -18,6 +18,9 @@ pub struct TransformsConfig {
     /// will transform the tag "zig" into "hacking".
     #[serde(default, alias = "tag-aliases")]
     pub tag_aliases: Option<BTreeMap<Tag, HashSet<Tag>>>,
+    /// Overwrite entry author according to template.
+    #[serde(default)]
+    pub author: Option<String>,
 }
 
 impl TransformsConfig {
@@ -29,6 +32,9 @@ impl TransformsConfig {
             transforms.push(transform);
         }
         if let Some(transform) = tag_aliases(&self.tag_aliases) {
+            transforms.push(transform);
+        }
+        if let Some(transform) = author(&self.author) {
             transforms.push(transform);
         }
 
@@ -73,6 +79,28 @@ fn tag_aliases(
                     }
                 }
             }
+        }));
+    }
+    None
+}
+
+fn author(template: &Option<String>) -> Option<slipfeed::Transform> {
+    if let Some(template) = &template {
+        let template = template.clone();
+        return Some(Arc::new(move |entry| {
+            let mut author = template.clone();
+
+            if author.contains("{author}") {
+                author = author.replace("{author}", entry.author());
+            }
+            if author.contains("{url}") {
+                author = author.replace("{url}", &entry.source().url);
+            }
+            if author.contains("{feed}") {
+                author = author.replace("{feed}", &entry.primary_feed().name);
+            }
+
+            entry.set_author(author);
         }));
     }
     None

@@ -63,6 +63,11 @@ impl Entry {
         &self.author
     }
 
+    /// Set entry author.
+    pub fn set_author(&mut self, author: impl Into<String>) {
+        self.author = author.into();
+    }
+
     /// Get entry content.
     pub fn content(&self) -> &String {
         &self.content

@@ -32,6 +32,8 @@ pub struct Updater {
     /// The feed being updated.
     /// Feeds are referenced in the order they are inserted.
     feeds: BTreeMap<FeedId, FeedInfo>,
+    /// Filters for the entries.
+    filters: Vec<Filter>,
     /// Transforms for the entries.
     transforms: Vec<Transform>,
     /// Last update check.
@@ -51,6 +53,7 @@ impl Updater {
     pub fn new(freq: Duration, maximum: usize) -> Self {
         Self {
             feeds: BTreeMap::new(),
+            filters: Vec::new(),
             transforms: Vec::new(),
             last_update_check: None,
             freq,
@@ -85,9 +88,27 @@ impl Updater {
         feed_id
     }
 
+    /// Add a filter.
+    pub fn add_filter(&mut self, filter: Filter) {
+        self.filters.push(filter);
+    }
+
     /// Add a transform.
     pub fn add_transform(&mut self, transform: Transform) {
         self.transforms.push(transform);
+    }
+
+    /// Check if entry passes the global filters.
+    pub fn passes_filters(&self, entry: &Entry) -> bool {
+        let feed = NoopFeed::default();
+        self.filters.iter().all(|f| f(&feed, entry))
+    }
+
+    /// Run transforms.
+    pub fn run_transforms(&self, entry: &mut Entry) {
+        self.transforms
+            .iter()
+            .for_each(|transform| transform(entry));
     }
 
     /// Update feeds.
@@ -118,7 +139,7 @@ impl Updater {
             let feeds: Vec<(FeedId, FeedInfo)> = self
                 .feeds
                 .iter()
-                .filter(|(_id, feed_info)| {
+                .filter(|(_feed_id, feed_info)| {
                     // Check update time.
                     if let (Some(last_update), Some(freq)) =
                         (&feed_info.last_update, &feed_info.attr.freq)
@@ -157,12 +178,12 @@ impl Updater {
 
                 // Push updates to workers.
                 let mut updates = tokio_stream::iter(feeds)
-                    .map(|(id, feed_info)| {
+                    .map(|(feed_id, feed_info)| {
                         let feed_info = feed_info.clone();
                         let tx = tx.clone();
                         let feed = feed_info.feed.clone();
                         let ctx = UpdaterContext {
-                            feed_id: id,
+                            feed_id,
                             parse_time: now.clone(),
                             last_update: feed_info.last_update.clone(),
                             sender: tx.clone(),
@@ -192,9 +213,27 @@ impl Updater {
 
                 // Gather entries, tag, and transform.
                 tracing::debug!("Applying tags: step={}", step);
-                while let Ok((mut entry, feed)) = rx.try_recv() {
+                'add_entries: while let Ok((mut entry, feed_ref)) =
+                    rx.try_recv()
+                {
+                    // Check feed filters.
+                    if let (Some(feed), Some(attr)) = (
+                        self.get_feed(feed_ref.id),
+                        self.get_feed_attr(feed_ref.id),
+                    ) {
+                        let mut feed = feed.write().await;
+                        if !attr.passes_filters(feed.as_mut(), &entry) {
+                            continue 'add_entries;
+                        }
+                    }
+
+                    // Check global filter.
+                    if !self.passes_filters(&entry) {
+                        continue 'add_entries;
+                    }
+
                     // Add original feed.
-                    entry.add_feed(feed);
+                    entry.add_feed(feed_ref.clone());
 
                     // Tag.
                     for feed_info in self.feeds.values_mut() {
@@ -203,10 +242,13 @@ impl Updater {
                             .await;
                     }
 
-                    // Run transforms.
-                    self.transforms
-                        .iter()
-                        .for_each(|transform| transform(&mut entry));
+                    // Run global transforms.
+                    self.run_transforms(&mut entry);
+
+                    // Run local tranforms.
+                    if let Some(attr) = self.get_feed_attr(feed_ref.id) {
+                        attr.run_transforms(&mut entry);
+                    }
 
                     self.entries.add(entry);
                 }
@@ -254,9 +296,14 @@ impl Updater {
     }
 
     /// Get a feed from the id.
-    pub fn get_feed(&mut self, feed: FeedId) -> Option<&mut BoxedFeed> {
-        if let Some(feed) = self.feeds.get_mut(&feed) {
-            Some(&mut feed.feed)
+    pub fn get_feed(&self, feed: FeedId) -> Option<BoxedFeed> {
+        self.feeds.get(&feed).map(|feed| feed.feed.clone())
+    }
+
+    /// Get a feed attr from the id.
+    pub fn get_feed_attr(&self, feed: FeedId) -> Option<&FeedAttributes> {
+        if let Some(feed) = self.feeds.get(&feed) {
+            Some(&feed.attr)
         } else {
             None
         }
@@ -267,6 +314,7 @@ impl Default for Updater {
     fn default() -> Self {
         Self {
             feeds: BTreeMap::default(),
+            filters: Vec::new(),
             transforms: Vec::new(),
             workers: 8,
             last_update_check: None,
@@ -280,7 +328,6 @@ impl Default for Updater {
 #[derive(Default)]
 struct SteppedFeeds {
     stepped: BTreeMap<u8, Vec<(FeedId, FeedInfo)>>,
-    // steps: std::collections::BTreeSet<u8>,
 }
 
 impl SteppedFeeds {

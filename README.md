@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/harrisonhall/slipstream" align="center">
-    <img alt="slipstream" src="https://github.com/HarrisonHall/slipstream/blob/main/crates/slipstream-cli/src/modes/serve/web/content/favicon.png" width="100" />
+    <img alt="slipstream" src="crates/slipstream-cli/src/modes/serve/web/content/favicon.png" width="100" />
   </a>
 </p>
 <h1 align="center">slipstream</h1>
@@ -10,7 +10,7 @@ Feed fetcher, filterer, and aggregator.
 ## Crates
 
 - `slipstream-cli` - Simple CLI `slipfeed` server and reader utilizing a simple
-  [config](https://github.com/HarrisonHall/slipstream/blob/main/examples/config/slipstream.toml).
+  [config](examples/config/slipstream.toml).
 - `slipstream-feeds` (`slipfeed`) - Feed fetcher, filterer, transformer, and
   aggregator library.
 
@@ -20,8 +20,8 @@ Feed fetcher, filterer, and aggregator.
 
 `slipstream` is a command-line application for serving filtered/aggregated feeds
 from existing feeds a la Yahoo Pipes. A simple configuration file (e.g.
-[slipstream.toml](https://github.com/HarrisonHall/slipstream/blob/main/examples/config/slipstream.toml))
-is used to define feeds, filters, and aggregations.
+[slipstream.toml](examples/config/slipstream.toml)) is used to define feeds,
+filters, and aggregations.
 
 The original goal of `slipstream serve` was to support a single, self-hostable
 service that can aggregate feeds across devices. No need to share `opml` files
@@ -70,9 +70,8 @@ An example can be found at my personal website
 
 Running `slipstream --config <your-config.toml> read` will launch a local tui.
 
-Check out the example
-[config](https://github.com/HarrisonHall/slipstream/blob/main/examples/config/slipreader.toml)
-to see additional configuration options.
+Check out the example [config](examples/config/slipreader.toml) to see
+additional configuration options.
 
 ![cli screenshot](examples/media/cli.png)
 

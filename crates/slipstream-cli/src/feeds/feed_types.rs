@@ -10,6 +10,8 @@ pub struct FeedDefinition {
     tags: Option<Vec<String>>,
     #[serde(default, flatten)]
     filters: FiltersConfig,
+    #[serde(default)]
+    transforms: TransformsConfig,
     #[serde(default, flatten)]
     options: FeedOptions,
 }
@@ -21,6 +23,7 @@ impl FeedDefinition {
             feed,
             tags: None,
             filters: FiltersConfig::default(),
+            transforms: TransformsConfig::default(),
             options: FeedOptions::default(),
         }
     }
@@ -35,6 +38,10 @@ impl FeedDefinition {
 
     pub fn filters(&self) -> &FiltersConfig {
         &self.filters
+    }
+
+    pub fn transforms(&self) -> &TransformsConfig {
+        &self.transforms
     }
 
     pub fn options(&self) -> &FeedOptions {
@@ -201,87 +208,6 @@ impl EntryExt for slipfeed::Entry {
 
 pub use slipfeed::StandardSyndication as StandardFeed;
 
-// pub struct AggregateWorld {
-//     /// Map of feed name to id.
-//     feed_ids: HashMap<String, slipfeed::FeedId>,
-//     /// Map of feed id to name.
-//     feed_names: HashMap<slipfeed::FeedId, String>,
-//     /// Map of feed id to aggregates.
-//     feed_feeds: HashMap<slipfeed::FeedId, Vec<String>>,
-// }
-
-// impl AggregateWorld {
-//     pub fn new() -> Arc<RwLock<Self>> {
-//         Arc::new(RwLock::new(Self {
-//             feed_ids: HashMap::new(),
-//             feed_names: HashMap::new(),
-//             feed_feeds: HashMap::new(),
-//         }))
-//     }
-
-//     pub fn insert(
-//         &mut self,
-//         name: impl Into<String>,
-//         id: slipfeed::FeedId,
-//         aggs: Option<Vec<String>>,
-//     ) {
-//         let name = name.into();
-//         self.feed_ids.insert(name.clone(), id);
-//         self.feed_names.insert(id, name);
-//         self.feed_feeds
-//             .insert(id, aggs.unwrap_or_else(|| Vec::new()));
-//     }
-
-//     fn feed_owns_entry(
-//         &self,
-//         feed: slipfeed::FeedId,
-//         entry: &slipfeed::Entry,
-//     ) -> bool {
-//         // FUTURE: Use graph solver!
-//         return self.feed_owns_entry_lim(feed, entry, 6);
-//     }
-
-//     fn feed_owns_entry_lim(
-//         &self,
-//         feed: slipfeed::FeedId,
-//         entry: &slipfeed::Entry,
-//         limit: u8,
-//     ) -> bool {
-//         // If we're out, we're out.
-//         if limit == 0 {
-//             return false;
-//         }
-
-//         // Check direct ownership.
-//         if entry.is_from_feed(feed) {
-//             return true;
-//         }
-
-//         // Check indirect ownership.
-//         let feeds = match self.feed_feeds.get(&feed) {
-//             Some(feeds) => feeds,
-//             None => {
-//                 tracing::warn!("Empty AggregateWorld lacks feed {:?}.", feed);
-//                 return false;
-//             }
-//         };
-//         return feeds.iter().any(|feed_name| {
-//             if let Some(feed_id) = self.feed_ids.get(feed_name) {
-//                 self.feed_owns_entry_lim(*feed_id, entry, limit - 1)
-//             } else {
-//                 tracing::warn!("AggregateWorld lacks feed {}.", feed_name);
-//                 false
-//             }
-//         });
-//     }
-// }
-
-// impl std::fmt::Debug for AggregateWorld {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         return f.debug_struct("AggregateWorld").finish();
-//     }
-// }
-
 #[derive(Clone, Debug)]
 pub struct AggregateFeed {
     pub(crate) feed_ids: Vec<slipfeed::FeedId>,
@@ -394,24 +320,5 @@ impl slipfeed::Feed for AggregateTagFeed {
                 name: attr.display_name.clone(),
             });
         }
-    }
-}
-
-/// A feed that does nothing for convenience.
-#[derive(Clone, Debug, Default)]
-pub struct NoopFeed {
-    /// Empty field necessary for downcast.
-    _noop: std::marker::PhantomData<()>,
-}
-
-#[slipfeed::feed_trait]
-impl slipfeed::Feed for NoopFeed {
-    async fn tag(
-        &mut self,
-        _entry: &mut slipfeed::Entry,
-        _feed_id: slipfeed::FeedId,
-        _attr: &slipfeed::FeedAttributes,
-    ) {
-        // Do nothing.
     }
 }

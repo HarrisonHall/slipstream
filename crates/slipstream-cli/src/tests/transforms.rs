@@ -17,8 +17,14 @@ impl FakeFeed {
     fn test_set_a() -> Box<Self> {
         let mut entries = Box::new(Self {
             entries: vec![
-                slipfeed::EntryBuilder::new().title("Coding 0").build(),
-                slipfeed::EntryBuilder::new().title("Rust 1").build(),
+                slipfeed::EntryBuilder::new()
+                    .title("Coding 0")
+                    .author("Code Councel")
+                    .build(),
+                slipfeed::EntryBuilder::new()
+                    .title("Rust 1")
+                    .author("Joe Rustacean")
+                    .build(),
                 slipfeed::EntryBuilder::new().title("Zig 2").build(),
             ],
         });
@@ -47,11 +53,6 @@ impl slipfeed::Feed for FakeFeed {
         attr: &slipfeed::FeedAttributes,
     ) {
         for entry in &self.entries {
-            let passes_filters = attr.passes_filters(self, entry);
-            if !passes_filters {
-                continue;
-            }
-
             match ctx.sender.send((
                 entry.clone(),
                 slipfeed::FeedRef {
@@ -73,6 +74,7 @@ async fn run(config: Config, tag: impl AsRef<str>) -> DatabaseEntryList {
         let mut updater = updater.updater.write().await;
         updater.add_feed(FakeFeed::test_set_a(), {
             let mut attr = slipfeed::FeedAttributes::new();
+            attr.display_name = Arc::new("transformer".into());
             attr.filters
                 .extend_from_slice(&config.global.filters.get_filters());
             attr
@@ -84,11 +86,13 @@ async fn run(config: Config, tag: impl AsRef<str>) -> DatabaseEntryList {
     let mut tasks = JoinSet::new();
     tasks.spawn(update(updater, Arc::new(config), cancel_token.clone()));
 
-    tokio::time::sleep(tokio::time::Duration::from_secs_f32(0.1)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs_f32(0.2)).await;
 
-    let all = updater_handle.collect_tag(tag.as_ref(), None).await;
-
-    all
+    if tag.as_ref().is_empty() {
+        updater_handle.collect_all(None).await
+    } else {
+        updater_handle.collect_tag(tag.as_ref(), None).await
+    }
 }
 
 #[tokio::test]
@@ -134,4 +138,16 @@ async fn test_derivations() {
     config.global.transforms.tag_aliases = Some(aliases.clone());
     let results = run(config, "zig").await;
     assert_eq!(results.iter_entries().count(), 0);
+
+    // Author transformations:
+    let mut config = Config::default();
+    config.global.transforms.author = Some("{feed}".into());
+    let results = run(config, "").await;
+    assert_eq!(
+        results
+            .iter_entries()
+            .filter(|e| e.author().contains("transformer"))
+            .count(),
+        3
+    );
 }

@@ -52,7 +52,6 @@ async fn run_updater(
             }
         }
     }
-    
 }
 
 /// Slipstream updater.
@@ -63,8 +62,6 @@ pub struct Updater {
     pub feeds: HashMap<String, slipfeed::FeedId>,
     /// Map slipfeed ids to the feed names.
     pub feeds_ids: HashMap<slipfeed::FeedId, String>,
-    /// Global filters (applies to everything).
-    pub global_filters: Vec<slipfeed::Filter>,
     /// All filters (applies to the /all feed).
     pub all_filters: Vec<slipfeed::Filter>,
     /// The entry database.
@@ -162,9 +159,6 @@ impl Updater {
                                 if config.global.limits.too_old(entry.date()) {
                                     continue;
                                 }
-                                if !self.passes_global_filters(entry) {
-                                    continue;
-                                }
                                 if !self.passes_all_filters(entry) {
                                     continue;
                                 }
@@ -190,9 +184,6 @@ impl Updater {
                             );
                             for entry in unfiltered_entries.iter() {
                                 if config.global.limits.too_old(entry.date()) {
-                                    continue;
-                                }
-                                if !self.passes_global_filters(entry) {
                                     continue;
                                 }
                                 entries.add(entry.clone()).ok();
@@ -232,11 +223,6 @@ impl Updater {
                                     {
                                         continue;
                                     }
-                                    if !self.passes_global_filters(entry) {
-                                        continue;
-                                    }
-                                    // NOTE: Individual feed filters are already checked by the underlying
-                                    // slipfeed updater.
                                     entries.add(entry.clone()).ok();
                                 }
                                 entries
@@ -255,15 +241,9 @@ impl Updater {
         }
     }
 
-    /// Check if entry passes the global filters.
-    pub fn passes_global_filters(&self, entry: &slipfeed::Entry) -> bool {
-        let feed = NoopFeed::default();
-        self.global_filters.iter().all(|f| f(&feed, entry))
-    }
-
     /// Check if entry passes the all filters.
     pub fn passes_all_filters(&self, entry: &slipfeed::Entry) -> bool {
-        let feed = NoopFeed::default();
+        let feed = slipfeed::NoopFeed::default();
         self.all_filters.iter().all(|f| f(&feed, entry))
     }
 }
@@ -275,7 +255,6 @@ impl Default for Updater {
             updater: Arc::new(RwLock::new(slipfeed::Updater::default())),
             feeds: HashMap::default(),
             feeds_ids: HashMap::default(),
-            global_filters: Vec::default(),
             all_filters: Vec::default(),
             entry_db: None,
             to_updater_sender,

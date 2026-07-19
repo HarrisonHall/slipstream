@@ -20,6 +20,8 @@ pub struct FeedAttributes {
     pub tags: HashSet<Tag>,
     /// Filters for the feed.
     pub filters: Vec<Filter>,
+    /// Transforms for the feed.
+    pub transforms: Vec<Transform>,
     /// Whether to keep empty entries (no title).
     pub keep_empty: bool,
     /// Whether to apply tags from the source.
@@ -35,6 +37,11 @@ impl FeedAttributes {
     /// Add a filter.
     pub fn add_filter(&mut self, filter: Filter) {
         self.filters.push(filter);
+    }
+
+    /// Add a transform.
+    pub fn add_transform(&mut self, transform: Transform) {
+        self.transforms.push(transform);
     }
 
     /// Add a tag.
@@ -53,6 +60,11 @@ impl FeedAttributes {
     pub fn passes_filters(&self, feed: &dyn Feed, entry: &Entry) -> bool {
         self.filters.iter().all(|filter| filter(feed, entry))
     }
+
+    /// Run transforms.
+    pub fn run_transforms(&self, entry: &mut Entry) {
+        self.transforms.iter().for_each(|t| t(entry));
+    }
 }
 
 impl Default for FeedAttributes {
@@ -65,6 +77,7 @@ impl Default for FeedAttributes {
             headers: BTreeMap::new(),
             tags: HashSet::new(),
             filters: Vec::new(),
+            transforms: Vec::new(),
             keep_empty: false,
             apply_tags: true,
         }

@@ -8,8 +8,7 @@ const DEFAULT_FEED_TAG_STEP: u8 = 7;
 
 /// Configuration for slipstream.
 /// This is parsed from the toml slipstream configuration file.
-#[derive(Debug, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Config {
     /// Global updater frequency.
     /// This is duration between calls to update. This is not the default feed
@@ -39,7 +38,6 @@ pub struct Config {
     #[serde(default)]
     pub read: ReadConfig,
 }
-
 
 impl Config {
     /// Create a slipstream updater from the parsed configuration.
@@ -91,6 +89,11 @@ impl Config {
                     .get_filters()
                     .iter()
                     .for_each(|f| attr.add_filter(f.clone()));
+                feed_def
+                    .transforms()
+                    .get_transforms()
+                    .iter()
+                    .for_each(|f| attr.add_transform(f.clone()));
 
                 match feed_def.feed() {
                     RawFeed::Raw { url } => {
@@ -194,7 +197,7 @@ impl Config {
                         // Apply to aggregate.
                         if let Some(aggregate_feed_id) = updater.feeds.get(name)
                         {
-                            let mut updater = updater.updater.write().await;
+                            let updater = updater.updater.read().await;
                             if let Some(trait_feed) =
                                 updater.get_feed(*aggregate_feed_id)
                             {
@@ -227,24 +230,24 @@ impl Config {
             }
         }
 
-        // Add global filters.
-        updater
-            .global_filters
-            .extend(self.global.filters.get_filters());
-
-        // Add all filters.
-        if let Some(all_config) = self.serve.all.as_ref() {
-            updater.all_filters.extend(all_config.filters.get_filters());
-        }
-
-        // Add transforms.
+        // Add global filters & transforms.
         {
             let mut inner_updater = updater.updater.write().await;
+            self.global
+                .filters
+                .get_filters()
+                .into_iter()
+                .for_each(|f| inner_updater.add_filter(f.clone()));
             self.global
                 .transforms
                 .get_transforms()
                 .into_iter()
                 .for_each(|t| inner_updater.add_transform(t.clone()));
+        }
+
+        // Add all filters.
+        if let Some(all_config) = self.serve.all.as_ref() {
+            updater.all_filters.extend(all_config.filters.get_filters());
         }
 
         Ok(updater)

@@ -71,11 +71,6 @@ impl slipfeed::Feed for FakeFeed {
         attr: &slipfeed::FeedAttributes,
     ) {
         for entry in &self.entries {
-            let passes_filters = attr.passes_filters(self, entry);
-            if !passes_filters {
-                continue;
-            }
-
             match ctx.sender.send((
                 entry.clone(),
                 slipfeed::FeedRef {
