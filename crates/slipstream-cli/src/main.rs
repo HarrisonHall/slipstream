@@ -35,14 +35,21 @@ async fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
 
-    // If doing the config mode, we don't want to go any further.
-    if let CommandMode::Config { config_mode } = &cli.command {
-        let config_path = match cli.config_path() {
-            Ok(cp) => cp,
-            Err(e) => bail!("Failed to determine config path: {e}"),
-        };
-        return config_cli(config_mode.clone(), config_path);
-    };
+    // Handle basic tasks:
+    match &cli.command {
+        CommandMode::Config { config_mode } => {
+            let config_path = match cli.config_path() {
+                Ok(cp) => cp,
+                Err(e) => bail!("Failed to determine config path: {e}"),
+            };
+            return config_cli(config_mode.clone(), config_path);
+        }
+        CommandMode::Fetch { url, feed, format } => {
+            return modes::fetch_cli(url, feed, format.unwrap_or_default())
+                .await;
+        }
+        _ => {}
+    }
 
     let config = Arc::new(match cli.parse_config() {
         Ok(config) => config,
@@ -58,7 +65,7 @@ async fn main() -> Result<()> {
     let updater_handle = updater.handle()?;
     tasks.spawn(update(updater, config.clone(), cancel_token.clone()));
 
-    // Run the command:
+    // Handle long-running tasks:
     match &cli.command {
         CommandMode::Serve { port, address } => tasks.spawn(serve_cli(
             *port,
@@ -72,7 +79,7 @@ async fn main() -> Result<()> {
             updater_handle,
             cancel_token.clone(),
         )),
-        CommandMode::Config { .. } => unreachable!(),
+        _ => unreachable!(),
     };
 
     // Wait for ctrl+c (top-level):

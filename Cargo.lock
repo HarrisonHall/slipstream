@@ -3580,7 +3580,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "slipstream-cli"
-version = "2.25.0"
+version = "2.26.0"
 dependencies = [
  "ansi-to-tui",
  "atom_syndication",
@@ -3602,6 +3602,7 @@ dependencies = [
  "rust-embed",
  "semver",
  "serde",
+ "serde_json",
  "shellexpand",
  "shlex 1.3.0",
  "slipstream-feeds",

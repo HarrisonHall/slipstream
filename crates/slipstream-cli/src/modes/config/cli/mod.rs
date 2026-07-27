@@ -32,3 +32,18 @@ pub enum ConfigDestination {
     Opml,
     List,
 }
+
+/// Output format type.
+#[derive(
+    Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum,
+)]
+pub enum FetchOutputFormat {
+    // /// Do not output result.
+    // #[default]
+    // None,
+    /// Output as json.
+    #[default]
+    Json,
+    /// Output as toml.
+    Toml,
+}

@@ -98,6 +98,16 @@ pub enum CommandMode {
     },
     /// Read feeds in a local tui.
     Read,
+    /// Fetch feed over the network.
+    Fetch {
+        /// The feed name.
+        feed: String,
+        /// The feed url.
+        url: String,
+        /// The format to output the result.
+        #[arg(short, long)]
+        format: Option<FetchOutputFormat>,
+    },
     /// Read feeds in a local tui.
     Config {
         #[command(subcommand)]
