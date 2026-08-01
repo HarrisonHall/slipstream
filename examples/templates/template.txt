@@ -1,0 +1,6 @@
+{{feed}}
+============
+
+{% for entry in entries %}
+{{entry.title}}
+{% endfor %}

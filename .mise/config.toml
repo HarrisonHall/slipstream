@@ -65,10 +65,17 @@ run = [
     "cargo run --bin slipstream -- --debug -c ./test/slipreader.export.toml config import list ./test/slipstream.export.list ./test/slipreader.import.list.toml",
 ]
 
-[tasks.test-fetch]
-description = "Test import and export."
+[tasks.test-fetch-json]
+description = "Test fetch (json)."
 run = [
     "cargo run --bin slipstream -- --debug fetch test https://feeds.hachha.dev/tag/hacking/feed --format json",
+]
+
+[tasks.test-fetch-md]
+description = "Test fetch (markdown)."
+run = [
+    # "cargo run --bin slipstream -- --debug fetch test https://feeds.hachha.dev/tag/hacking/feed --format markdown",
+    "cargo run --bin slipstream -- --debug fetch test https://feeds.hachha.dev/tag/fun/feed --format markdown",
 ]
 
 [tasks.lint]

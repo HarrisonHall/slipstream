@@ -10,8 +10,8 @@ mod header_map_ext;
 mod web;
 
 pub use config::*;
-use header_map_ext::HeaderMapExt;
-use web::*;
+pub use header_map_ext::HeaderMapExt;
+pub use web::*;
 
 /// Serve slipstream over http.
 pub async fn serve_cli(

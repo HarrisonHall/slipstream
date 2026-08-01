@@ -74,7 +74,7 @@ impl Config {
                 options.merge(feed_def.options());
 
                 attr.freq = Some(options.freq_or_default());
-                attr.timeout = options.oldest();
+                attr.oldest = options.oldest();
                 attr.headers = options.headers().clone();
                 attr.keep_empty = options.keep_empty();
                 attr.apply_tags = options.apply_tags();

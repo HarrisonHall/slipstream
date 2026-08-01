@@ -8,8 +8,10 @@ pub struct FeedAttributes {
     /// Feed name.
     /// This need not be unique-- just something consistent that can be displayed.
     pub display_name: Arc<String>,
-    /// How old entries must be, to be ignored.
+    /// How long to fetch before giving up.
     pub timeout: Duration,
+    /// How old entries must be, to be ignored.
+    pub oldest: Duration,
     /// How often the feed should update.
     pub freq: Option<Duration>,
     /// Feed update step.
@@ -72,6 +74,7 @@ impl Default for FeedAttributes {
         Self {
             display_name: Arc::new(":empty:".into()),
             timeout: Duration::from_seconds(15),
+            oldest: Duration::from_days(7),
             freq: None,
             step: 5,
             headers: BTreeMap::new(),

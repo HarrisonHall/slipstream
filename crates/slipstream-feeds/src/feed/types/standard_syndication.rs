@@ -300,7 +300,7 @@ impl Feed for StandardSyndication {
         // Forward the matching entries.
         while let Ok(entry) = rx.try_recv() {
             let too_old =
-                *entry.date() < ctx.parse_time.clone() - attr.timeout.clone();
+                *entry.date() < ctx.parse_time.clone() - attr.oldest.clone();
             if too_old {
                 continue;
             }

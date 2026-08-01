@@ -45,8 +45,15 @@ async fn main() -> Result<()> {
             return config_cli(config_mode.clone(), config_path);
         }
         CommandMode::Fetch { url, feed, format } => {
-            return modes::fetch_cli(url, feed, format.unwrap_or_default())
-                .await;
+            return modes::fetch_cli(
+                cli.parse_config()?,
+                url,
+                feed,
+                FetchOutputFormat::from(
+                    format.clone().unwrap_or_default().as_str(),
+                ),
+            )
+            .await;
         }
         _ => {}
     }

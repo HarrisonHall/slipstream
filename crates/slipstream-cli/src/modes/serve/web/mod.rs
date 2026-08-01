@@ -22,22 +22,12 @@ pub struct HtmlServer {
 
 impl HtmlServer {
     pub fn new(duration: slipfeed::Duration) -> Result<Self> {
-        let mut templater = minijinja::Environment::new();
-        for template in &["template.html"] {
-            if let Err(e) = templater.add_template_owned(
-                *template,
-                (*HtmlServer::read_file(template)?).clone(),
-            ) {
-                tracing::error!("Failed to add template {template}: {e}");
-                bail!("Template error.");
-            }
-        }
         Ok(Self {
-            favicon: HtmlServer::read_file_bytes("favicon.ico")?,
-            styles: HtmlServer::read_file("pico.blue.min.css")?,
+            favicon: Self::read_file_bytes("favicon.ico")?,
+            styles: Self::read_file("pico.blue.min.css")?,
             robots_txt: HtmlServer::read_file("robots.txt")?,
             cache: HashMap::new(),
-            templater: Arc::new(templater),
+            templater: Self::templater()?,
             duration,
             error_pages: ErrorPages::new(),
         })
@@ -58,6 +48,24 @@ impl HtmlServer {
             Some(f) => Ok(Arc::new(f.data.into_owned())),
             None => bail!("Invalid file {}.", name.as_ref()),
         }
+    }
+
+    pub fn templater() -> Result<Arc<minijinja::Environment<'static>>> {
+        let mut templater = minijinja::Environment::new();
+        templater.set_lstrip_blocks(true);
+        templater.set_trim_blocks(true);
+
+        for template in &["template.html", "template.md"] {
+            if let Err(e) = templater.add_template_owned(
+                *template,
+                (*HtmlServer::read_file(template)?).clone(),
+            ) {
+                tracing::error!("Failed to add template {template}: {e}");
+                bail!("Template error.");
+            }
+        }
+
+        Ok(Arc::new(templater))
     }
 
     pub async fn get(
@@ -88,7 +96,8 @@ impl HtmlServer {
                     .iter_entries()
                     .map(|e| {
                         let mut sources = Vec::<String>::new();
-                        let mut min = MinEntry::from_entry(e, config.as_ref());
+                        let mut min =
+                            ExportEntry::from_entry(e, config.as_ref());
                         for source in e.feeds() {
                             sources.push((*source.name).clone());
                         }
@@ -147,12 +156,12 @@ impl ErrorPages {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 struct TemplateParams {
     feed: String,
-    entries: Vec<MinEntry>,
+    entries: Vec<ExportEntry>,
 }
 
 /// Minimum view for entry to be displayed in html.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-struct MinEntry {
+pub struct ExportEntry {
     title: String,
     date: String,
     author: String,
@@ -165,21 +174,40 @@ struct MinEntry {
     tags: Vec<String>,
 }
 
-impl MinEntry {
-    fn from_entry(value: &slipfeed::Entry, config: &Config) -> Self {
+impl ExportEntry {
+    pub fn from_entry(value: &slipfeed::Entry, config: &Config) -> Self {
+        let mut entry = Self::from_entry_markdown(value, config);
+
         let md_parser = pulldown_cmark::Parser::new_ext(
             value.content(),
             pulldown_cmark::Options::all(),
         );
         let mut content = String::new();
         pulldown_cmark::html::push_html(&mut content, md_parser);
+
+        entry.content = content;
+
+        entry
+    }
+
+    pub fn from_entry_markdown(
+        value: &slipfeed::Entry,
+        config: &Config,
+    ) -> Self {
         Self {
             title: value.title().clone(),
             date: config.timezone.format(value.date()),
             author: value.author().clone(),
             sources: String::default(),
             source: value.source().clone(),
-            content,
+            content: value
+                .content()
+                .clone()
+                // TODO: Cleaup:
+                // Replaces are necessary to prevent unnecessary escaping by htmd.
+                .replace("\\[", "[")
+                .replace("\\]", "]")
+                .replace("\\_", "_"),
             comments: value.comments().clone(),
             links: value.other_links().clone(),
             icon: match value.icon() {

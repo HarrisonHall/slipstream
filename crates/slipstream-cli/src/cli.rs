@@ -104,9 +104,9 @@ pub enum CommandMode {
         feed: String,
         /// The feed url.
         url: String,
-        /// The format to output the result.
+        /// The format to output the result. (json, toml, md, template-path)
         #[arg(short, long)]
-        format: Option<FetchOutputFormat>,
+        format: Option<String>,
     },
     /// Read feeds in a local tui.
     Config {

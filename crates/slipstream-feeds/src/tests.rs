@@ -10,7 +10,8 @@ async fn standard_syndications() {
         hn,
         FeedAttributes {
             display_name: Arc::new("HackerNews".into()),
-            timeout: Duration::from_hours(10),
+            timeout: Duration::from_seconds(5),
+            oldest: Duration::from_hours(10),
             freq: None,
             step: 1,
             tags: std::collections::HashSet::from([Tag::new("rss")]),
@@ -29,7 +30,8 @@ async fn standard_syndications() {
         newsboat,
         FeedAttributes {
             display_name: Arc::new("NewsBoat".into()),
-            timeout: Duration::from_days(365),
+            timeout: Duration::from_seconds(5),
+            oldest: Duration::from_days(365),
             freq: None,
             step: 1,
             tags: std::collections::HashSet::from([Tag::new("atom")]),
@@ -96,7 +98,8 @@ async fn parsing() {
         rbt,
         FeedAttributes {
             display_name: Arc::new("100Rabbits".into()),
-            timeout: Duration::from_days(365),
+            timeout: Duration::from_seconds(5),
+            oldest: Duration::from_days(365),
             freq: None,
             step: 1,
             tags: std::collections::HashSet::from([Tag::new("rss")]),
