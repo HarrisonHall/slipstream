@@ -55,7 +55,13 @@ pub async fn serve_cli(
             html,
         }));
     let port = port.unwrap_or(config.serve.port.unwrap_or(DEFAULT_PORT));
-    let address = address.unwrap_or(config.serve.address.clone().unwrap_or(DEFAULT_ADDRESS.into()));
+    let address = address.unwrap_or(
+        config
+            .serve
+            .address
+            .clone()
+            .unwrap_or(DEFAULT_ADDRESS.into()),
+    );
     let listener = tokio::net::TcpListener::bind(format!("{address}:{port}"))
         .await
         .unwrap_or_else(|_| panic!("Unable to bind to port {}", port));

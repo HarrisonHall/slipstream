@@ -32,9 +32,6 @@ pub async fn fetch_cli(
 
     // Create export format.
     let output = match format {
-        // FetchOutputFormat::None => {
-        //     todo!()
-        // }
         FetchOutputFormat::Toml => toml::to_string(&export)?,
         FetchOutputFormat::Json => serde_json::to_string_pretty(&export)?,
     };

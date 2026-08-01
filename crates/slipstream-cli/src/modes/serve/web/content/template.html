@@ -47,57 +47,57 @@
         <a href="{{feed}}/feed.xml">atom</a>
       </section>
       <section>
-        {{#each entries}}
+        {% for entry in entries %}
         <article>
             <header class="title">
               <h4 class="">
-                {{#if icon}}
-                <img src="{{icon}}" alt="Icon for the article source at {{source}}." class="feed-icon" />
-                {{/if}}
+                {% if entry.icon %}
+                <img src="{{entry.icon}}" alt="Icon for the article source at {{entry.source}}." class="feed-icon" />
+                {% endif %}
                 <span class="feed-title">
-                {{title}}
+                {{entry.title}}
                 </span>
               </h4>
             </header>
-          {{#if author}}
-          <p>{{author}}</p>
-          {{/if}}
-          <p>{{date}}</p>
-          {{#if content}}
+          {% if entry.author %}
+          <p>{{entry.author}}</p>
+          {% endif %}
+          <p>{{entry.date}}</p>
+          {% if entry.content %}
           <summary>
-            {{{content}}}
+            {{entry.content|safe}}
           </summary>
-          {{/if}}
+          {% endif %}
           <footer>
-            <p class="sources">{{sources}}</p>
-            {{#if tags}}
+            <p class="sources">{{entry.sources}}</p>
+            {% if entry.tags %}
             <p>
-              {{#each tags}}
+              {% for tag in entry.tags %}
               <span>
-                <code class="tag">#{{this}}</code>
+                <code class="tag">#{{tag}}</code>
               </span>
-              {{/each}}
+              {% endfor %}
             </p>
-            {{/if}}
+            {% endif %}
             <div class="grid">
               <div>
-                <a href="{{source.url}}" class="primary">Source</a>
+                <a href="{{entry.source.url}}" class="primary">Source</a>
               </div>
-              {{#if comments.url}}
+              {% if entry.comments.url %}
               <div>
-                <a href="{{comments.url}}" class="secondary">Comments</a>
+                <a href="{{entry.comments.url}}" class="secondary">Comments</a>
               </div>
-              {{/if}}
+              {% endif %}
               </>
-              {{#each links}}
+              {% for link in entry.links %}
               <div>
-                <a href="{{url}}" class="contrast">{{title}}</a>
+                <a href="{{link.url}}" class="contrast">{{link.title}}</a>
               </div>
-              {{/each}}
+              {% endfor %}
             </div>
           </footer>
         </article>
-        {{/each}}
+        {% endfor %}
       </section>
     </main>
   </body>

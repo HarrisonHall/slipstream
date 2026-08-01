@@ -2,8 +2,6 @@
 
 use core::str;
 
-use handlebars::Handlebars;
-
 use super::*;
 
 #[derive(rust_embed::Embed)]
@@ -16,7 +14,7 @@ pub struct HtmlServer {
     pub favicon: Arc<Vec<u8>>,
     pub robots_txt: Arc<String>,
     pub styles: Arc<String>,
-    templater: Arc<handlebars::Handlebars<'static>>,
+    templater: Arc<minijinja::Environment<'static>>,
     cache: HashMap<String, CacheEntry>,
     duration: slipfeed::Duration,
     error_pages: ErrorPages,
@@ -24,17 +22,22 @@ pub struct HtmlServer {
 
 impl HtmlServer {
     pub fn new(duration: slipfeed::Duration) -> Result<Self> {
-        let mut handlebars = Handlebars::new();
-        handlebars.register_template_string(
-            "feed",
-            (*HtmlServer::read_file("template.html")?).clone(),
-        )?;
+        let mut templater = minijinja::Environment::new();
+        for template in &["template.html"] {
+            if let Err(e) = templater.add_template_owned(
+                *template,
+                (*HtmlServer::read_file(template)?).clone(),
+            ) {
+                tracing::error!("Failed to add template {template}: {e}");
+                bail!("Template error.");
+            }
+        }
         Ok(Self {
             favicon: HtmlServer::read_file_bytes("favicon.ico")?,
             styles: HtmlServer::read_file("pico.blue.min.css")?,
             robots_txt: HtmlServer::read_file("robots.txt")?,
             cache: HashMap::new(),
-            templater: Arc::new(handlebars),
+            templater: Arc::new(templater),
             duration,
             error_pages: ErrorPages::new(),
         })
@@ -99,10 +102,18 @@ impl HtmlServer {
                     .collect(),
             };
         }
-        let page: String = match self.templater.render("feed", &params) {
+
+        let template = match self.templater.get_template("template.html") {
+            Ok(template) => template,
+            Err(e) => {
+                tracing::error!("Unable to render page: {}.", e);
+                return self.error_pages.error_500.clone();
+            }
+        };
+        let page: String = match template.render(&params) {
             Ok(page) => page,
             Err(e) => {
-                tracing::error!("Unable to render page {}.", e);
+                tracing::error!("Unable to render page: {}.", e);
                 return self.error_pages.error_500.clone();
             }
         };
