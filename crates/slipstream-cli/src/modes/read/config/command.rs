@@ -4,6 +4,7 @@ use super::*;
 
 /// Custom command configuration.
 /// Commands are a pair of name and the command list used in a subprocess.
+/// Commands are run per-entry.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CustomCommand {
     pub name: Arc<String>,

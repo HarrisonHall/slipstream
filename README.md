@@ -5,14 +5,15 @@
 </p>
 <h1 align="center">slipstream</h1>
 
-Feed fetcher, filterer, and aggregator.
+An all-in-one utility for managing feeds. Slipstream is a feed fetcher,
+filterer, and aggregator.
 
-## Crates
-
-- `slipstream-cli` - Simple CLI `slipfeed` server and reader utilizing a simple
-  [config](examples/config/slipstream.toml).
-- `slipstream-feeds` (`slipfeed`) - Feed fetcher, filterer, transformer, and
-  aggregator library.
+| Utility             | Result                                                                       |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `slipstream serve`  | Fetch remote feeds from a configuration file and serve over http (HTML/ATOM) |
+| `slipstream read`   | Fetch and read feeds in a local tui                                          |
+| `slipstream fetch`  | Fetch a remote feed and template the results                                 |
+| `slipstream config` | Verify config, import and export feeds                                       |
 
 ## Getting Started
 
@@ -75,6 +76,69 @@ additional configuration options.
 
 ![cli screenshot](examples/media/cli.png)
 
+### Fetch
+
+Running `slipstream fetch <feed-name> <feed-url> --template json` will fetch a
+feed and return a JSON object that can be used
+
+## Crates
+
+- `slipstream-cli` - Simple CLI `slipfeed` server and reader utilizing a simple
+  [config](examples/config/slipstream.toml).
+- `slipstream-feeds` (`slipfeed`) - Feed fetcher, filterer, transformer, and
+  aggregator library.
+
+## Configuration Quick-Start (WIP)
+
+- `global`
+  - `transforms`
+    - `tag-derivastions`
+  - `filters`
+  - `options`
+- `hooks` Event-based actions
+  - `on-fetch` - commands run when after _feed_ is fetched
+  - `on-insert` - commands run when an _entry_ is inserted
+  - `on-update` - commands run when an _entry_ is updated
+  - `on-read` - commands run when an _entry_ is read
+  - `on-tag` - commands run when an _entry_ is tagged
+- `commands` Custom commands for reading or hooks (Referenced by `!`)
+  - `name` Command name
+  - `command` Array of arguments
+    - Arguments substitute several fields (exact matches)
+      - `{{link.url}}` - URL of entry source
+      - `{{link.url<N>}}` - URL of Nth entry source
+      - `{{link.name}}` - Name of link
+      - `{{link.name_}}` - Name of link, substituting special characters for
+        underscores
+      - `{{link.name-}}` - Name of link, substituting special characters for
+        dashes
+      - `{{feed}}` - Feed of entry
+      - `{{terminal.width}}` - Width of current terminal
+- `serve`
+  - `port` Port to bind to
+  - `cache` How long to cache returned items
+- `feeds`
+  - `<feed>`
+    - For standard syndications (RSS/ATOM), set `url` as the HTTP endpoint for
+      the feed
+    - For tag aggregates, set `tag-allowlist` and `tag-blocklist`
+    - For feed aggregates, set `feeds`
+    - Feeds additionally support adding-to/overriding the transforms, filters,
+      and options from the global settings
+    - `step` The phase of fetching to update feed-- this is set automatically
+      depending on feed type but may be overridden
+- `read`
+  - `scroll` Scroll speed (lines)
+  - `priority` Tags in order of priority
+  - `tags`
+    - `colors` Mapping of tag to color or flag, in order of reverse-priority
+  - `binding` Map of keybind to command
+    - Can reference standard read command literals (e.g., `noop`, `up`,
+      `page-down`)
+    - Can reference manual read command-mode commands (e.g.,
+      `:toggle-tag important`, `:search --tag read-later`)
+    - Can reference configured user commands (e.g., `!archive`, `!email`)
+
 ## Roadmap
 
 While the `slipstream-feeds` and `slipstream-cli` APIs may not be stable, they
@@ -82,20 +146,17 @@ are essentially complete as-is.
 
 ### Slipstream 3.0
 
-- `slipstream` (general)
-  - [ ] Support hooks
-- `slipstream` (read)
-  - [ ] Indicate pending updates
 - `slipstream` (api)
-  - [ ] Allow syncing tags to a slipstream server
+  - [ ] Allow syncing tags & command results from client to server
 
 ### Beyond
 
 - `slipstream-feeds`
   - [ ] Custom HTML selector feeds
-  - [ ] Release-date feeds with reminders
-- `slipstream` (read)
+  - [ ] JSON feeds
+- `slipstream-cli` (read)
   - [ ] Better pagination and search
+  - [ ] Indicate pending updates
 
 ## Contributing
 

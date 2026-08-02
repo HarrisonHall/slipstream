@@ -393,6 +393,96 @@ impl Database {
         entry_id
     }
 
+    async fn parse_entry(row: &sqlx::sqlite::SqliteRow) -> DatabaseEntry {
+        let id = row.get::<EntryDbId, usize>(0);
+
+        // Parse serialized entry.
+        let sf_entry = slipfeed::Entry::from(
+            &row.get::<sqlx::types::Json<SerializedEntry>, usize>(1).0,
+        );
+        let mut entry = DatabaseEntry::new(sf_entry, id);
+
+        // Parse sources.
+        let sources = row.get::<sqlx::types::Json<
+            Vec<sqlx::types::Json<Option<String>>>,
+        >, usize>(2);
+        for source in sources.0 {
+            if let Some(source) = source.0 {
+                entry.entry.add_feed(slipfeed::FeedRef {
+                    // TODO: Get the accurate feed id, if it still exists.
+                    id: slipfeed::FeedId::new(0),
+                    name: Arc::new(source.clone()),
+                });
+            }
+        }
+
+        // Parse tags.
+        let tags = row.get::<sqlx::types::Json<
+            Vec<sqlx::types::Json<Option<String>>>,
+        >, usize>(3);
+        for tag in tags.0 {
+            if let Some(tag) = tag.0 {
+                entry.entry.add_tag(&slipfeed::Tag::new(tag));
+            }
+        }
+
+        // Parse commands.
+        let commands =
+            row.try_get::<sqlx::types::Json<HashMap<String, String>>, usize>(4);
+        if let Ok(commands) = &commands {
+            for command in &commands.0 {
+                entry.add_result(CommandResultContext {
+                    command: CustomCommand {
+                        name: Arc::new(command.0.clone()),
+                        command: Arc::new(Vec::new()),
+                        save: false,
+                    },
+                    result: CommandResult::Finished {
+                        output: Arc::new(command.1.clone()),
+                        success: true, // TODO!
+                    },
+                    vertical_scroll: 0,
+                });
+            }
+        }
+
+        entry
+    }
+
+    pub async fn get_entry(&self, db_id: EntryDbId) -> Option<DatabaseEntry> {
+        use sqlx::QueryBuilder;
+
+        let mut query = QueryBuilder::new(
+            "
+            SELECT
+                entries.id,
+                entries.entry,
+                json_group_array(sources.source) AS sources,
+                json_group_array(tags.tag) AS tags,
+                json_group_object(commands.name, commands.result) AS commands
+            FROM
+                entries
+                LEFT JOIN sources ON entries.id = sources.entry_id
+                LEFT JOIN tags ON entries.id = tags.entry_id
+                LEFT JOIN commands ON entries.id = commands.entry_id
+            WHERE
+                entries.id = 
+            ",
+        );
+        query.push_bind(db_id);
+
+        let query = query.build();
+        let res = query.fetch_one(&self.pool).await;
+
+        match res {
+            Ok(row) => Some(Self::parse_entry(&row).await),
+            Err(e) => {
+                tracing::error!("Failed to get_latest_entries: {}", e);
+                None
+            }
+        }
+    }
+
     pub async fn get_entries(
         &self,
         criteria: Vec<DatabaseSearch>,
@@ -514,62 +604,7 @@ impl Database {
         match res {
             Ok(rows) => {
                 for row in rows.iter() {
-                    let id = row.get::<EntryDbId, usize>(0);
-
-                    // Parse serialized entry.
-                    let sf_entry = slipfeed::Entry::from(
-                        &row.get::<sqlx::types::Json<SerializedEntry>, usize>(
-                            1,
-                        )
-                        .0,
-                    );
-                    let mut entry = DatabaseEntry::new(sf_entry, id);
-
-                    // Parse sources.
-                    let sources = row.get::<sqlx::types::Json<
-                        Vec<sqlx::types::Json<Option<String>>>,
-                    >, usize>(2);
-                    for source in sources.0 {
-                        if let Some(source) = source.0 {
-                            entry.entry.add_feed(slipfeed::FeedRef {
-                                // TODO: Get the accurate feed id, if it still exists.
-                                id: slipfeed::FeedId::new(0),
-                                name: Arc::new(source.clone()),
-                            });
-                        }
-                    }
-
-                    // Parse tags.
-                    let tags = row.get::<sqlx::types::Json<
-                        Vec<sqlx::types::Json<Option<String>>>,
-                    >, usize>(3);
-                    for tag in tags.0 {
-                        if let Some(tag) = tag.0 {
-                            entry.entry.add_tag(&slipfeed::Tag::new(tag));
-                        }
-                    }
-
-                    // Parse commands.
-                    let commands = row.try_get::<sqlx::types::Json<
-                        HashMap<String, String>,
-                    >, usize>(4);
-                    if let Ok(commands) = &commands {
-                        for command in &commands.0 {
-                            entry.add_result(CommandResultContext {
-                                command: CustomCommand {
-                                    name: Arc::new(command.0.clone()),
-                                    command: Arc::new(Vec::new()),
-                                    save: false,
-                                },
-                                result: CommandResult::Finished {
-                                    output: Arc::new(command.1.clone()),
-                                    success: true, // TODO!
-                                },
-                                vertical_scroll: 0,
-                            });
-                        }
-                    }
-
+                    let entry = Self::parse_entry(&row).await;
                     set.add(entry).ok();
                 }
             }

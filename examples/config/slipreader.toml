@@ -35,6 +35,100 @@ freq = "5min"
 "test-a" = ["test"]
 "japan" = ["japanese", "にほん", "日本"]
 
+[hooks]
+on-fetch = []
+on-insert = [":add-tag unread"]
+on-update = [":add-tag unread"]
+on-read = [":remove-tag unread", ":remove-tag updated"]
+on-tag = []
+
+# Read the url.
+[[commands]]
+name = "read"
+command = [
+  "fish",
+  "-c",
+  """
+  curl \
+    --silent \
+    -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" \
+    {{link.url}} \
+  | pandoc \
+    --from html \
+    --to gfm-raw_html \
+    -o - \
+  | bat \
+    --color=always \
+    --language=markdown \
+    --terminal-width={{terminal.width}} \
+    -
+  """
+]
+
+[[commands]]
+name = "read-1"
+command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\" {{link.url1}} | pandoc --from html --to gfm-raw_html -o - | bat --color=always --language=markdown --terminal-width={{terminal.width}} -"]
+[[commands]]
+name = "read-2"
+command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\" {{link.url2}} | pandoc --from html --to gfm-raw_html -o - | bat --color=always --language=markdown --terminal-width={{terminal.width}} -"]
+[[commands]]
+name = "read-3"
+command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\" {{link.url3}} | pandoc --from html --to gfm-raw_html -o - | bat --color=always --language=markdown --terminal-width={{terminal.width}} -"]
+[[commands]]
+name = "read-4"
+command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\" {{link.url4}} | pandoc --from html --to gfm-raw_html -o - | bat --color=always --language=markdown --terminal-width={{terminal.width}} -"]
+
+# Open the url.
+[[commands]]
+name = "open"
+command = ["fish", "-c", "xdg-open \"{{link.url}}\""]
+save = false
+
+[[commands]]
+name = "open-1"
+command = ["fish", "-c", "xdg-open \"{{link.url1}}\""]
+save = false
+[[commands]]
+name = "open-2"
+command = ["fish", "-c", "xdg-open \"{{link.url2}}\""]
+save = false
+[[commands]]
+name = "open-3"
+command = ["fish", "-c", "xdg-open \"{{link.url3}}\""]
+save = false
+[[commands]]
+name = "open-4"
+command = ["fish", "-c", "xdg-open \"{{link.url4}}\""]
+save = false
+
+# Archive.
+[[commands]]
+name = "archive"
+command = [
+  "fish",
+  "-c",
+  """
+    monolith \
+      --no-js \
+      --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" \
+      --output ~/media/articles/{{link.name-}}.html \
+      "{{link.url}}" \
+  """,
+]
+
+[[commands]]
+name = "archive-1"
+command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html "{link.url1}}"""",]
+[[commands]]
+name = "archive-2"
+command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html "{{link.url2}}"""",]
+[[commands]]
+name = "archive-3"
+command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html "{{link.url3}}"""",]
+[[commands]]
+name = "archive-4"
+command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html "{{link.url4}}"""",]
+
 # Feed definitions.
 [feeds]
 
@@ -150,12 +244,6 @@ tags = ["rust", "hacking"]
 color = { bg = "light-red", fg = "black" }
 indicator.symbol = "H"
 
-[read.hooks]
-fetch = []
-insert = [":add-tag unread"]
-update = []
-read = [":remove-tag unread"]
-
 [read.bindings]
 C-d = "page-down"
 C-u = "page-up"
@@ -203,90 +291,3 @@ S-3 = "!open-3"
 4 = "!read-4"
 C-4 = "!archive-4"
 S-4 = "!open-4"
-
-# Read the url.
-[[read.commands]]
-name = "read"
-command = [
-  "fish",
-  "-c",
-  """
-  curl \
-    --silent \
-    -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" \
-    {{link.url}} \
-  | pandoc \
-    --from html \
-    --to gfm-raw_html \
-    -o - \
-  | bat \
-    --color=always \
-    --language=markdown \
-    --terminal-width={{terminal.width}} \
-    -
-  """
-]
-
-[[read.commands]]
-name = "read-1"
-command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\" {{link.url1}} | pandoc --from html --to gfm-raw_html -o - | bat --color=always --language=markdown --terminal-width={{terminal.width}} -"]
-[[read.commands]]
-name = "read-2"
-command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\" {{link.url2}} | pandoc --from html --to gfm-raw_html -o - | bat --color=always --language=markdown --terminal-width={{terminal.width}} -"]
-[[read.commands]]
-name = "read-3"
-command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\" {{link.url3}} | pandoc --from html --to gfm-raw_html -o - | bat --color=always --language=markdown --terminal-width={{terminal.width}} -"]
-[[read.commands]]
-name = "read-4"
-command = ["fish", "-c", "curl --silent -A \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\" {{link.url4}} | pandoc --from html --to gfm-raw_html -o - | bat --color=always --language=markdown --terminal-width={{terminal.width}} -"]
-
-# Open the url.
-[[read.commands]]
-name = "open"
-command = ["fish", "-c", "xdg-open \"{{link.url}}\""]
-save = false
-
-[[read.commands]]
-name = "open-1"
-command = ["fish", "-c", "xdg-open \"{{link.url1}}\""]
-save = false
-[[read.commands]]
-name = "open-2"
-command = ["fish", "-c", "xdg-open \"{{link.url2}}\""]
-save = false
-[[read.commands]]
-name = "open-3"
-command = ["fish", "-c", "xdg-open \"{{link.url3}}\""]
-save = false
-[[read.commands]]
-name = "open-4"
-command = ["fish", "-c", "xdg-open \"{{link.url4}}\""]
-save = false
-
-# Archive.
-[[read.commands]]
-name = "archive"
-command = [
-  "fish",
-  "-c",
-  """
-    monolith \
-      --no-js \
-      --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" \
-      --output ~/media/articles/{{link.name-}}.html \
-      "{{link.url}}" \
-  """,
-]
-
-[[read.commands]]
-name = "archive-1"
-command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html "{link.url1}}"""",]
-[[read.commands]]
-name = "archive-2"
-command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html "{{link.url2}}"""",]
-[[read.commands]]
-name = "archive-3"
-command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html "{{link.url3}}"""",]
-[[read.commands]]
-name = "archive-4"
-command = ["fish", "-c", """monolith --no-js --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36" --output ~/media/articles/{{link.name-}}.html "{{link.url4}}"""",]

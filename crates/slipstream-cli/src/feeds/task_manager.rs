@@ -24,6 +24,8 @@ pub async fn manage_tasks(
     };
 
     // Continue running tasks until cancelled.
+    // This select is biased, handling cancel before blocking tasks, before nonblocking
+    // tasks.
     'update: loop {
         tokio::select! {
             biased;
@@ -105,6 +107,11 @@ impl TaskManager {
         config: &Arc<Config>,
     ) {
         match task {
+            BlockingTask::EntryFetch { tx, db_id } => {
+                if let Some(entry_db) = &self.entry_db {
+                    tx.send(entry_db.get_entry(db_id).await).ok();
+                };
+            }
             BlockingTask::EntriesSearch {
                 tx,
                 criteria,
@@ -313,6 +320,10 @@ enum NonblockingTask {
 /// Blocking tasks.
 #[derive(Debug)]
 enum BlockingTask {
+    EntryFetch {
+        tx: oneshot::Sender<Option<DatabaseEntry>>,
+        db_id: EntryDbId,
+    },
     EntriesSearch {
         tx: oneshot::Sender<DatabaseEntryList>,
         criteria: Vec<DatabaseSearch>,
@@ -367,6 +378,23 @@ impl TaskManagerHandle {
         let res = self.to_updater_blocking_sender.send(message).await;
         if let Err(e) = res {
             tracing::error!("Failed to send blocking: {}", e);
+        }
+    }
+
+    /// Get a single entry.
+    pub async fn get_entry(&self, db_id: EntryDbId) -> Result<DatabaseEntry> {
+        let (tx, rx) = oneshot::channel::<Option<DatabaseEntry>>();
+        self.send_blocking(BlockingTask::EntryFetch { db_id, tx })
+            .await;
+        match rx.await {
+            Ok(e) => match e {
+                Some(e) => Ok(e),
+                None => bail!("No entry {}", db_id),
+            },
+            Err(e) => {
+                tracing::error!("Failed to search entries: {}", e);
+                bail!("No entry {}", db_id);
+            }
         }
     }
 
@@ -554,6 +582,7 @@ impl TaskManagerHandle {
         }
     }
 
+    /// Update tags for an entry.
     pub async fn update_tags(
         &self,
         entry_id: EntryDbId,
@@ -589,4 +618,161 @@ impl TaskManagerHandle {
         })
         .await;
     }
+
+    /// Run a custom command.
+    pub async fn run_custom_command(
+        &self,
+        custom_command: &CustomCommand,
+        ctx: &CustomCommandContext,
+    ) -> CustomCommandResult {
+        // Get entry.
+        let entry = match self.get_entry(ctx.entry_id).await {
+            Ok(entry) => entry,
+            Err(e) => {
+                tracing::error!("Could not run command: {e}");
+                return CustomCommandResult {
+                    output: format!("{e}"),
+                    exit_code: 1,
+                };
+            }
+        };
+
+        // Build command.
+        let mut shell_command: Vec<String> = (*custom_command.command).clone();
+
+        for argument in shell_command.iter_mut() {
+            // Add links.
+            *argument = argument.replace("{{link.url}}", &entry.source().url);
+            let mut link_count: usize = 0;
+            if !entry.source().url.is_empty() {
+                link_count += 1;
+                *argument = argument.replace(
+                    &format!("{{{{link.url{}}}}}", link_count),
+                    &entry.source().url,
+                );
+            }
+            if !entry.comments().url.is_empty() {
+                link_count += 1;
+                *argument = argument.replace(
+                    &format!("{{{{link.url{}}}}}", link_count),
+                    &entry.comments().url,
+                );
+            }
+            for i in 0..entry.other_links().len() {
+                link_count += 1;
+                *argument = argument.replace(
+                    &format!("{{{{link.url{}}}}}", link_count),
+                    &entry.other_links()[i].url,
+                );
+            }
+
+            // Add link name.
+            if argument.contains("{{link.name}}")
+                || argument.contains("{{link.name_}}")
+            {
+                let link_name = entry
+                    .title()
+                    .clone()
+                    .replace(
+                        &['(', ')', ',', '\"', '.', ';', ':', '\''][..],
+                        "",
+                    )
+                    .replace(" ", "_")
+                    .to_lowercase();
+                *argument = argument.replace("{{link.name}}", &link_name);
+                *argument = argument.replace("{{link.name_}}", &link_name);
+            }
+            if argument.contains("{{link.name-}}") {
+                let link_name = entry
+                    .title()
+                    .clone()
+                    .replace(
+                        &['(', ')', ',', '\"', '.', ';', ':', '\''][..],
+                        "",
+                    )
+                    .replace(" ", "-")
+                    .to_lowercase();
+                *argument = argument.replace("{{link.name-}}", &link_name);
+            }
+
+            // Add feed information.
+            *argument =
+                argument.replace("{{feed}}", &entry.entry.primary_feed().name);
+
+            // Add terminal settings.
+            *argument = argument.replace(
+                "{{terminal.width}}",
+                &format!("{}", ctx.terminal_size.0),
+            );
+        }
+
+        // Log final command.
+        tracing::trace!("Command: {:?}", &shell_command);
+
+        // Build subprocess.
+        let mut subproc = tokio::process::Command::new(&shell_command[0]);
+        subproc.args(&shell_command[1..]);
+
+        // Run subprocess.
+        let result = match subproc.output().await {
+            Ok(output) => {
+                let exit_code: i32 = output.status.code().unwrap_or(1);
+                let output: String = match exit_code {
+                    0 => String::from_utf8(output.stdout)
+                        .unwrap_or_else(|_| String::new()),
+                    _ => {
+                        String::from_utf8(output.stderr).unwrap_or_else(|_| {
+                            format!(
+                                "Failed to execute command: {:?}",
+                                shell_command
+                            )
+                        })
+                    }
+                };
+                tracing::info!("Command:\n{:?}", &custom_command.command);
+                tracing::info!("Output:\n{}", output);
+                CustomCommandResult { output, exit_code }
+            }
+            Err(e) => CustomCommandResult {
+                output: format!("Failed to run command: {}", e),
+                exit_code: 1,
+            },
+        };
+
+        // Store result.
+        self.send_nonblocking(NonblockingTask::CommandUpdate {
+            entry_id: ctx.entry_id,
+            command: (*custom_command.name).clone(),
+            result: result.exit_code,
+            output: result.output.clone(),
+        })
+        .await;
+
+        result
+    }
+}
+
+/// Context required to run a custom command.
+pub struct CustomCommandContext {
+    /// ID of entry in db.
+    pub entry_id: EntryDbId,
+    /// (width, height).
+    pub terminal_size: (u16, u16),
+}
+
+impl Default for CustomCommandContext {
+    fn default() -> Self {
+        Self {
+            entry_id: 0,
+            terminal_size: (80, 60),
+        }
+    }
+}
+
+/// Result from a custom command.
+pub struct CustomCommandResult {
+    /// stdout output from command.
+    pub output: String,
+    /// Exit code from command.
+    pub exit_code: i32,
 }

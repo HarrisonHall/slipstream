@@ -13,6 +13,7 @@
   - `tag-derivations` adds tag based on a match.
   - `tag-aliases` replaces tag based on a match.
 - Improve mouse support
+- Added hooks
 
 ### Changed
 
@@ -22,6 +23,7 @@
 - All include & exclude tags have been reworked and include a basic test-suite.
 - Reworked feed fetch order
   - Removed "worlds" from aggregate feeds
+- Moved configuration location for custom commands
 
 ### Deprecated
 
@@ -36,6 +38,7 @@
 - Improved heuristic for entry deduplication
 - Add better support for rfc2822 timestamps
 - Improved markdown parsing & output
+- Rework `timeout` option to not confuse fetch timeout with oldest date limit
 
 ### Security
 

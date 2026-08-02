@@ -80,7 +80,7 @@ struct Reader {
     /// Slipstream configuration.
     config: Arc<Config>,
     /// State of the updating logic.
-    updater: TaskManagerHandle,
+    task_manager_handle: TaskManagerHandle,
     /// Refresh future.
     refresh: Option<JoinHandle<DatabaseEntryList>>,
     /// Futures for binding commands run on entries.
@@ -105,7 +105,7 @@ impl Reader {
     ) -> Result<Self> {
         Ok(Self {
             config,
-            updater,
+            task_manager_handle: updater,
             refresh: None,
             command_futures: tokio::task::JoinSet::new(),
             entries: DatabaseEntryList::new(0),
@@ -224,8 +224,7 @@ impl Reader {
                             self.handle_command_mode_input(&key).await?;
                         }
                         _ => {
-                            let command =
-                                self.config.read.get_key_command(&key);
+                            let command = self.config.get_key_command(&key);
                             self.run_command(command, terminal).await?;
                         }
                     }
@@ -291,7 +290,8 @@ impl Reader {
                         ),
                     );
                 }
-                self.command_futures.spawn(Reader::run_shell_command(
+                self.command_futures.spawn(Reader::run_custom_command(
+                    self.task_manager_handle.clone(),
                     custom_command,
                     self.entries[self.interaction_state.selection].clone(),
                     self.terminal_state.command_width,
@@ -480,111 +480,31 @@ impl Reader {
     /// Run a custom shell command.
     /// This replaces select substrings of the shell command with values from the
     /// entry.
-    async fn run_shell_command(
+    async fn run_custom_command(
+        task_manager_handle: TaskManagerHandle,
         custom_command: CustomCommand,
         entry: DatabaseEntry,
         width: u16,
     ) -> (EntryDbId, command::CommandResultContext) {
-        // Build command.
-        let mut shell_command: Vec<String> = (*custom_command.command).clone();
+        let ctx = CustomCommandContext {
+            entry_id: entry.db_id,
+            terminal_size: (width, 60),
+        };
 
-        for command in shell_command.iter_mut() {
-            // Add links.
-            *command = command.replace("{{link.url}}", &entry.source().url);
-            let mut link_count: usize = 0;
-            if !entry.source().url.is_empty() {
-                link_count += 1;
-                *command = command.replace(
-                    &format!("{{{{link.url{}}}}}", link_count),
-                    &entry.source().url,
-                );
-            }
-            if !entry.comments().url.is_empty() {
-                link_count += 1;
-                *command = command.replace(
-                    &format!("{{{{link.url{}}}}}", link_count),
-                    &entry.comments().url,
-                );
-            }
-            for i in 0..entry.other_links().len() {
-                link_count += 1;
-                *command = command.replace(
-                    &format!("{{{{link.url{}}}}}", link_count),
-                    &entry.other_links()[i].url,
-                );
-            }
+        let result = task_manager_handle
+            .run_custom_command(&custom_command, &ctx)
+            .await;
 
-            // Add link name.
-            if command.contains("{{link.name}}")
-                || command.contains("{{link.name_}}")
-            {
-                let link_name = entry
-                    .title()
-                    .clone()
-                    .replace(
-                        &['(', ')', ',', '\"', '.', ';', ':', '\''][..],
-                        "",
-                    )
-                    .replace(" ", "_")
-                    .to_lowercase();
-                *command = command.replace("{{link.name}}", &link_name);
-                *command = command.replace("{{link.name_}}", &link_name);
-            }
-            if command.contains("{{link.name-}}") {
-                let link_name = entry
-                    .title()
-                    .clone()
-                    .replace(
-                        &['(', ')', ',', '\"', '.', ';', ':', '\''][..],
-                        "",
-                    )
-                    .replace(" ", "-")
-                    .to_lowercase();
-                *command = command.replace("{{link.name-}}", &link_name);
-            }
+        let mut ctx = command::CommandResultContext::new(custom_command);
+        ctx.update(
+            Arc::new(result.output),
+            match result.exit_code {
+                0 => true,
+                _ => false,
+            },
+        );
 
-            // Add terminal settings.
-            *command =
-                command.replace("{{terminal.width}}", &format!("{}", width));
-        }
-
-        // Log final command.
-        tracing::trace!("Command: {:?}", &shell_command);
-
-        // Build subprocess.
-        let mut subproc = tokio::process::Command::new(&shell_command[0]);
-        subproc.args(&shell_command[1..]);
-
-        // Run subprocess.
-        let mut ctx = CommandResultContext::new(custom_command.clone());
-        match subproc.output().await {
-            Ok(output) => {
-                let exit: i32 = output.status.code().unwrap_or(1);
-                let output: String = match exit {
-                    0 => String::from_utf8(output.stdout)
-                        .unwrap_or_else(|_| String::new()),
-                    _ => {
-                        String::from_utf8(output.stderr).unwrap_or_else(|_| {
-                            format!(
-                                "Failed to execute command: {:?}",
-                                shell_command
-                            )
-                        })
-                    }
-                };
-                tracing::info!("Command:\n{:?}", &custom_command.command);
-                tracing::info!("Output:\n{}", output);
-                ctx.update(Arc::new(output), exit == 0);
-                (entry.db_id, ctx)
-            }
-            Err(e) => {
-                ctx.update(
-                    Arc::new(format!("Failed to create subprocess: {}", e)),
-                    false,
-                );
-                (entry.db_id, ctx)
-            }
-        }
+        (entry.db_id, ctx)
     }
 
     /// Check for an update and handle completed updates.
@@ -628,7 +548,9 @@ impl Reader {
         while let Some(res) = self.command_futures.try_join_next() {
             if let Ok((entry_id, context)) = res {
                 if context.command.save {
-                    self.updater.save_command(entry_id, &context).await;
+                    self.task_manager_handle
+                        .save_command(entry_id, &context)
+                        .await;
                     if let Some(entry) = self.entries.get_mut(entry_id) {
                         entry.add_result(context);
                     }
@@ -652,7 +574,7 @@ impl Reader {
 
         self.refresh = Some({
             let delay = self.interaction_state.next_delay.take();
-            let updater = self.updater.clone();
+            let updater = self.task_manager_handle.clone();
             let criteria = criteria.clone();
             let offset = offset.clone();
             tokio::spawn(async move {
@@ -807,7 +729,9 @@ impl Reader {
                     entry.entry.add_tag(&slipfeed::Tag::new(tag));
                     let tags: Vec<slipfeed::Tag> =
                         entry.entry.tags().iter().cloned().collect();
-                    self.updater.update_tags(entry.db_id, tags).await;
+                    self.task_manager_handle
+                        .update_tags(entry.db_id, tags)
+                        .await;
                 }
             }
             command_mode::Command::TagRemove { tag } => {
@@ -815,7 +739,9 @@ impl Reader {
                 entry.entry.remove_tag(&slipfeed::Tag::new(tag));
                 let tags: Vec<slipfeed::Tag> =
                     entry.entry.tags().iter().cloned().collect();
-                self.updater.update_tags(entry.db_id, tags).await;
+                self.task_manager_handle
+                    .update_tags(entry.db_id, tags)
+                    .await;
             }
             command_mode::Command::TagToggle { tag } => {
                 let tag = slipfeed::Tag::new(tag);
@@ -827,10 +753,12 @@ impl Reader {
                 }
                 let tags: Vec<slipfeed::Tag> =
                     entry.entry.tags().iter().cloned().collect();
-                self.updater.update_tags(entry.db_id, tags).await;
+                self.task_manager_handle
+                    .update_tags(entry.db_id, tags)
+                    .await;
             }
             command_mode::Command::Command { command } => {
-                let command = self.config.read.get_custom_command(&command);
+                let command = self.config.get_custom_command(&command);
                 match command {
                     Commandish::CustomCommandFull(custom_command) => {
                         if custom_command.save {
@@ -841,7 +769,8 @@ impl Reader {
                                     ),
                                 );
                         }
-                        self.command_futures.spawn(Reader::run_shell_command(
+                        self.command_futures.spawn(Reader::run_custom_command(
+                            self.task_manager_handle.clone(),
                             custom_command,
                             self.entries[self.interaction_state.selection]
                                 .clone(),
