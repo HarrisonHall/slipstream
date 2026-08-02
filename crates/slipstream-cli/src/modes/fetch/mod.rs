@@ -47,7 +47,15 @@ pub async fn fetch_cli(
     // Display results.
     // FUTURE: Check std::io::stdout().is_terminal() and either invoke pager or
     // auto-format with ANSI.
-    println!("{}", &output);
+    // NOTE: We use writeln as println can panic and this is intended to occasionally
+    // be used with piping.
+    {
+        use std::io::Write;
+
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
+        writeln!(handle, "{}", &output).ok();
+    }
 
     Ok(())
 }
