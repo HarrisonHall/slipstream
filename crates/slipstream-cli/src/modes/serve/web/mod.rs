@@ -72,7 +72,7 @@ impl HtmlServer {
         &mut self,
         uri: impl AsRef<str>,
         entries: impl Future<Output = DatabaseEntryList>,
-        _updater: Arc<UpdaterHandle>,
+        _updater: Arc<TaskManagerHandle>,
         config: Arc<Config>,
     ) -> String {
         let now = slipfeed::DateTime::now();

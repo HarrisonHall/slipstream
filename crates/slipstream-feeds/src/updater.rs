@@ -111,18 +111,39 @@ impl Updater {
             .for_each(|transform| transform(entry));
     }
 
-    /// Update feeds.
+    /// Update feeds, returning immediately if before time to update.
     /// This is _not_ cancel-safe.
-    pub async fn update(&mut self) -> EntrySet {
-        let span = tracing::trace_span!("slipfeed::update");
-        let _enter = span.enter();
-        let now = DateTime::now();
+    pub async fn update_nonblocking(&mut self) -> Option<EntrySet> {
+        // Wait until time to update.
+        if let Some(last_time) = &self.last_update_check {
+            let now = DateTime::now();
+            let next_time = last_time.clone() + self.freq.clone();
+            if now < next_time {
+                return None;
+            }
+        };
 
+        Some(self.update().await)
+    }
+
+    /// Update feeds, waiting until time to update.
+    /// This is _not_ cancel-safe.
+    pub async fn update_blocking(&mut self) -> EntrySet {
         // Wait until time to update.
         if let Some(last_time) = &self.last_update_check {
             let next_time = last_time.clone() + self.freq.clone();
             tokio::time::sleep_until(next_time.to_tokio()).await;
         };
+
+        self.update().await
+    }
+
+    /// Update feeds, regardless of the time.
+    /// This is _not_ cancel-safe.
+    pub async fn update(&mut self) -> EntrySet {
+        let span = tracing::trace_span!("slipfeed::update");
+        let _enter = span.enter();
+        let now = DateTime::now();
 
         // Perform updates.
         self.last_update_check = Some(now.clone());

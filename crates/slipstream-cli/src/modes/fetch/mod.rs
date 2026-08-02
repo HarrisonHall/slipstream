@@ -16,7 +16,7 @@ pub async fn fetch_cli(
     updater.add_feed(synd, attr);
 
     // Fetch results.
-    let results = updater.update().await;
+    let results = updater.update_blocking().await;
 
     // Create export object.
     let export = EntriesExport {

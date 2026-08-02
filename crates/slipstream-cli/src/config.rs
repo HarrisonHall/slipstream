@@ -40,14 +40,14 @@ pub struct Config {
 }
 
 impl Config {
-    /// Create a slipstream updater from the parsed configuration.
-    pub async fn updater(&self) -> Result<Updater> {
+    /// Create a slipstream task manager from the parsed configuration.
+    pub async fn build_task_manager(&self) -> Result<TaskManager> {
         let entry_db = Database::new(match &self.database {
             Some(db) => db.as_str(),
             None => ":memory:",
         })
         .await?;
-        let mut updater = Updater::default();
+        let mut updater = TaskManager::default();
         updater.updater = Arc::new(RwLock::new({
             let mut updater = slipfeed::Updater::new(
                 slipfeed::Duration::from_seconds(match self.freq {

@@ -45,7 +45,7 @@ const CONTROL_C: KeyEvent =
 /// Perform the reader action.
 pub async fn read_cli(
     config: Arc<Config>,
-    updater: UpdaterHandle,
+    task_manager_handle: TaskManagerHandle,
     cancel_token: CancellationToken,
 ) -> Result<()> {
     // Disable logging to stdout.
@@ -55,7 +55,8 @@ pub async fn read_cli(
     let mut terminal = ratatui::init();
     let _kb_cap = MouseCapture::new()?;
 
-    let mut reader = Reader::new(config.clone(), updater, cancel_token)?;
+    let mut reader =
+        Reader::new(config.clone(), task_manager_handle, cancel_token)?;
 
     // Update reader on load.
     reader
@@ -79,7 +80,7 @@ struct Reader {
     /// Slipstream configuration.
     config: Arc<Config>,
     /// State of the updating logic.
-    updater: UpdaterHandle,
+    updater: TaskManagerHandle,
     /// Refresh future.
     refresh: Option<JoinHandle<DatabaseEntryList>>,
     /// Futures for binding commands run on entries.
@@ -99,7 +100,7 @@ impl Reader {
     /// Create a new reader.
     fn new(
         config: Arc<Config>,
-        updater: UpdaterHandle,
+        updater: TaskManagerHandle,
         cancel_token: CancellationToken,
     ) -> Result<Self> {
         Ok(Self {

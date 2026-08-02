@@ -68,10 +68,12 @@ impl slipfeed::Feed for FakeFeed {
 }
 
 async fn run(config: Config, tag: impl AsRef<str>) -> DatabaseEntryList {
-    let mut updater =
-        config.updater().await.expect("Could not create updater.");
+    let mut task_manager = config
+        .build_task_manager()
+        .await
+        .expect("Could not create updater.");
     {
-        let mut updater = updater.updater.write().await;
+        let mut updater = task_manager.updater.write().await;
         updater.add_feed(FakeFeed::test_set_a(), {
             let mut attr = slipfeed::FeedAttributes::new();
             attr.display_name = Arc::new("transformer".into());
@@ -81,10 +83,14 @@ async fn run(config: Config, tag: impl AsRef<str>) -> DatabaseEntryList {
         });
     }
 
-    let updater_handle = updater.handle().expect("Unable to get handle");
+    let updater_handle = task_manager.handle().expect("Unable to get handle");
     let cancel_token = CancellationToken::new();
     let mut tasks = JoinSet::new();
-    tasks.spawn(update(updater, Arc::new(config), cancel_token.clone()));
+    tasks.spawn(manage_tasks(
+        task_manager,
+        Arc::new(config),
+        cancel_token.clone(),
+    ));
 
     tokio::time::sleep(tokio::time::Duration::from_secs_f32(0.2)).await;
 

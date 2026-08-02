@@ -1,33 +1,43 @@
-//! Slipstream updater.
+//! Slipstream task manager..
 
 use super::*;
 
 use tokio::sync::oneshot;
 
-/// Run the slipstream updater.
-pub async fn update(
-    mut updater: Updater,
+/// Run the slipstream task manager.
+pub async fn manage_tasks(
+    mut task_manager: TaskManager,
     config: Arc<Config>,
     cancel_token: CancellationToken,
 ) -> Result<()> {
-    // We don't want to cancel the updater's updater update future working on other
-    // jobs. We convert this loop into a task and only cancel on quit.
+    // We can't cancel the task managers's updater update future as it is not cancel-safe.
+    // We convert this loop into a task and only cancel on quit.
     let updater_task: tokio::task::JoinHandle<()> = {
-        let entry_db = updater.entry_db.clone();
-        let updater = updater.updater.clone();
+        let entry_db = task_manager.entry_db.clone();
+        let updater = task_manager.updater.clone();
         let cancel_token = cancel_token.clone();
-        tokio::task::spawn(run_updater(updater, entry_db, cancel_token))
+        tokio::task::spawn(run_slipfeed_updater(
+            updater,
+            entry_db,
+            cancel_token,
+        ))
     };
 
-    // Continue updating and responding to requests until cancelled.
+    // Continue running tasks until cancelled.
     'update: loop {
         tokio::select! {
-            command = updater.to_updater_receiver.recv() => {
-                if let Some(command) = command {
-                    updater.handle_command(command, &config).await;
+            biased;
+            _ = cancel_token.cancelled() => break 'update,
+            task = task_manager.to_updater_blocking_receiver.recv() => {
+                if let Some(task) = task {
+                    task_manager.handle_blocking_command(task, &config).await;
                 }
             },
-            _ = cancel_token.cancelled() => break 'update,
+            task = task_manager.to_updater_nonblocking_receiver.recv() => {
+                if let Some(task) = task {
+                    task_manager.handle_nonblocking_command(task, &config).await;
+                }
+            },
         }
     }
 
@@ -36,7 +46,7 @@ pub async fn update(
     Ok(())
 }
 
-async fn run_updater(
+async fn run_slipfeed_updater(
     internal_updater: Arc<RwLock<slipfeed::Updater>>,
     entry_db: Option<Arc<Database>>,
     cancel_token: CancellationToken,
@@ -44,7 +54,7 @@ async fn run_updater(
     while !cancel_token.is_cancelled() {
         let entries = {
             let mut slipfeed_updater = internal_updater.write().await;
-            slipfeed_updater.update().await
+            slipfeed_updater.update_blocking().await
         };
         for entry in entries.as_slice() {
             if let Some(entry_db) = &entry_db {
@@ -55,7 +65,7 @@ async fn run_updater(
 }
 
 /// Slipstream updater.
-pub struct Updater {
+pub struct TaskManager {
     /// Underlying slipfeed updater.
     pub updater: Arc<RwLock<slipfeed::Updater>>,
     /// Map feeds by name to slipfeed id.
@@ -67,52 +77,35 @@ pub struct Updater {
     /// The entry database.
     /// This allows persistance between slipstream sessions.
     pub entry_db: Option<Arc<Database>>,
-    /// Handle's sender.
-    to_updater_sender: Sender<UpdaterRequest>,
-    /// Updater's receiver.
-    to_updater_receiver: Receiver<UpdaterRequest>,
+    /// Handle's blocking sender.
+    to_updater_blocking_sender: Sender<BlockingTask>,
+    /// Updater's blocking receiver.
+    to_updater_blocking_receiver: Receiver<BlockingTask>,
+    /// Handle's nonblocking sender.
+    to_updater_nonblocking_sender: Sender<NonblockingTask>,
+    /// Updater's nonblocking receiver.
+    to_updater_nonblocking_receiver: Receiver<NonblockingTask>,
 }
 
-impl Updater {
+impl TaskManager {
     /// Get handle to updater.
-    pub fn handle(&mut self) -> Result<UpdaterHandle> {
-        Ok(UpdaterHandle {
-            to_updater_sender: self.to_updater_sender.clone(),
+    pub fn handle(&mut self) -> Result<TaskManagerHandle> {
+        Ok(TaskManagerHandle {
+            to_updater_blocking_sender: self.to_updater_blocking_sender.clone(),
+            to_updater_nonblocking_sender: self
+                .to_updater_nonblocking_sender
+                .clone(),
         })
     }
 
-    /// Handle command.
-    async fn handle_command(
+    /// Handle blocking command.
+    async fn handle_blocking_command(
         &self,
-        command: UpdaterRequest,
+        task: BlockingTask,
         config: &Arc<Config>,
     ) {
-        match command {
-            UpdaterRequest::EntryUpdate { entry_id, tags } => {
-                if let Some(entry_db) = &self.entry_db {
-                    if let Some(tags) = tags {
-                        entry_db.update_tags(entry_id, tags).await;
-                    }
-                }
-            }
-            UpdaterRequest::CommandUpdate {
-                entry_id,
-                command,
-                result,
-                output,
-            } => {
-                if let Some(entry_db) = &self.entry_db {
-                    entry_db
-                        .store_command_result(
-                            entry_id,
-                            command,
-                            output,
-                            result == 0,
-                        )
-                        .await;
-                }
-            }
-            UpdaterRequest::EntriesSearch {
+        match task {
+            BlockingTask::EntriesSearch {
                 tx,
                 criteria,
                 offset,
@@ -123,7 +116,7 @@ impl Updater {
                         .ok();
                 };
             }
-            UpdaterRequest::FeedFetch { tx, options } => {
+            BlockingTask::FeedFetch { tx, options } => {
                 if let Some(entry_db) = &self.entry_db {
                     let entries = match options {
                         FeedFetchOptions::All {
@@ -234,9 +227,43 @@ impl Updater {
                     tx.send(entries).ok();
                 };
             }
-            UpdaterRequest::FeedName { tx, feed } => {
+            BlockingTask::FeedName { tx, feed } => {
                 // config.feed(feed)
                 tx.send(self.feeds_ids.get(&feed).cloned()).ok();
+            }
+        }
+    }
+
+    /// Handle nonblocking command.
+    async fn handle_nonblocking_command(
+        &self,
+        task: NonblockingTask,
+        _config: &Arc<Config>,
+    ) {
+        match task {
+            NonblockingTask::EntryUpdate { entry_id, tags } => {
+                if let Some(entry_db) = &self.entry_db {
+                    if let Some(tags) = tags {
+                        entry_db.update_tags(entry_id, tags).await;
+                    }
+                }
+            }
+            NonblockingTask::CommandUpdate {
+                entry_id,
+                command,
+                result,
+                output,
+            } => {
+                if let Some(entry_db) = &self.entry_db {
+                    entry_db
+                        .store_command_result(
+                            entry_id,
+                            command,
+                            output,
+                            result == 0,
+                        )
+                        .await;
+                }
             }
         }
     }
@@ -248,28 +275,44 @@ impl Updater {
     }
 }
 
-impl Default for Updater {
+impl Default for TaskManager {
     fn default() -> Self {
-        let (to_updater_sender, to_updater_receiver) = channel(10);
+        let (to_updater_blocking_sender, to_updater_blocking_receiver) =
+            channel(32);
+        let (to_updater_nonblocking_sender, to_updater_nonblocking_receiver) =
+            channel(1024);
         Self {
             updater: Arc::new(RwLock::new(slipfeed::Updater::default())),
             feeds: HashMap::default(),
             feeds_ids: HashMap::default(),
             all_filters: Vec::default(),
             entry_db: None,
-            to_updater_sender,
-            to_updater_receiver,
+            to_updater_blocking_sender: to_updater_blocking_sender,
+            to_updater_blocking_receiver: to_updater_blocking_receiver,
+            to_updater_nonblocking_sender: to_updater_nonblocking_sender,
+            to_updater_nonblocking_receiver: to_updater_nonblocking_receiver,
         }
     }
 }
 
-/// Message used to communicate with the database handler.
+/// Nonblocking tasks.
 #[derive(Debug)]
-enum UpdaterRequest {
+enum NonblockingTask {
     EntryUpdate {
         entry_id: EntryDbId,
         tags: Option<Vec<slipfeed::Tag>>,
     },
+    CommandUpdate {
+        entry_id: EntryDbId,
+        command: String,
+        result: i32,
+        output: String,
+    },
+}
+
+/// Blocking tasks.
+#[derive(Debug)]
+enum BlockingTask {
     EntriesSearch {
         tx: oneshot::Sender<DatabaseEntryList>,
         criteria: Vec<DatabaseSearch>,
@@ -282,12 +325,6 @@ enum UpdaterRequest {
     FeedName {
         tx: oneshot::Sender<Option<String>>,
         feed: slipfeed::FeedId,
-    },
-    CommandUpdate {
-        entry_id: EntryDbId,
-        command: String,
-        result: i32,
-        output: String,
     },
 }
 
@@ -307,17 +344,29 @@ enum FeedFetchOptions {
     },
 }
 
+/// Simple handle to manage communications with the task manager.
 #[derive(Clone)]
-pub struct UpdaterHandle {
+pub struct TaskManagerHandle {
     /// Handle's sender.
-    to_updater_sender: Sender<UpdaterRequest>,
+    to_updater_blocking_sender: Sender<BlockingTask>,
+    /// Handle's sender.
+    to_updater_nonblocking_sender: Sender<NonblockingTask>,
 }
 
-impl UpdaterHandle {
-    async fn send(&self, message: UpdaterRequest) {
-        let res = self.to_updater_sender.send(message).await;
+impl TaskManagerHandle {
+    /// Internal method to send a nonblocking task to the task manager.
+    async fn send_nonblocking(&self, message: NonblockingTask) {
+        let res = self.to_updater_nonblocking_sender.send(message).await;
         if let Err(e) = res {
-            tracing::error!("Failed to send: {}", e);
+            tracing::error!("Failed to send nonblocking: {}", e);
+        }
+    }
+
+    /// Internal method to send a blocking task to the task manager.
+    async fn send_blocking(&self, message: BlockingTask) {
+        let res = self.to_updater_blocking_sender.send(message).await;
+        if let Err(e) = res {
+            tracing::error!("Failed to send blocking: {}", e);
         }
     }
 
@@ -328,7 +377,7 @@ impl UpdaterHandle {
         offset: OffsetCursor,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::EntriesSearch {
+        self.send_blocking(BlockingTask::EntriesSearch {
             tx,
             criteria,
             offset,
@@ -349,7 +398,7 @@ impl UpdaterHandle {
         modified_since: Option<slipfeed::DateTime>,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::FeedFetch {
+        self.send_blocking(BlockingTask::FeedFetch {
             tx,
             options: FeedFetchOptions::All {
                 since: None,
@@ -373,7 +422,7 @@ impl UpdaterHandle {
         modified_since: Option<slipfeed::DateTime>,
     ) -> String {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::FeedFetch {
+        self.send_blocking(BlockingTask::FeedFetch {
             tx,
             options: FeedFetchOptions::All {
                 since: None,
@@ -397,7 +446,7 @@ impl UpdaterHandle {
         modified_since: Option<slipfeed::DateTime>,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::FeedFetch {
+        self.send_blocking(BlockingTask::FeedFetch {
             tx,
             options: FeedFetchOptions::Feed {
                 feed: feed.into(),
@@ -423,7 +472,7 @@ impl UpdaterHandle {
     ) -> String {
         let feed = feed.into();
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::FeedFetch {
+        self.send_blocking(BlockingTask::FeedFetch {
             tx,
             options: FeedFetchOptions::Feed {
                 feed: feed.clone(),
@@ -447,7 +496,7 @@ impl UpdaterHandle {
         modified_since: Option<slipfeed::DateTime>,
     ) -> DatabaseEntryList {
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::FeedFetch {
+        self.send_blocking(BlockingTask::FeedFetch {
             tx,
             options: FeedFetchOptions::Tag {
                 tag: tag.into(),
@@ -473,7 +522,7 @@ impl UpdaterHandle {
     ) -> String {
         let tag = tag.into();
         let (tx, rx) = oneshot::channel::<DatabaseEntryList>();
-        self.send(UpdaterRequest::FeedFetch {
+        self.send_blocking(BlockingTask::FeedFetch {
             tx,
             options: FeedFetchOptions::Tag {
                 tag: tag.clone(),
@@ -494,7 +543,8 @@ impl UpdaterHandle {
     #[allow(unused)]
     pub async fn feed_name(&self, id: slipfeed::FeedId) -> Option<String> {
         let (tx, rx) = oneshot::channel::<Option<String>>();
-        self.send(UpdaterRequest::FeedName { tx, feed: id }).await;
+        self.send_blocking(BlockingTask::FeedName { tx, feed: id })
+            .await;
         match rx.await {
             Ok(data) => data,
             Err(e) => {
@@ -509,7 +559,7 @@ impl UpdaterHandle {
         entry_id: EntryDbId,
         tags: Vec<slipfeed::Tag>,
     ) {
-        self.send(UpdaterRequest::EntryUpdate {
+        self.send_nonblocking(NonblockingTask::EntryUpdate {
             entry_id,
             tags: Some(tags),
         })
@@ -528,7 +578,7 @@ impl UpdaterHandle {
                 ((**output).clone(), *success)
             }
         };
-        self.send(UpdaterRequest::CommandUpdate {
+        self.send_nonblocking(NonblockingTask::CommandUpdate {
             entry_id,
             command: (*command.command.name).clone(),
             result: match success {

@@ -44,8 +44,8 @@ async fn standard_syndications() {
     );
     assert!(newsboat_id.0 == 1);
 
-    let rss_entries = rss_updater.update().await;
-    let atom_entries = atom_updater.update().await;
+    let rss_entries = rss_updater.update_blocking().await;
+    let atom_entries = atom_updater.update_blocking().await;
 
     assert!(rss_entries.len() > 0);
     assert!(atom_entries.len() > 0);
@@ -111,7 +111,7 @@ async fn parsing() {
         },
     );
 
-    let entries = updater.update().await;
+    let entries = updater.update_blocking().await;
     tracing::info!("{}", entries.len());
 
     for entry in entries.as_slice() {

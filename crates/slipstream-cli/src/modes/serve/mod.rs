@@ -18,7 +18,7 @@ pub async fn serve_cli(
     port: Option<u16>,
     address: Option<String>,
     config: Arc<Config>,
-    updater: UpdaterHandle,
+    task_manager_handle: TaskManagerHandle,
     cancel_token: CancellationToken,
 ) -> Result<()> {
     // Create caches.
@@ -49,7 +49,7 @@ pub async fn serve_cli(
         .route("/robots.txt", axum::routing::get(get_robots_txt))
         .route("/favicon.ico", axum::routing::get(get_favicon))
         .with_state(Arc::new(SFState {
-            updater: Arc::new(updater),
+            updater: Arc::new(task_manager_handle),
             config: config.clone(),
             cache,
             html,
@@ -90,7 +90,7 @@ pub async fn serve_cli(
 /// State shared by the axum web server.
 #[derive(Clone)]
 struct SFState {
-    updater: Arc<UpdaterHandle>,
+    updater: Arc<TaskManagerHandle>,
     config: Arc<Config>,
     cache: Arc<Mutex<Cache>>,
     html: Arc<Mutex<HtmlServer>>,

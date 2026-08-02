@@ -68,9 +68,13 @@ async fn main() -> Result<()> {
     let mut tasks = JoinSet::new();
 
     // Run feed updates:
-    let mut updater = config.updater().await?;
-    let updater_handle = updater.handle()?;
-    tasks.spawn(update(updater, config.clone(), cancel_token.clone()));
+    let mut task_manager = config.build_task_manager().await?;
+    let task_manager_handle = task_manager.handle()?;
+    tasks.spawn(manage_tasks(
+        task_manager,
+        config.clone(),
+        cancel_token.clone(),
+    ));
 
     // Handle long-running tasks:
     match &cli.command {
@@ -78,12 +82,12 @@ async fn main() -> Result<()> {
             *port,
             address.clone(),
             config.clone(),
-            updater_handle,
+            task_manager_handle,
             cancel_token.clone(),
         )),
         CommandMode::Read => tasks.spawn(read_cli(
             config.clone(),
-            updater_handle,
+            task_manager_handle,
             cancel_token.clone(),
         )),
         _ => unreachable!(),
