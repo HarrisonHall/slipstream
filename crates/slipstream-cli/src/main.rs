@@ -7,6 +7,7 @@ mod feeds;
 mod logging;
 mod modes;
 pub mod prelude;
+mod task_manager;
 
 #[cfg(test)]
 mod tests;
@@ -67,8 +68,8 @@ async fn main() -> Result<()> {
     let cancel_token = CancellationToken::new();
     let mut tasks = JoinSet::new();
 
-    // Run feed updates:
-    let mut task_manager = config.build_task_manager().await?;
+    // Handle tasks, including background updates.
+    let task_manager = config.build_task_manager().await?;
     let task_manager_handle = task_manager.handle()?;
     tasks.spawn(manage_tasks(
         task_manager,

@@ -6,6 +6,7 @@ pub use database::*;
 pub use feeds::*;
 pub use logging::*;
 pub use modes::*;
+pub use task_manager::*;
 
 pub(crate) mod internal {
     pub use std::collections::{BTreeMap, HashMap, HashSet};

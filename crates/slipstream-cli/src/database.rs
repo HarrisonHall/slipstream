@@ -20,11 +20,16 @@ pub struct Database {
     path: String,
     /// Connection to the sqlite database.
     pool: SqlitePool,
+    /// Handle to task manager.
+    task_manager_handle: TaskManagerHandle,
 }
 
 impl Database {
     /// Create a new database.
-    pub async fn new(path: impl AsRef<str>) -> Result<Self> {
+    pub async fn new(
+        path: impl AsRef<str>,
+        task_manager_handle: TaskManagerHandle,
+    ) -> Result<Self> {
         // Parse path and create parents if necessary. Additionally set connect
         // options according to the specified path.
         let options: SqliteConnectOptions;
@@ -62,7 +67,11 @@ impl Database {
         // Initialize database.
         Database::initialize(&pool).await?;
 
-        Ok(Self { path, pool })
+        Ok(Self {
+            path,
+            pool,
+            task_manager_handle,
+        })
     }
 
     async fn database_version(pool: &SqlitePool) -> Option<semver::Version> {
@@ -261,13 +270,14 @@ impl Database {
         Ok(())
     }
 
-    /// This inserts an entry into the database.
-    pub async fn insert_slipfeed_entry(
+    /// This upserts an entry into the database.
+    pub async fn upsert_slipfeed_entry(
         &self,
         entry: &slipfeed::Entry,
     ) -> EntryDbId {
         let entry_v1 = EntryV1::from(entry);
         let serialized_entry = SerializedEntry::V1(entry_v1.clone());
+        let upsert: Upsert;
         let entry_id: EntryDbId = {
             // Find existing id.
             let mut id: (Option<EntryDbId>,) = (None,);
@@ -325,6 +335,7 @@ impl Database {
                         "No insertion, found existing entry {}.",
                         id
                     );
+                    upsert = Upsert::Update;
                     id
                 }
                 (None,) => {
@@ -352,6 +363,7 @@ impl Database {
                         Ok(maybe_id) => match maybe_id.0 {
                             Some(id) => {
                                 tracing::trace!("Insertion, new entry {}.", id);
+                                upsert = Upsert::Insert;
                                 id
                             }
                             None => {
@@ -387,6 +399,19 @@ impl Database {
                 .execute(&self.pool).await;
             if let Err(e) = res {
                 tracing::error!("Failed to insert tag: {}", e);
+            }
+        }
+
+        match upsert {
+            Upsert::Insert => {
+                self.task_manager_handle
+                    .hook(Hook::OnInsert, Some(entry_id))
+                    .await;
+            }
+            Upsert::Update => {
+                self.task_manager_handle
+                    .hook(Hook::OnUpdate, Some(entry_id))
+                    .await;
             }
         }
 
@@ -642,6 +667,9 @@ impl Database {
                 tracing::error!("Failed to insert tag: {}", e);
             }
         }
+        self.task_manager_handle
+            .hook(Hook::OnTag, Some(entry_id))
+            .await;
     }
 
     pub async fn store_command_result(
@@ -773,4 +801,10 @@ impl OffsetCursor {
             None => OffsetCursor::LatestTimestamp,
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum Upsert {
+    Insert,
+    Update,
 }

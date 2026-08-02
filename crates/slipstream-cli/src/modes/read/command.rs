@@ -6,7 +6,7 @@ const RUNNING_TEXT: &str = "Running...";
 const FAILED_TEXT: &str = "Failed to execute command.";
 const BAD_OUTPUT_TEXT: &str = "Unable to parse command output.";
 
-/// Results from a shell command.
+/// Results from a custom command.
 #[derive(Debug, Clone)]
 pub enum CommandResult {
     /// The command is running.
@@ -15,7 +15,7 @@ pub enum CommandResult {
     Finished { output: Arc<String>, success: bool },
 }
 
-/// Context of a completed shell command.
+/// Context of a completed custom command.
 #[derive(Debug, Clone)]
 pub struct CommandResultContext {
     pub command: CustomCommand,
@@ -57,6 +57,19 @@ impl CommandResultContext {
                     Paragraph::new(t).left_aligned()
                 }
             }
+        }
+    }
+}
+
+impl From<CustomCommandResult> for CommandResultContext {
+    fn from(value: CustomCommandResult) -> Self {
+        Self {
+            command: value.command,
+            result: CommandResult::Finished {
+                output: value.output.into(),
+                success: value.exit_code == 0,
+            },
+            vertical_scroll: 0,
         }
     }
 }

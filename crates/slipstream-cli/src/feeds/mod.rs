@@ -7,11 +7,9 @@ mod feed_options;
 mod feed_types;
 mod filters;
 mod transforms;
-mod task_manager;
 
 pub use cache::*;
 pub use feed_options::*;
 pub use feed_types::*;
 pub use filters::*;
 pub use transforms::*;
-pub use task_manager::*;

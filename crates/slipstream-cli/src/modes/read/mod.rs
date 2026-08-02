@@ -83,9 +83,6 @@ struct Reader {
     task_manager_handle: TaskManagerHandle,
     /// Refresh future.
     refresh: Option<JoinHandle<DatabaseEntryList>>,
-    /// Futures for binding commands run on entries.
-    command_futures:
-        tokio::task::JoinSet<(EntryDbId, command::CommandResultContext)>,
     /// Entries.
     entries: DatabaseEntryList,
     /// Cached of the terminal.
@@ -100,14 +97,13 @@ impl Reader {
     /// Create a new reader.
     fn new(
         config: Arc<Config>,
-        updater: TaskManagerHandle,
+        task_manager_handle: TaskManagerHandle,
         cancel_token: CancellationToken,
     ) -> Result<Self> {
         Ok(Self {
             config,
-            task_manager_handle: updater,
+            task_manager_handle,
             refresh: None,
-            command_futures: tokio::task::JoinSet::new(),
             entries: DatabaseEntryList::new(0),
             terminal_state: TerminalState::default(),
             interaction_state: InteractionState::default(),
@@ -117,6 +113,8 @@ impl Reader {
 
     /// Run the reader.
     async fn run(&mut self, terminal: &mut Terminal) -> Result<()> {
+        let mut task_receiver = self.task_manager_handle.receiver().await;
+
         'reader: loop {
             // Check if quitting.
             if self.cancel_token.is_cancelled() {
@@ -157,12 +155,14 @@ impl Reader {
             // Manage updater.
             self.check_for_updates().await;
 
-            // Sync current with db.
-            if self.interaction_state.selection < self.entries.len() {
-                // TODO: Read hook!
-                // let entry = &mut self.entries[self.interaction_state.selection];
-                // self.updater.toggle_read(entry.db_id, true).await;
-                // self.updater.update_view(entry).await;
+            // Check for system tasks.
+            if self
+                .handle_system_tasks(&mut task_receiver, terminal)
+                .await
+                .is_err()
+            {
+                self.cancel_token.cancel();
+                break 'reader Ok(());
             }
         }
     }
@@ -206,7 +206,7 @@ impl Reader {
 
     /// Handle input.
     /// Quits on error.
-    async fn handle_input(&mut self, terminal: &mut Terminal) -> Result<()> {
+    async fn handle_input(&mut self, _terminal: &mut Terminal) -> Result<()> {
         // Wait for input for REFRESH_DELTA.
         if terminal_input_ready(REFRESH_DELTA).await {
             // It's guaranteed that the `read()` won't block when the `poll()`
@@ -225,7 +225,13 @@ impl Reader {
                         }
                         _ => {
                             let command = self.config.get_key_command(&key);
-                            self.run_command(command, terminal).await?;
+                            let entry_id = match self.get_selected_entry_mut() {
+                                Some(e) => Some(e.db_id),
+                                None => None,
+                            };
+                            self.task_manager_handle
+                                .run_command(command, entry_id)
+                                .await;
                         }
                     }
                 }
@@ -272,33 +278,53 @@ impl Reader {
         Ok(())
     }
 
-    /// Run command.
-    async fn run_command(
+    /// Handle system tasks.
+    async fn handle_system_tasks(
         &mut self,
-        command: Commandish,
+        task_receiver: &mut tokio::sync::broadcast::Receiver<SystemTask>,
         terminal: &mut Terminal,
     ) -> Result<()> {
-        match command {
-            Commandish::CustomCommandRef(name) => {
-                tracing::error!("Invalid command name: {}", name.as_str());
-            }
-            Commandish::CustomCommandFull(custom_command) => {
-                if custom_command.save {
-                    self.entries[self.interaction_state.selection].add_result(
-                        command::CommandResultContext::new(
-                            custom_command.clone(),
-                        ),
-                    );
-                }
-                self.command_futures.spawn(Reader::run_custom_command(
-                    self.task_manager_handle.clone(),
-                    custom_command,
-                    self.entries[self.interaction_state.selection].clone(),
-                    self.terminal_state.command_width,
-                ));
-            }
-            Commandish::Literal(command) => {
-                self.run_command_literal(command, terminal).await?
+        while let Ok(task) = task_receiver.try_recv() {
+            match task {
+                SystemTask::RunCommand {
+                    commandish,
+                    entry_id,
+                } => match commandish {
+                    Commandish::Literal(read_command) => {
+                        self.run_command_literal(read_command, terminal).await?
+                    }
+                    Commandish::CustomCommandFull(custom_command) => {
+                        if let (true, Some(entry_id)) =
+                            (custom_command.save, entry_id)
+                        {
+                            if let Some(entry) = self.entries.get_mut(entry_id)
+                            {
+                                entry.add_result(
+                                    command::CommandResultContext::new(
+                                        custom_command.clone(),
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                    _ => {}
+                },
+                SystemTask::TaskManager(task) => match task {
+                    NonblockingTask::CommandUpdate(result) => {
+                        tracing::info!("RESULT");
+                        if result.command.save {
+                            tracing::info!("SAVE");
+                            if let Some(entry) =
+                                self.entries.get_mut(result.entry_id)
+                            {
+                                tracing::info!("ENTRY");
+                                entry.add_result(result.into());
+                            }
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
             }
         }
         Ok(())
@@ -310,6 +336,8 @@ impl Reader {
         command: ReadCommandLiteral,
         terminal: &mut Terminal,
     ) -> Result<()> {
+        let previous_selection = self.interaction_state.selection;
+
         match command {
             ReadCommandLiteral::None => {}
             ReadCommandLiteral::Quit => {
@@ -474,37 +502,23 @@ impl Reader {
             }
         };
 
+        // Call read hooks on change.
+        // TODO: Move to main loop
+        if self.interaction_state.selection != previous_selection {
+            if self.interaction_state.selection < self.entries.len() {
+                self.task_manager_handle
+                    .hook(
+                        Hook::OnRead,
+                        Some(
+                            self.entries[self.interaction_state.selection]
+                                .db_id,
+                        ),
+                    )
+                    .await;
+            }
+        }
+
         Ok(())
-    }
-
-    /// Run a custom shell command.
-    /// This replaces select substrings of the shell command with values from the
-    /// entry.
-    async fn run_custom_command(
-        task_manager_handle: TaskManagerHandle,
-        custom_command: CustomCommand,
-        entry: DatabaseEntry,
-        width: u16,
-    ) -> (EntryDbId, command::CommandResultContext) {
-        let ctx = CustomCommandContext {
-            entry_id: entry.db_id,
-            terminal_size: (width, 60),
-        };
-
-        let result = task_manager_handle
-            .run_custom_command(&custom_command, &ctx)
-            .await;
-
-        let mut ctx = command::CommandResultContext::new(custom_command);
-        ctx.update(
-            Arc::new(result.output),
-            match result.exit_code {
-                0 => true,
-                _ => false,
-            },
-        );
-
-        (entry.db_id, ctx)
     }
 
     /// Check for an update and handle completed updates.
@@ -540,20 +554,6 @@ impl Reader {
                         true,
                     )
                     .await;
-                }
-            }
-        }
-
-        // Check for loaded entries.
-        while let Some(res) = self.command_futures.try_join_next() {
-            if let Ok((entry_id, context)) = res {
-                if context.command.save {
-                    self.task_manager_handle
-                        .save_command(entry_id, &context)
-                        .await;
-                    if let Some(entry) = self.entries.get_mut(entry_id) {
-                        entry.add_result(context);
-                    }
                 }
             }
         }
@@ -759,7 +759,7 @@ impl Reader {
             }
             command_mode::Command::Command { command } => {
                 let command = self.config.get_custom_command(&command);
-                match command {
+                match &command {
                     Commandish::CustomCommandFull(custom_command) => {
                         if custom_command.save {
                             self.entries[self.interaction_state.selection]
@@ -769,13 +769,6 @@ impl Reader {
                                     ),
                                 );
                         }
-                        self.command_futures.spawn(Reader::run_custom_command(
-                            self.task_manager_handle.clone(),
-                            custom_command,
-                            self.entries[self.interaction_state.selection]
-                                .clone(),
-                            self.terminal_state.command_width,
-                        ));
                     }
                     _ => {
                         tracing::warn!(

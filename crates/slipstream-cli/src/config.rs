@@ -8,7 +8,7 @@ const DEFAULT_FEED_TAG_STEP: u8 = 7;
 
 /// Configuration for slipstream.
 /// This is parsed from the toml slipstream configuration file.
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     /// Global updater frequency.
     /// This is duration between calls to update. This is not the default feed
@@ -32,6 +32,9 @@ pub struct Config {
     /// Custom commands.
     #[serde(default)]
     pub commands: Vec<CustomCommand>,
+    /// Hooks.
+    #[serde(default)]
+    pub hooks: HashMap<Hook, Vec<Commandish>>,
     /// Feed configuration.
     pub feeds: Option<BTreeMap<String, FeedDefinition>>,
     // Serve configuration.
@@ -45,13 +48,8 @@ pub struct Config {
 impl Config {
     /// Create a slipstream task manager from the parsed configuration.
     pub async fn build_task_manager(&self) -> Result<TaskManager> {
-        let entry_db = Database::new(match &self.database {
-            Some(db) => db.as_str(),
-            None => ":memory:",
-        })
-        .await?;
-        let mut updater = TaskManager::default();
-        updater.updater = Arc::new(RwLock::new({
+        let mut task_manager = TaskManager::new(Arc::new((*self).clone()));
+        task_manager.updater = Arc::new(RwLock::new({
             let mut updater = slipfeed::Updater::new(
                 slipfeed::Duration::from_seconds(match self.freq {
                     Some(freq) => freq.as_secs(),
@@ -64,7 +62,16 @@ impl Config {
             }
             updater
         }));
-        updater.entry_db = Some(Arc::new(entry_db));
+        task_manager.entry_db = Some(Arc::new(
+            Database::new(
+                match &self.database {
+                    Some(db) => db.as_str(),
+                    None => ":memory:",
+                },
+                task_manager.handle()?,
+            )
+            .await?,
+        ));
 
         if let Some(feeds) = &self.feeds {
             // Add raw feeds.
@@ -102,19 +109,21 @@ impl Config {
                     RawFeed::Raw { url } => {
                         attr.step = options.step(DEFAULT_FEED_STEP);
                         let feed = StandardFeed::new(url);
-                        let mut inner_updater = updater.updater.write().await;
+                        let mut inner_updater =
+                            task_manager.updater.write().await;
                         let id = inner_updater.add_feed(feed, attr);
-                        updater.feeds.insert(name.clone(), id);
-                        updater.feeds_ids.insert(id, name.clone());
+                        task_manager.feeds.insert(name.clone(), id);
+                        task_manager.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added standard feed {}.", name);
                     }
                     RawFeed::Aggregate { .. } => {
                         attr.step = options.step(DEFAULT_FEED_AGG_STEP);
                         let feed = AggregateFeed::new();
-                        let mut inner_updater = updater.updater.write().await;
+                        let mut inner_updater =
+                            task_manager.updater.write().await;
                         let id = inner_updater.add_feed(feed, attr);
-                        updater.feeds.insert(name.clone(), id);
-                        updater.feeds_ids.insert(id, name.clone());
+                        task_manager.feeds.insert(name.clone(), id);
+                        task_manager.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added aggregate feed {}.", name);
                     }
                     RawFeed::AggregateTag {
@@ -131,10 +140,11 @@ impl Config {
                             .iter()
                             .map(|t| slipfeed::Tag::from(t.as_str()))
                             .collect();
-                        let mut inner_updater = updater.updater.write().await;
+                        let mut inner_updater =
+                            task_manager.updater.write().await;
                         let id = inner_updater.add_feed(feed, attr);
-                        updater.feeds.insert(name.clone(), id);
-                        updater.feeds_ids.insert(id, name.clone());
+                        task_manager.feeds.insert(name.clone(), id);
+                        task_manager.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added aggregate tag feed {}.", name);
                     }
                     RawFeed::MastodonStatuses {
@@ -148,10 +158,11 @@ impl Config {
                             feed_type.into(),
                             token.clone(),
                         );
-                        let mut inner_updater = updater.updater.write().await;
+                        let mut inner_updater =
+                            task_manager.updater.write().await;
                         let id = inner_updater.add_feed(feed, attr);
-                        updater.feeds.insert(name.clone(), id);
-                        updater.feeds_ids.insert(id, name.clone());
+                        task_manager.feeds.insert(name.clone(), id);
+                        task_manager.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added mastodon feed {}.", name);
                     }
                     RawFeed::MastodonUserStatuses {
@@ -168,10 +179,11 @@ impl Config {
                             },
                             token.clone(),
                         );
-                        let mut inner_updater = updater.updater.write().await;
+                        let mut inner_updater =
+                            task_manager.updater.write().await;
                         let id = inner_updater.add_feed(feed, attr);
-                        updater.feeds.insert(name.clone(), id);
-                        updater.feeds_ids.insert(id, name.clone());
+                        task_manager.feeds.insert(name.clone(), id);
+                        task_manager.feeds_ids.insert(id, name.clone());
                         tracing::debug!("Added mastodon feed {}.", name);
                     }
                 };
@@ -185,7 +197,7 @@ impl Config {
                         let mut child_ids = Vec::<slipfeed::FeedId>::new();
                         for input_feed_name in input_feeds {
                             if let Some(input_feed_id) =
-                                updater.feeds.get(input_feed_name)
+                                task_manager.feeds.get(input_feed_name)
                             {
                                 child_ids.push(*input_feed_id);
                             } else {
@@ -198,9 +210,10 @@ impl Config {
                         }
 
                         // Apply to aggregate.
-                        if let Some(aggregate_feed_id) = updater.feeds.get(name)
+                        if let Some(aggregate_feed_id) =
+                            task_manager.feeds.get(name)
                         {
-                            let updater = updater.updater.read().await;
+                            let updater = task_manager.updater.read().await;
                             if let Some(trait_feed) =
                                 updater.get_feed(*aggregate_feed_id)
                             {
@@ -235,7 +248,7 @@ impl Config {
 
         // Add global filters & transforms.
         {
-            let mut inner_updater = updater.updater.write().await;
+            let mut inner_updater = task_manager.updater.write().await;
             self.global
                 .filters
                 .get_filters()
@@ -250,10 +263,12 @@ impl Config {
 
         // Add all filters.
         if let Some(all_config) = self.serve.all.as_ref() {
-            updater.all_filters.extend(all_config.filters.get_filters());
+            task_manager
+                .all_filters
+                .extend(all_config.filters.get_filters());
         }
 
-        Ok(updater)
+        Ok(task_manager)
     }
 
     /// Find a feed by name.
@@ -455,4 +470,16 @@ impl TimeZone {
 
         c.format("%Y-%m-%d %H:%M").to_string()
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum Hook {
+    #[serde(alias = "on-insert")]
+    OnInsert,
+    #[serde(alias = "on-update")]
+    OnUpdate,
+    #[serde(alias = "on-read")]
+    OnRead,
+    #[serde(alias = "on-tag")]
+    OnTag,
 }
