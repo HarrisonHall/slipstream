@@ -16,8 +16,6 @@ pub use entry::*;
 pub use keyboard::*;
 pub use state::*;
 
-use std::time::Duration;
-
 use ratatui::DefaultTerminal;
 use ratatui::buffer::Buffer;
 use ratatui::prelude::{
@@ -33,7 +31,7 @@ use tokio::task::JoinHandle;
 type Terminal = DefaultTerminal;
 
 /// How often to refresh the screen without input.
-const REFRESH_DELTA: f32 = 0.25;
+const REFRESH_DELTA: f32 = 5.0;
 /// Minimum height of the screen.
 const MIN_VER_HEIGHT: u16 = 20;
 /// The minimum terminal width to support horizontal mode.
@@ -82,7 +80,7 @@ struct Reader {
     /// State of the updating logic.
     task_manager_handle: TaskManagerHandle,
     /// Refresh future.
-    refresh: Option<JoinHandle<DatabaseEntryList>>,
+    refresh: JoinHandle<DatabaseEntryList>,
     /// Entries.
     entries: DatabaseEntryList,
     /// Cached of the terminal.
@@ -103,7 +101,7 @@ impl Reader {
         Ok(Self {
             config,
             task_manager_handle,
-            refresh: None,
+            refresh: tokio::spawn(std::future::pending()),
             entries: DatabaseEntryList::new(0),
             terminal_state: TerminalState::default(),
             interaction_state: InteractionState::default(),
@@ -114,6 +112,7 @@ impl Reader {
     /// Run the reader.
     async fn run(&mut self, terminal: &mut Terminal) -> Result<()> {
         let mut task_receiver = self.task_manager_handle.receiver().await;
+        let mut input_stream = crossterm::event::EventStream::new();
 
         'reader: loop {
             // Check if quitting.
@@ -145,25 +144,48 @@ impl Reader {
                 };
             })?;
 
-            // Poll input.
-            self.terminal_state.last_frame_inputs.clear();
-            if self.handle_input(terminal).await.is_err() {
-                self.cancel_token.cancel();
-                break 'reader Ok(());
-            }
-
-            // Manage updater.
-            self.check_for_updates().await;
-
-            // Check for system tasks.
-            if self
-                .handle_system_tasks(&mut task_receiver, terminal)
-                .await
-                .is_err()
-            {
-                self.cancel_token.cancel();
-                break 'reader Ok(());
-            }
+            let input_fut = input_stream.next().fuse();
+            let refresh_fut = tokio::time::sleep(
+                tokio::time::Duration::from_secs_f32(REFRESH_DELTA),
+            );
+            tokio::select! {
+                _ = refresh_fut => {
+                    // Do nothing.
+                    // This is present to sure the terminal is refreshed periodically.
+                },
+                input = input_fut => {
+                    if let Some(input) = input {
+                        match input {
+                            Ok(input) => {
+                                self.terminal_state.last_frame_inputs.clear();
+                                self.handle_input(input, terminal).await?;
+                            },
+                            Err(e) => tracing::warn!("Failed to parse input: {e}"),
+                        }
+                    }
+                },
+                list_update_res = &mut self.refresh => {
+                    match list_update_res {
+                       Ok(entries)  => self.handle_list_update(Some(entries)).await,
+                       Err(e) => {
+                            tracing::error!("Failed to update entries: {}", e);
+                           self.handle_list_update(None).await;
+                       }
+                    }
+                },
+                system_task = task_receiver.recv() => {
+                    if let Ok(system_task) = system_task {
+                        if self
+                            .handle_system_tasks(system_task, terminal)
+                            .await
+                            .is_err()
+                        {
+                            self.cancel_token.cancel();
+                            break 'reader Ok(());
+                        }
+                    }
+                }
+            };
         }
     }
 }
@@ -206,43 +228,42 @@ impl Reader {
 
     /// Handle input.
     /// Quits on error.
-    async fn handle_input(&mut self, _terminal: &mut Terminal) -> Result<()> {
-        // Wait for input for REFRESH_DELTA.
-        if terminal_input_ready(REFRESH_DELTA).await {
-            // It's guaranteed that the `read()` won't block when the `poll()`
-            // function returns `true`.
-            match event::read()? {
-                Event::FocusGained => self.terminal_state.has_focus = true,
-                Event::FocusLost => self.terminal_state.has_focus = false,
-                Event::Key(key) => {
-                    if key == CONTROL_C {
-                        self.cancel_token.cancel();
-                        return Ok(());
+    async fn handle_input(
+        &mut self,
+        input: crossterm::event::Event,
+        _terminal: &mut Terminal,
+    ) -> Result<()> {
+        match input {
+            Event::FocusGained => self.terminal_state.has_focus = true,
+            Event::FocusLost => self.terminal_state.has_focus = false,
+            Event::Key(key) => {
+                if key == CONTROL_C {
+                    self.cancel_token.cancel();
+                    return Ok(());
+                }
+                match &self.interaction_state.focus {
+                    Focus::Command { .. } => {
+                        self.handle_command_mode_input(&key).await?;
                     }
-                    match &self.interaction_state.focus {
-                        Focus::Command { .. } => {
-                            self.handle_command_mode_input(&key).await?;
-                        }
-                        _ => {
-                            let command = self.config.get_key_command(&key);
-                            let entry_id = match self.get_selected_entry_mut() {
-                                Some(e) => Some(e.db_id),
-                                None => None,
-                            };
-                            self.task_manager_handle
-                                .run_command(command, entry_id)
-                                .await;
-                        }
+                    _ => {
+                        let command = self.config.get_key_command(&key);
+                        let entry_id = match self.get_selected_entry_mut() {
+                            Some(e) => Some(e.db_id),
+                            None => None,
+                        };
+                        self.task_manager_handle
+                            .run_command(command, entry_id)
+                            .await;
                     }
                 }
-                Event::Mouse(event) => {
-                    self.terminal_state.last_frame_inputs.handle_event(event);
-                }
-                Event::Resize(width, height) => {
-                    self.terminal_state.size = (width, height);
-                }
-                _ => {}
             }
+            Event::Mouse(event) => {
+                self.terminal_state.last_frame_inputs.handle_event(event);
+            }
+            Event::Resize(width, height) => {
+                self.terminal_state.size = (width, height);
+            }
+            _ => {}
         }
 
         // Handle queued input.
@@ -281,51 +302,45 @@ impl Reader {
     /// Handle system tasks.
     async fn handle_system_tasks(
         &mut self,
-        task_receiver: &mut tokio::sync::broadcast::Receiver<SystemTask>,
+        task: SystemTask,
         terminal: &mut Terminal,
     ) -> Result<()> {
-        while let Ok(task) = task_receiver.try_recv() {
-            match task {
-                SystemTask::RunCommand {
-                    commandish,
-                    entry_id,
-                } => match commandish {
-                    Commandish::Literal(read_command) => {
-                        self.run_command_literal(read_command, terminal).await?
-                    }
-                    Commandish::CustomCommandFull(custom_command) => {
-                        if let (true, Some(entry_id)) =
-                            (custom_command.save, entry_id)
-                        {
-                            if let Some(entry) = self.entries.get_mut(entry_id)
-                            {
-                                entry.add_result(
-                                    command::CommandResultContext::new(
-                                        custom_command.clone(),
-                                    ),
-                                );
-                            }
+        match task {
+            SystemTask::RunCommand {
+                commandish,
+                entry_id,
+            } => match commandish {
+                Commandish::Literal(read_command) => {
+                    self.run_command_literal(read_command, terminal).await?
+                }
+                Commandish::CustomCommandFull(custom_command) => {
+                    if let (true, Some(entry_id)) =
+                        (custom_command.save, entry_id)
+                    {
+                        if let Some(entry) = self.entries.get_mut(entry_id) {
+                            entry.add_result(
+                                command::CommandResultContext::new(
+                                    custom_command.clone(),
+                                ),
+                            );
                         }
                     }
-                    _ => {}
-                },
-                SystemTask::TaskManager(task) => match task {
-                    NonblockingTask::CommandUpdate(result) => {
-                        tracing::info!("RESULT");
-                        if result.command.save {
-                            tracing::info!("SAVE");
-                            if let Some(entry) =
-                                self.entries.get_mut(result.entry_id)
-                            {
-                                tracing::info!("ENTRY");
-                                entry.add_result(result.into());
-                            }
-                        }
-                    }
-                    _ => {}
-                },
+                }
                 _ => {}
-            }
+            },
+            SystemTask::TaskManager(task) => match task {
+                NonblockingTask::CommandUpdate(result) => {
+                    if result.command.save {
+                        if let Some(entry) =
+                            self.entries.get_mut(result.entry_id)
+                        {
+                            entry.add_result(result.into());
+                        }
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
         }
         Ok(())
     }
@@ -521,41 +536,30 @@ impl Reader {
         Ok(())
     }
 
-    /// Check for an update and handle completed updates.
-    async fn check_for_updates(&mut self) {
-        // Check for new update.
-        if let Some(entries_fut) = &mut self.refresh {
-            if entries_fut.is_finished() {
-                // Update entries.
-                match entries_fut.await {
-                    Ok(entries) => {
-                        self.entries = entries;
-                        if !self.interaction_state.repeat_previous
-                            || self.interaction_state.selection
-                                >= self.entries.len()
-                        {
-                            self.terminal_state.window = 0;
-                            self.interaction_state.selection = 0;
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to update entries: {}", e);
-                    }
-                }
-                self.refresh = None;
-
-                // Repeat search.
-                if self.interaction_state.repeat_previous {
-                    self.interaction_state.next_delay =
-                        Some(tokio::time::Duration::from_secs_f32(5.0));
-                    self.update_entries(
-                        self.interaction_state.previous_search.clone(),
-                        self.interaction_state.previous_offset.clone(),
-                        true,
-                    )
-                    .await;
-                }
+    /// Handle completed updates.
+    async fn handle_list_update(&mut self, entries: Option<DatabaseEntryList>) {
+        // Update entries.
+        if let Some(entries) = entries {
+            self.entries = entries;
+            if !self.interaction_state.repeat_previous
+                || self.interaction_state.selection >= self.entries.len()
+            {
+                self.terminal_state.window = 0;
+                self.interaction_state.selection = 0;
             }
+        }
+        self.refresh = tokio::spawn(std::future::pending());
+
+        // Repeat search.
+        if self.interaction_state.repeat_previous {
+            self.interaction_state.next_delay =
+                Some(tokio::time::Duration::from_secs_f32(5.0));
+            self.update_entries(
+                self.interaction_state.previous_search.clone(),
+                self.interaction_state.previous_offset.clone(),
+                true,
+            )
+            .await;
         }
     }
 
@@ -567,12 +571,9 @@ impl Reader {
         repeat: bool,
     ) {
         // Check for new update.
-        if let Some(entries_fut) = &mut self.refresh {
-            entries_fut.abort();
-        }
-        self.refresh = None;
+        self.refresh.abort();
 
-        self.refresh = Some({
+        self.refresh = {
             let delay = self.interaction_state.next_delay.take();
             let updater = self.task_manager_handle.clone();
             let criteria = criteria.clone();
@@ -583,7 +584,7 @@ impl Reader {
                 }
                 updater.search(criteria, offset).await
             })
-        });
+        };
         self.interaction_state.repeat_previous = repeat;
         self.interaction_state.previous_search = criteria;
         self.interaction_state.previous_offset = offset;
@@ -1238,26 +1239,6 @@ impl<'a> Widget for ReaderWidget<'a> {
                 &self.reader.terminal_state,
             )
             .render(entry_layout, buf);
-        }
-    }
-}
-
-/// Check if a terminal event has happened.
-async fn terminal_input_ready(poll_time: f32) -> bool {
-    let check_fut = tokio::task::spawn_blocking(move || {
-        event::poll(Duration::from_secs_f32(poll_time))
-    });
-    match check_fut.await {
-        Ok(t) => match t {
-            Ok(ready) => ready,
-            Err(e) => {
-                tracing::error!("Ratatui failed to check input: {}", e);
-                false
-            }
-        },
-        Err(e) => {
-            tracing::error!("Failed to check if input is ready: {}", e);
-            false
         }
     }
 }

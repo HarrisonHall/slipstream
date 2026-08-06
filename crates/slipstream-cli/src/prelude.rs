@@ -18,6 +18,7 @@ pub(crate) mod internal {
     pub use atom_syndication::{self as atom};
     pub use clap::{Parser, Subcommand};
     pub use color_eyre::eyre::{Result, bail};
+    pub use futures::{StreamExt, future::FutureExt};
     pub use resolve_path::PathResolveExt;
     pub use serde::{Deserialize, Serialize};
     pub use slipstream_feeds::prelude::{self as slipfeed};
