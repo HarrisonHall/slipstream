@@ -115,10 +115,7 @@ impl Reader {
         let mut input_stream = crossterm::event::EventStream::new();
 
         'reader: loop {
-            // Check if quitting.
-            if self.cancel_token.is_cancelled() {
-                break 'reader Ok(());
-            }
+            let previous_selection = self.interaction_state.selection;
 
             // Draw reader.
             terminal.draw(|f| {
@@ -184,8 +181,25 @@ impl Reader {
                             break 'reader Ok(());
                         }
                     }
+                },
+                _ = self.cancel_token.cancelled() => {
+                    break 'reader Ok(());
                 }
             };
+
+            // Call read hooks on change.
+            if self.interaction_state.selection != previous_selection {
+                if self.interaction_state.selection < self.entries.len() {
+                    self.task_manager_handle
+                        .hook(
+                            self.entries[self.interaction_state.selection]
+                                .db_id
+                                .into(),
+                            Hook::OnRead,
+                        )
+                        .await;
+                }
+            }
         }
     }
 }
@@ -247,12 +261,12 @@ impl Reader {
                     }
                     _ => {
                         let command = self.config.get_key_command(&key);
-                        let entry_id = match self.get_selected_entry_mut() {
-                            Some(e) => Some(e.db_id),
-                            None => None,
+                        let ctx = match self.get_selected_entry_mut() {
+                            Some(e) => tasks::Context::with_entry_id(e.db_id),
+                            None => tasks::Context::default(),
                         };
                         self.task_manager_handle
-                            .run_command(command, entry_id)
+                            .run_command(ctx, command)
                             .await;
                     }
                 }
@@ -302,45 +316,46 @@ impl Reader {
     /// Handle system tasks.
     async fn handle_system_tasks(
         &mut self,
-        task: SystemTask,
+        task: tasks::BackgroundTask,
         terminal: &mut Terminal,
     ) -> Result<()> {
         match task {
-            SystemTask::RunCommand {
-                commandish,
-                entry_id,
-            } => match commandish {
-                Commandish::Literal(read_command) => {
-                    self.run_command_literal(read_command, terminal).await?
-                }
-                Commandish::CustomCommandFull(custom_command) => {
-                    if let (true, Some(entry_id)) =
-                        (custom_command.save, entry_id)
+            tasks::BackgroundTask::Update(u) => match u {
+                tasks::BackgroundTaskUpdate::CommandUpdate { ctx, result } => {
+                    if let (true, Some(id)) =
+                        (result.command.save, &ctx.entry_id)
                     {
-                        if let Some(entry) = self.entries.get_mut(entry_id) {
-                            entry.add_result(
-                                command::CommandResultContext::new(
-                                    custom_command.clone(),
-                                ),
-                            );
-                        }
-                    }
-                }
-                _ => {}
-            },
-            SystemTask::TaskManager(task) => match task {
-                NonblockingTask::CommandUpdate(result) => {
-                    if result.command.save {
-                        if let Some(entry) =
-                            self.entries.get_mut(result.entry_id)
-                        {
+                        if let Some(entry) = self.entries.get_mut(*id) {
                             entry.add_result(result.into());
                         }
                     }
                 }
                 _ => {}
             },
-            _ => {}
+            tasks::BackgroundTask::Execute(e) => match e {
+                tasks::BackgroundTaskExecute::Command { ctx, commandish } => {
+                    match commandish {
+                        Commandish::Literal(lit) => {
+                            self.run_command_literal(lit, terminal).await?
+                        }
+                        Commandish::CustomCommandRef(_) => {}
+                        Commandish::CustomCommandFull(custom_command) => {
+                            if let (true, Some(id)) =
+                                (custom_command.save, &ctx.entry_id)
+                            {
+                                if let Some(entry) = self.entries.get_mut(*id) {
+                                    entry.add_result(
+                                        command::CommandResultContext::running(
+                                            custom_command.clone(),
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            },
         }
         Ok(())
     }
@@ -348,14 +363,12 @@ impl Reader {
     /// Run built-in command.
     async fn run_command_literal(
         &mut self,
-        command: ReadCommandLiteral,
+        command: ReadCommand,
         terminal: &mut Terminal,
     ) -> Result<()> {
-        let previous_selection = self.interaction_state.selection;
-
         match command {
-            ReadCommandLiteral::None => {}
-            ReadCommandLiteral::Quit => {
+            ReadCommand::None => {}
+            ReadCommand::Quit => {
                 if let Focus::Menu { .. } = &self.interaction_state.focus {
                     self.interaction_state.focus.toggle_menu();
                 } else {
@@ -363,11 +376,11 @@ impl Reader {
                 }
                 return Ok(());
             }
-            ReadCommandLiteral::Clear => {
+            ReadCommand::Clear => {
                 terminal.clear().ok();
                 return Ok(());
             }
-            ReadCommandLiteral::Update => {
+            ReadCommand::Update => {
                 self.update_entries(
                     vec![DatabaseSearch::Latest],
                     OffsetCursor::LatestTimestamp,
@@ -375,7 +388,7 @@ impl Reader {
                 )
                 .await;
             }
-            ReadCommandLiteral::Down => match self.interaction_state.focus {
+            ReadCommand::Down => match self.interaction_state.focus {
                 Focus::List => {
                     if self.interaction_state.selection + 1 < self.entries.len()
                     {
@@ -395,7 +408,7 @@ impl Reader {
                 }
                 Focus::Command { .. } => {}
             },
-            ReadCommandLiteral::Up => match self.interaction_state.focus {
+            ReadCommand::Up => match self.interaction_state.focus {
                 Focus::List => {
                     if (self.interaction_state.selection as isize) > 0 {
                         self.interaction_state.selection -= 1;
@@ -414,38 +427,36 @@ impl Reader {
                 }
                 Focus::Command { .. } => {}
             },
-            ReadCommandLiteral::Left => {
+            ReadCommand::Left => {
                 if self.interaction_state.selection < self.entries.len() {
                     self.entries[self.interaction_state.selection]
                         .cycle_result(-1);
                 }
             }
-            ReadCommandLiteral::Right => {
+            ReadCommand::Right => {
                 if self.interaction_state.selection < self.entries.len() {
                     self.entries[self.interaction_state.selection]
                         .cycle_result(1);
                 }
             }
-            ReadCommandLiteral::PageDown => {
-                match self.interaction_state.focus {
-                    Focus::List => {
-                        self.interaction_state.scroll(
-                            self.terminal_state.get_paging_lines(&self.config),
-                            &self.entries,
-                        );
-                    }
-                    Focus::Entry => {
-                        let paging_lines =
-                            self.terminal_state.get_paging_lines(&self.config);
-                        if let Some(entry) = self.get_selected_entry_mut() {
-                            entry.scroll(paging_lines);
-                        }
-                    }
-                    Focus::Menu { .. } => {}
-                    Focus::Command { .. } => {}
+            ReadCommand::PageDown => match self.interaction_state.focus {
+                Focus::List => {
+                    self.interaction_state.scroll(
+                        self.terminal_state.get_paging_lines(&self.config),
+                        &self.entries,
+                    );
                 }
-            }
-            ReadCommandLiteral::PageUp => match self.interaction_state.focus {
+                Focus::Entry => {
+                    let paging_lines =
+                        self.terminal_state.get_paging_lines(&self.config);
+                    if let Some(entry) = self.get_selected_entry_mut() {
+                        entry.scroll(paging_lines);
+                    }
+                }
+                Focus::Menu { .. } => {}
+                Focus::Command { .. } => {}
+            },
+            ReadCommand::PageUp => match self.interaction_state.focus {
                 Focus::List => {
                     self.interaction_state.scroll(
                         -self.terminal_state.get_paging_lines(&self.config),
@@ -462,25 +473,25 @@ impl Reader {
                 Focus::Menu { .. } => {}
                 Focus::Command { .. } => {}
             },
-            ReadCommandLiteral::Swap => {
+            ReadCommand::Swap => {
                 self.interaction_state.focus.swap();
             }
-            ReadCommandLiteral::Menu => {
+            ReadCommand::Menu => {
                 self.interaction_state.focus.toggle_menu();
             }
-            ReadCommandLiteral::CommandMode => {
+            ReadCommand::CommandMode => {
                 self.interaction_state.focus = Focus::Command {
                     command: String::new(),
                     message: None,
                 };
             }
-            ReadCommandLiteral::SearchMode => {
+            ReadCommand::SearchMode => {
                 self.interaction_state.focus = Focus::Command {
                     command: "/".into(),
                     message: None,
                 };
             }
-            ReadCommandLiteral::PageForwards => {
+            ReadCommand::PageForwards => {
                 let offset = if let Some(entry) = self.entries.last() {
                     OffsetCursor::Before(entry.date().clone())
                 } else {
@@ -493,7 +504,7 @@ impl Reader {
                 )
                 .await;
             }
-            ReadCommandLiteral::PageBackwards => {
+            ReadCommand::PageBackwards => {
                 let offset = if let Some(entry) = self.entries.first() {
                     OffsetCursor::After(entry.date().clone())
                 } else {
@@ -506,7 +517,7 @@ impl Reader {
                 )
                 .await;
             }
-            ReadCommandLiteral::Command(command) => {
+            ReadCommand::Command(command) => {
                 if self.interaction_state.selection < self.entries.len() {
                     if let Err(e) =
                         self.handle_command_mode_command(&command).await
@@ -516,22 +527,6 @@ impl Reader {
                 }
             }
         };
-
-        // Call read hooks on change.
-        // TODO: Move to main loop
-        if self.interaction_state.selection != previous_selection {
-            if self.interaction_state.selection < self.entries.len() {
-                self.task_manager_handle
-                    .hook(
-                        Hook::OnRead,
-                        Some(
-                            self.entries[self.interaction_state.selection]
-                                .db_id,
-                        ),
-                    )
-                    .await;
-            }
-        }
 
         Ok(())
     }
@@ -761,17 +756,17 @@ impl Reader {
             command_mode::Command::Command { command } => {
                 let command = self.config.get_custom_command(&command);
                 match &command {
-                    Commandish::CustomCommandFull(custom_command) => {
+                    Some(custom_command) => {
                         if custom_command.save {
                             self.entries[self.interaction_state.selection]
                                 .add_result(
-                                    command::CommandResultContext::new(
+                                    command::CommandResultContext::running(
                                         custom_command.clone(),
                                     ),
                                 );
                         }
                     }
-                    _ => {
+                    None => {
                         tracing::warn!(
                             "Command mode commands do not support command: {command:?}."
                         );

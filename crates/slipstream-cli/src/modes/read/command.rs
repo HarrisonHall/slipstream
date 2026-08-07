@@ -24,7 +24,7 @@ pub struct CommandResultContext {
 }
 
 impl CommandResultContext {
-    pub fn new(custom_command: CustomCommand) -> Self {
+    pub fn running(custom_command: CustomCommand) -> Self {
         Self {
             command: custom_command,
             result: CommandResult::Running,

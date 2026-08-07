@@ -9,7 +9,7 @@ use tokio::sync::oneshot;
 
 mod commands;
 mod handle;
-mod tasks;
+pub mod tasks;
 
 pub use commands::*;
 pub use handle::*;
@@ -53,54 +53,19 @@ pub async fn manage_tasks(
             _ = cancel_token.cancelled() => break 'update,
             task = task_manager.to_updater_blocking_receiver.recv() => {
                 if let Some(task) = task {
-                    task_manager.handle_blocking_command(task, &config).await;
+                    task_manager.handle_blocking_task(task, &config).await;
                 }
             },
             task = task_manager.to_updater_nonblocking_receiver.recv() => match task {
-                  Ok(task) => {
-                      match task {
-                          SystemTask::TaskManager(nonblocking_task) => {
-                              task_manager.handle_nonblocking_command(
-                                  nonblocking_task,
-                                  &config,
-                              ).await;
-                          },
-                          SystemTask::RunCommand{ entry_id, commandish} => match commandish {
-                                Commandish::CustomCommandRef(name) => {
-                                    tracing::warn!("Command ref has not been expanded: {name}");
-                                }
-                                Commandish::CustomCommandFull(custom_command) => {
-                                    if let Some(entry_id) = entry_id {
-                                        task_manager.command_futures.spawn(run_custom_command(
-                                            handle.clone(),
-                                            custom_command,
-                                            entry_id,
-                                        ));
-                                    }
-                                }
-                                Commandish::Literal(..) => {
-                                    // Task manager does not handle commandish literals.
-                                }
-                          },
-                          SystemTask::RunHook{entry_id, hook} => {
-                              if let Some(commandishes) = task_manager.config.hooks.get(&hook) {
-                                  for commandish in commandishes {
-                                      handle.run_command(commandish.clone(), entry_id.clone()).await;
-                                  }
-                              }
-                          }
-                      }
-                  }
+                  Ok(task) => task_manager.handle_background_task(task, &config).await,
                   Err(_) => {
                       cancel_token.cancel();
                   }
             },
             completed_task = task_manager.command_futures.join_next() => {
                 if let Some(Ok(completed_task)) = completed_task {
-                    tracing::info!("COMPLETE");
                     if completed_task.command.save {
-                        tracing::info!("SAVING");
-                        handle.save_command(completed_task).await;
+                        handle.save_command(completed_task.entry_id.into(), completed_task).await;
                     }
                 }
             },
@@ -155,9 +120,9 @@ pub struct TaskManager {
     /// Updater's blocking receiver.
     to_updater_blocking_receiver: Receiver<BlockingTask>,
     /// Handle's nonblocking sender.
-    to_updater_nonblocking_sender: broadcast::Sender<SystemTask>,
+    to_updater_nonblocking_sender: broadcast::Sender<BackgroundTask>,
     /// Updater's nonblocking receiver.
-    to_updater_nonblocking_receiver: broadcast::Receiver<SystemTask>,
+    to_updater_nonblocking_receiver: broadcast::Receiver<BackgroundTask>,
 }
 
 impl TaskManager {
@@ -193,8 +158,8 @@ impl TaskManager {
         })
     }
 
-    /// Handle blocking command.
-    async fn handle_blocking_command(
+    /// Handle blocking task.
+    async fn handle_blocking_task(
         &mut self,
         task: BlockingTask,
         config: &Arc<Config>,
@@ -334,47 +299,89 @@ impl TaskManager {
         }
     }
 
-    /// Handle nonblocking command.
-    async fn handle_nonblocking_command(
+    /// Handle background task.
+    async fn handle_background_task(
         &mut self,
-        task: NonblockingTask,
-        _config: &Arc<Config>,
+        task: BackgroundTask,
+        _config: &Config,
     ) {
+        tracing::info!(
+            "REMAINING: {}",
+            self.to_updater_nonblocking_receiver.len()
+        );
         match task {
-            NonblockingTask::EntryTagUpdate { entry_id, tags } => {
-                if let Some(entry_db) = &self.entry_db {
-                    if let Some(tags) = tags {
-                        entry_db.update_tags(entry_id, tags).await;
+            BackgroundTask::Update(u) => match u {
+                BackgroundTaskUpdate::EntryTagUpdate { ctx, tags } => {
+                    tracing::info!("TAG");
+                    if let (Some(entry_id), Some(entry_db)) =
+                        (&ctx.entry_id, &self.entry_db)
+                    {
+                        entry_db.update_tags(*entry_id, tags).await;
                     }
                 }
-            }
-            NonblockingTask::CommandUpdate(result) => {
-                if let Some(entry_db) = &self.entry_db {
-                    entry_db
-                        .store_command_result(
-                            result.entry_id,
-                            (*result.command.name).clone(),
-                            result.output,
-                            result.exit_code == 0,
-                        )
-                        .await;
+                BackgroundTaskUpdate::CommandUpdate { ctx: _, result } => {
+                    tracing::info!("COMMAND");
+                    if let Some(entry_db) = &self.entry_db {
+                        entry_db
+                            .store_command_result(
+                                result.entry_id,
+                                (*result.command.name).clone(),
+                                result.output,
+                                result.exit_code == 0,
+                            )
+                            .await;
+                    }
                 }
-            }
-            NonblockingTask::RunCustomCommand { entry_id, command } => {
-                match self.handle() {
-                    Ok(handle) => {
-                        self.command_futures.spawn(run_custom_command(
-                            handle.clone(),
-                            command,
-                            entry_id,
-                        ));
+            },
+            BackgroundTask::Execute(e) => match e {
+                BackgroundTaskExecute::Command { ctx, commandish } => {
+                    match commandish {
+                        Commandish::CustomCommandRef(name) => {
+                            tracing::warn!(
+                                "Command ref has not been expanded: {name}"
+                            );
+                        }
+                        Commandish::CustomCommandFull(custom_command) => {
+                            if let (Some(entry_id), Ok(handle)) =
+                                (ctx.entry_id, self.handle())
+                            {
+                                self.command_futures.spawn(run_custom_command(
+                                    handle,
+                                    custom_command,
+                                    entry_id,
+                                ));
+                            }
+                        }
+                        Commandish::Literal(_) => {
+                            // Task manager only handles select literals.
+                            // match command {
+                            //     ReadCommandLiteral::Command(command) => {
+                            //         if self.interaction_state.selection < self.entries.len() {
+                            //             if let Err(e) =
+                            //                 self.handle_command_mode_command(&command).await
+                            //             {
+                            //                 tracing::error!("Failed to run command: {}", e);
+                            //             }
+                            //         }
+                            //     }
+                            //     _ => {},
+                            // };
+                        }
                     }
-                    Err(e) => {
-                        tracing::error!("Cannot create handle: {e}");
-                        return;
+                }
+                BackgroundTaskExecute::Hook { ctx, hook } => {
+                    tracing::info!("HOOK");
+                    if let (Some(commandishes), Ok(handle)) =
+                        (self.config.hooks.get(&hook), self.handle())
+                    {
+                        for commandish in commandishes {
+                            handle
+                                .run_command(ctx.clone(), commandish.clone())
+                                .await;
+                        }
                     }
-                };
-            }
+                }
+            },
         }
     }
 

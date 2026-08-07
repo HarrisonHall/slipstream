@@ -405,12 +405,12 @@ impl Database {
         match upsert {
             Upsert::Insert => {
                 self.task_manager_handle
-                    .hook(Hook::OnInsert, Some(entry_id))
+                    .hook(entry_id.into(), Hook::OnInsert)
                     .await;
             }
             Upsert::Update => {
                 self.task_manager_handle
-                    .hook(Hook::OnUpdate, Some(entry_id))
+                    .hook(entry_id.into(), Hook::OnUpdate)
                     .await;
             }
         }
@@ -668,7 +668,7 @@ impl Database {
             }
         }
         self.task_manager_handle
-            .hook(Hook::OnTag, Some(entry_id))
+            .hook(entry_id.into(), Hook::OnTag)
             .await;
     }
 

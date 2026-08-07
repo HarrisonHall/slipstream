@@ -35,8 +35,8 @@ impl From<&CustomCommand> for Commandish {
 #[derive(Clone, Debug)]
 pub enum Commandish {
     /// The built-in commands.
-    Literal(ReadCommandLiteral),
-    /// Custom command name.
+    Literal(ReadCommand),
+    /// Custom command reference.
     CustomCommandRef(Arc<String>),
     /// Custom command definition.
     CustomCommandFull(CustomCommand),
@@ -64,7 +64,7 @@ impl Serialize for Commandish {
     {
         match self {
             Commandish::Literal(lit) => match lit {
-                ReadCommandLiteral::Command(command_mode) => {
+                ReadCommand::Command(command_mode) => {
                     serializer.serialize_str(&format!(":{}", command_mode))
                 }
                 _ => lit.serialize(serializer),
@@ -87,7 +87,7 @@ impl<'de> Deserialize<'de> for Commandish {
         let text = String::deserialize(deserializer)?;
 
         if let Some(command) = text.strip_prefix(":") {
-            return Ok(Commandish::Literal(ReadCommandLiteral::Command(
+            return Ok(Commandish::Literal(ReadCommand::Command(
                 command.trim().into(),
             )));
         }
@@ -105,16 +105,16 @@ impl<'de> Deserialize<'de> for Commandish {
                 return Err(<D::Error as serde::de::Error>::custom(e));
             }
         };
-        match ReadCommandLiteral::deserialize(de) {
+        match ReadCommand::deserialize(de) {
             Ok(literal) => Ok(Commandish::Literal(literal)),
             Err(e) => Err(<D::Error as serde::de::Error>::custom(e)),
         }
     }
 }
 
-/// Built-in commands.
+/// Read-mode built-in commands.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ReadCommandLiteral {
+pub enum ReadCommand {
     /// Do nothing.
     #[serde(alias = "none", alias = "noop", alias = "Noop")]
     None,

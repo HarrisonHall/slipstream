@@ -8,19 +8,19 @@ pub struct TaskManagerHandle {
     /// Handle's sender.
     pub(super) to_updater_blocking_sender: Sender<BlockingTask>,
     /// Handle's sender.
-    pub(super) to_updater_nonblocking_sender: broadcast::Sender<SystemTask>,
+    pub(super) to_updater_nonblocking_sender: broadcast::Sender<BackgroundTask>,
 }
 
 impl TaskManagerHandle {
     /// Create a receiver to handle system tasks.
     /// Once created, until dropped, the reciever is required to wait on these
     /// tasks.
-    pub async fn receiver(&self) -> broadcast::Receiver<SystemTask> {
+    pub async fn receiver(&self) -> broadcast::Receiver<BackgroundTask> {
         self.to_updater_nonblocking_sender.subscribe()
     }
 
     /// Internal method to send a nonblocking task to the task manager.
-    async fn send_system(&self, task: SystemTask) {
+    async fn send_system(&self, task: BackgroundTask) {
         let res = self.to_updater_nonblocking_sender.send(task);
         if let Err(e) = res {
             tracing::error!("Failed to send system: {}", e);
@@ -242,42 +242,50 @@ impl TaskManagerHandle {
         entry_id: EntryDbId,
         tags: Vec<slipfeed::Tag>,
     ) {
-        self.send_system(SystemTask::TaskManager(
-            NonblockingTask::EntryTagUpdate {
-                entry_id,
-                tags: Some(tags),
-            },
-        ))
+        self.send_system(
+            BackgroundTaskUpdate::EntryTagUpdate {
+                ctx: tasks::Context::with_entry_id(entry_id),
+                tags,
+            }
+            .into(),
+        )
         .await;
     }
 
     /// Save a command's result.
     pub async fn run_command(
         &self,
+        ctx: tasks::Context,
         mut commandish: Commandish,
-        entry_id: Option<EntryDbId>,
     ) {
         if let Commandish::CustomCommandRef(command_name) = &commandish {
-            commandish = self.config.get_custom_command(command_name.as_str());
+            if let Some(expanded) =
+                self.config.get_custom_command(command_name.as_str())
+            {
+                commandish = Commandish::CustomCommandFull(expanded);
+            }
         }
-        self.send_system(SystemTask::RunCommand {
-            entry_id,
-            commandish,
-        })
+        self.send_system(
+            BackgroundTaskExecute::Command { ctx, commandish }.into(),
+        )
         .await;
     }
 
     /// Save a command's result.
-    pub async fn save_command(&self, result: CustomCommandResult) {
-        self.send_system(SystemTask::TaskManager(
-            NonblockingTask::CommandUpdate(result),
-        ))
+    pub async fn save_command(
+        &self,
+        ctx: tasks::Context,
+        result: CustomCommandResult,
+    ) {
+        self.send_system(
+            BackgroundTaskUpdate::CommandUpdate { ctx, result }.into(),
+        )
         .await;
     }
 
     /// Save a command's result.
-    pub async fn hook(&self, hook: Hook, entry_id: Option<EntryDbId>) {
-        self.send_system(SystemTask::RunHook { hook, entry_id })
+    pub async fn hook(&self, ctx: tasks::Context, hook: Hook) {
+        self.send_system(BackgroundTaskExecute::Hook { ctx, hook }.into())
             .await;
     }
 }

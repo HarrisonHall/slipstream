@@ -303,49 +303,47 @@ impl Config {
 
         for (binding, command) in self.read.bindings.iter() {
             if *key == binding.into() {
-                return match command {
-                    Commandish::CustomCommandRef(name) => {
-                        self.get_custom_command(name.as_str())
-                    }
-                    _ => command.clone(),
-                };
+                return command.clone();
             }
         }
 
         if *key == UPDATE {
-            Commandish::Literal(ReadCommandLiteral::Update)
+            Commandish::Literal(ReadCommand::Update)
         } else if *key == QUIT {
-            Commandish::Literal(ReadCommandLiteral::Quit)
+            Commandish::Literal(ReadCommand::Quit)
         } else if *key == DOWN {
-            Commandish::Literal(ReadCommandLiteral::Down)
+            Commandish::Literal(ReadCommand::Down)
         } else if *key == UP {
-            Commandish::Literal(ReadCommandLiteral::Up)
+            Commandish::Literal(ReadCommand::Up)
         } else if *key == LEFT {
-            Commandish::Literal(ReadCommandLiteral::Left)
+            Commandish::Literal(ReadCommand::Left)
         } else if *key == RIGHT {
-            Commandish::Literal(ReadCommandLiteral::Right)
+            Commandish::Literal(ReadCommand::Right)
         } else if *key == PAGE_DOWN {
-            Commandish::Literal(ReadCommandLiteral::PageDown)
+            Commandish::Literal(ReadCommand::PageDown)
         } else if *key == PAGE_UP {
-            Commandish::Literal(ReadCommandLiteral::PageUp)
+            Commandish::Literal(ReadCommand::PageUp)
         } else if *key == TAB {
-            Commandish::Literal(ReadCommandLiteral::Swap)
+            Commandish::Literal(ReadCommand::Swap)
         } else if *key == MENU {
-            Commandish::Literal(ReadCommandLiteral::Menu)
+            Commandish::Literal(ReadCommand::Menu)
         } else if *key == COMMAND_MODE {
-            Commandish::Literal(ReadCommandLiteral::CommandMode)
+            Commandish::Literal(ReadCommand::CommandMode)
         } else if *key == SEARCH_MODE {
-            Commandish::Literal(ReadCommandLiteral::SearchMode)
+            Commandish::Literal(ReadCommand::SearchMode)
         } else {
-            Commandish::Literal(ReadCommandLiteral::None)
+            Commandish::Literal(ReadCommand::None)
         }
     }
 
     /// Get custom command associated with a command name.
-    pub fn get_custom_command(&self, name: impl AsRef<str>) -> Commandish {
+    pub fn get_custom_command(
+        &self,
+        name: impl AsRef<str>,
+    ) -> Option<CustomCommand> {
         for command in &self.commands {
             if *command.name == name.as_ref() {
-                return command.into();
+                return Some(command.clone());
             }
         }
 
@@ -353,7 +351,7 @@ impl Config {
             "Failed to get custom command by name: {}",
             name.as_ref()
         );
-        Commandish::Literal(ReadCommandLiteral::None)
+        None
     }
 }
 
