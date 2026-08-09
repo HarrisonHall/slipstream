@@ -51,6 +51,7 @@ impl Database {
                 let path = path.to_string_lossy().into_owned();
                 options = SqliteConnectOptions::new()
                     .filename(path.clone())
+                    .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
                     .create_if_missing(true);
                 path
             }
@@ -274,7 +275,7 @@ impl Database {
     pub async fn upsert_slipfeed_entry(
         &self,
         entry: &slipfeed::Entry,
-    ) -> EntryDbId {
+    ) -> Option<EntryDbId> {
         let entry_v1 = EntryV1::from(entry);
         let serialized_entry = SerializedEntry::V1(entry_v1.clone());
         let upsert: Upsert;
@@ -335,6 +336,27 @@ impl Database {
                         "No insertion, found existing entry {}.",
                         id
                     );
+                    let res = sqlx::query(
+                        "
+                        UPDATE entries
+                        SET
+                            modified_timestamp = unixepoch(?),
+                            entry = ?, title = ?, author = ?, link = ?, content = ?
+                        WHERE id = ?
+                        ",
+                    )
+                        .bind(slipfeed::DateTime::now().to_chrono())
+                        .bind(sqlx::types::Json::from(&serialized_entry))
+                        .bind(entry.title())
+                        .bind(entry.author())
+                        .bind(&entry.source().url)
+                        .bind(entry.content())
+                        .bind(id)
+                        .execute(&self.pool)
+                        .await;
+                    if let Err(_) = res {
+                        tracing::error!("Failed to update entry");
+                    }
                     upsert = Upsert::Update;
                     id
                 }
@@ -347,18 +369,18 @@ impl Database {
                         RETURNING id
                         ",
                         )
-                        .bind(entry.date().to_chrono())
-                        .bind(slipfeed::DateTime::now().to_chrono())
-                        .bind(slipfeed::DateTime::now().to_chrono())
-                        .bind(sqlx::types::Json::from(&serialized_entry))
-                        .bind(entry.title())
-                        .bind(entry.author())
-                        .bind(&entry.source().url)
-                        .bind(entry.content())
-                        .bind(entry.primary_feed().name.as_str())
-                        .bind(entry.source_id())
-                        .fetch_one(&self.pool)
-                        .await;
+                            .bind(entry.date().to_chrono())
+                            .bind(slipfeed::DateTime::now().to_chrono())
+                            .bind(slipfeed::DateTime::now().to_chrono())
+                            .bind(sqlx::types::Json::from(&serialized_entry))
+                            .bind(entry.title())
+                            .bind(entry.author())
+                            .bind(&entry.source().url)
+                            .bind(entry.content())
+                            .bind(entry.primary_feed().name.as_str())
+                            .bind(entry.source_id())
+                            .fetch_one(&self.pool)
+                            .await;
                     match id_res {
                         Ok(maybe_id) => match maybe_id.0 {
                             Some(id) => {
@@ -368,12 +390,12 @@ impl Database {
                             }
                             None => {
                                 tracing::error!("Failed to insert entry");
-                                return 0;
+                                return None;
                             }
                         },
                         Err(e) => {
                             tracing::error!("Failed: {}", e);
-                            return 0;
+                            return None;
                         }
                     }
                 }
@@ -382,7 +404,7 @@ impl Database {
 
         // Update sources.
         for feed in entry.feeds().iter() {
-            let res = sqlx::query("INSERT INTO sources (entry_id, source) VALUES (?, ?) ON CONFLICT DO NOTHING")
+            let res = sqlx::query("INSERT INTO sources (entry_id, source) VALUES (?, ?) ON CONFLICT (entry_id, source) DO NOTHING")
                 .bind(entry_id)
                 .bind(&*feed.name)
                 .execute(&self.pool).await;
@@ -393,7 +415,7 @@ impl Database {
 
         // Update tags.
         for tag in entry.tags().iter() {
-            let res = sqlx::query("INSERT INTO tags (entry_id, tag) VALUES (?, ?) ON CONFLICT DO NOTHING")
+            let res = sqlx::query("INSERT INTO tags (entry_id, tag) VALUES (?, ?) ON CONFLICT (entry_id, tag) DO NOTHING")
                 .bind(entry_id)
                 .bind(String::from(tag))
                 .execute(&self.pool).await;
@@ -403,6 +425,7 @@ impl Database {
         }
 
         match upsert {
+            Upsert::None => {}
             Upsert::Insert => {
                 self.task_manager_handle
                     .hook(entry_id.into(), Hook::OnInsert)
@@ -415,7 +438,7 @@ impl Database {
             }
         }
 
-        entry_id
+        Some(entry_id)
     }
 
     async fn parse_entry(row: &sqlx::sqlite::SqliteRow) -> DatabaseEntry {
@@ -805,6 +828,12 @@ impl OffsetCursor {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum Upsert {
+    /// No change occured.
+    /// FUTURE: Only trigger update on change.
+    #[allow(unused)]
+    None,
+    /// Data was inserted.
     Insert,
+    /// Data was updated.
     Update,
 }

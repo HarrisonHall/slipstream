@@ -105,11 +105,7 @@ async fn run(config: Config) -> DatabaseEntryList {
     let updater_handle = updater.handle().expect("Unable to get handle");
     let cancel_token = CancellationToken::new();
     let mut tasks = JoinSet::new();
-    tasks.spawn(manage_tasks(
-        updater,
-        Arc::new(config),
-        cancel_token.clone(),
-    ));
+    tasks.spawn(manage_tasks(updater, cancel_token.clone()));
 
     tokio::time::sleep(tokio::time::Duration::from_secs_f32(0.1)).await;
 

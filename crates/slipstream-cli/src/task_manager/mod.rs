@@ -15,10 +15,11 @@ pub use commands::*;
 pub use handle::*;
 pub use tasks::*;
 
+const SEARCH_COUNT: usize = 100;
+
 /// Run the slipstream task manager.
 pub async fn manage_tasks(
     mut task_manager: TaskManager,
-    config: Arc<Config>,
     cancel_token: CancellationToken,
 ) -> Result<()> {
     // We can't cancel the task managers's updater update future as it is not cancel-safe.
@@ -51,16 +52,10 @@ pub async fn manage_tasks(
         tokio::select! {
             biased;
             _ = cancel_token.cancelled() => break 'update,
-            task = task_manager.to_updater_blocking_receiver.recv() => {
+            task = task_manager.blocking_receiver.recv() => {
                 if let Some(task) = task {
-                    task_manager.handle_blocking_task(task, &config).await;
+                    task_manager.handle_blocking_task(task).await;
                 }
-            },
-            task = task_manager.to_updater_nonblocking_receiver.recv() => match task {
-                  Ok(task) => task_manager.handle_background_task(task, &config).await,
-                  Err(_) => {
-                      cancel_token.cancel();
-                  }
             },
             completed_task = task_manager.command_futures.join_next() => {
                 if let Some(Ok(completed_task)) = completed_task {
@@ -68,6 +63,18 @@ pub async fn manage_tasks(
                         handle.save_command(completed_task.entry_id.into(), completed_task).await;
                     }
                 }
+            },
+            task = task_manager.background_receiver_high.recv() => match task {
+                  Ok(task) => task_manager.handle_background_task(task).await,
+                  Err(_) => {
+                      cancel_token.cancel();
+                  }
+            },
+            task = task_manager.background_receiver_low.recv() => match task {
+                  Ok(task) => task_manager.handle_background_task(task).await,
+                  Err(_) => {
+                      cancel_token.cancel();
+                  }
             },
         }
     }
@@ -116,13 +123,17 @@ pub struct TaskManager {
     /// Futures for commands run on entries.
     command_futures: tokio::task::JoinSet<CustomCommandResult>,
     /// Handle's blocking sender.
-    to_updater_blocking_sender: Sender<BlockingTask>,
+    blocking_sender: Sender<BlockingTask>,
     /// Updater's blocking receiver.
-    to_updater_blocking_receiver: Receiver<BlockingTask>,
-    /// Handle's nonblocking sender.
-    to_updater_nonblocking_sender: broadcast::Sender<BackgroundTask>,
-    /// Updater's nonblocking receiver.
-    to_updater_nonblocking_receiver: broadcast::Receiver<BackgroundTask>,
+    blocking_receiver: Receiver<BlockingTask>,
+    /// Handle's nonblocking sender (high).
+    background_sender_high: broadcast::Sender<BackgroundTask>,
+    /// Updater's nonblocking receiver (high).
+    background_receiver_high: broadcast::Receiver<BackgroundTask>,
+    /// Handle's nonblocking sender (low).
+    background_sender_low: broadcast::Sender<BackgroundTask>,
+    /// Updater's nonblocking receiver (low).
+    background_receiver_low: broadcast::Receiver<BackgroundTask>,
 }
 
 impl TaskManager {
@@ -130,8 +141,14 @@ impl TaskManager {
     pub fn new(config: Arc<Config>) -> Self {
         let (to_updater_blocking_sender, to_updater_blocking_receiver) =
             channel(64);
-        let (to_updater_nonblocking_sender, to_updater_nonblocking_receiver) =
-            broadcast::channel(64_000);
+        let (
+            to_updater_background_sender_high,
+            to_updater_background_receiver_high,
+        ) = broadcast::channel(32_000);
+        let (
+            to_updater_background_sender_low,
+            to_updater_background_receiver_low,
+        ) = broadcast::channel(64_000);
         Self {
             config,
             updater: Arc::new(RwLock::new(slipfeed::Updater::default())),
@@ -140,10 +157,12 @@ impl TaskManager {
             all_filters: Vec::default(),
             entry_db: None,
             command_futures: JoinSet::new(),
-            to_updater_blocking_sender: to_updater_blocking_sender,
-            to_updater_blocking_receiver: to_updater_blocking_receiver,
-            to_updater_nonblocking_sender: to_updater_nonblocking_sender,
-            to_updater_nonblocking_receiver: to_updater_nonblocking_receiver,
+            blocking_sender: to_updater_blocking_sender,
+            blocking_receiver: to_updater_blocking_receiver,
+            background_sender_high: to_updater_background_sender_high,
+            background_receiver_high: to_updater_background_receiver_high,
+            background_sender_low: to_updater_background_sender_low,
+            background_receiver_low: to_updater_background_receiver_low,
         }
     }
 
@@ -151,19 +170,14 @@ impl TaskManager {
     pub fn handle(&self) -> Result<TaskManagerHandle> {
         Ok(TaskManagerHandle {
             config: self.config.clone(),
-            to_updater_blocking_sender: self.to_updater_blocking_sender.clone(),
-            to_updater_nonblocking_sender: self
-                .to_updater_nonblocking_sender
-                .clone(),
+            blocking_sender: self.blocking_sender.clone(),
+            background_sender_high: self.background_sender_high.clone(),
+            background_sender_low: self.background_sender_low.clone(),
         })
     }
 
     /// Handle blocking task.
-    async fn handle_blocking_task(
-        &mut self,
-        task: BlockingTask,
-        config: &Arc<Config>,
-    ) {
+    async fn handle_blocking_task(&mut self, task: BlockingTask) {
         match task {
             BlockingTask::EntryFetch { tx, db_id } => {
                 if let Some(entry_db) = &self.entry_db {
@@ -177,8 +191,12 @@ impl TaskManager {
             } => {
                 if let Some(entry_db) = &self.entry_db {
                     // TODO: custom search count.
-                    tx.send(entry_db.get_entries(criteria, 128, offset).await)
-                        .ok();
+                    tx.send(
+                        entry_db
+                            .get_entries(criteria, SEARCH_COUNT, offset)
+                            .await,
+                    )
+                    .ok();
                 };
             }
             BlockingTask::FeedFetch { tx, options } => {
@@ -191,7 +209,7 @@ impl TaskManager {
                             let unfiltered_entries = entry_db
                                 .get_entries(
                                     vec![DatabaseSearch::Latest],
-                                    config.global.limits.max(),
+                                    self.config.global.limits.max(),
                                     match (since, modified_since) {
                                         (Some(since), None) => {
                                             OffsetCursor::After(since)
@@ -211,10 +229,15 @@ impl TaskManager {
                                 )
                                 .await;
                             let mut entries = DatabaseEntryList::new(
-                                config.global.limits.max(),
+                                self.config.global.limits.max(),
                             );
                             for entry in unfiltered_entries.iter() {
-                                if config.global.limits.too_old(entry.date()) {
+                                if self
+                                    .config
+                                    .global
+                                    .limits
+                                    .too_old(entry.date())
+                                {
                                     continue;
                                 }
                                 if !self.passes_all_filters(entry) {
@@ -231,17 +254,22 @@ impl TaskManager {
                             let unfiltered_entries = entry_db
                                 .get_entries(
                                     vec![DatabaseSearch::Tag(tag)],
-                                    config.global.limits.max(),
+                                    self.config.global.limits.max(),
                                     OffsetCursor::modified_since(
                                         modified_since,
                                     ),
                                 )
                                 .await;
                             let mut entries = DatabaseEntryList::new(
-                                config.global.limits.max(),
+                                self.config.global.limits.max(),
                             );
                             for entry in unfiltered_entries.iter() {
-                                if config.global.limits.too_old(entry.date()) {
+                                if self
+                                    .config
+                                    .global
+                                    .limits
+                                    .too_old(entry.date())
+                                {
                                     continue;
                                 }
                                 entries.add(entry.clone()).ok();
@@ -253,14 +281,14 @@ impl TaskManager {
                             modified_since,
                         } => {
                             if let (Some(_feed_id), Some(feed_def)) =
-                                (self.feeds.get(&feed), config.feed(&feed))
+                                (self.feeds.get(&feed), self.config.feed(&feed))
                             {
                                 let unfiltered_entries = entry_db
                                     .get_entries(
                                         vec![DatabaseSearch::Feed(
                                             feed.clone(),
                                         )],
-                                        config.global.limits.max(),
+                                        self.config.global.limits.max(),
                                         OffsetCursor::modified_since(
                                             modified_since,
                                         ),
@@ -270,7 +298,8 @@ impl TaskManager {
                                     feed_def.options().max(),
                                 );
                                 for entry in unfiltered_entries.iter() {
-                                    if config
+                                    if self
+                                        .config
                                         .global
                                         .limits
                                         .too_old(entry.date())
@@ -300,19 +329,11 @@ impl TaskManager {
     }
 
     /// Handle background task.
-    async fn handle_background_task(
-        &mut self,
-        task: BackgroundTask,
-        _config: &Config,
-    ) {
-        tracing::info!(
-            "REMAINING: {}",
-            self.to_updater_nonblocking_receiver.len()
-        );
+    async fn handle_background_task(&mut self, task: BackgroundTask) {
+        tracing::debug!("REMAINING: {}", self.background_receiver_low.len());
         match task {
             BackgroundTask::Update(u) => match u {
                 BackgroundTaskUpdate::EntryTagUpdate { ctx, tags } => {
-                    tracing::info!("TAG");
                     if let (Some(entry_id), Some(entry_db)) =
                         (&ctx.entry_id, &self.entry_db)
                     {
@@ -320,7 +341,6 @@ impl TaskManager {
                     }
                 }
                 BackgroundTaskUpdate::CommandUpdate { ctx: _, result } => {
-                    tracing::info!("COMMAND");
                     if let Some(entry_db) = &self.entry_db {
                         entry_db
                             .store_command_result(

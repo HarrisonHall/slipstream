@@ -71,11 +71,7 @@ async fn main() -> Result<()> {
     // Handle tasks, including background updates.
     let task_manager = config.build_task_manager().await?;
     let task_manager_handle = task_manager.handle()?;
-    tasks.spawn(manage_tasks(
-        task_manager,
-        config.clone(),
-        cancel_token.clone(),
-    ));
+    tasks.spawn(manage_tasks(task_manager, cancel_token.clone()));
 
     // Handle long-running tasks:
     match &cli.command {

@@ -286,6 +286,7 @@ impl Updater {
                     entry.add_feed(feed_ref.clone());
 
                     // Tag.
+                    // Tagging also occurs in step order.
                     for (_step, feeds) in &stepped.stepped {
                         for (_feed_id, feed_info) in feeds {
                             let mut feed = feed_info.feed.write().await;

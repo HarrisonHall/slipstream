@@ -111,7 +111,10 @@ impl Reader {
 
     /// Run the reader.
     async fn run(&mut self, terminal: &mut Terminal) -> Result<()> {
-        let mut task_receiver = self.task_manager_handle.receiver().await;
+        let mut high_task_receiver =
+            self.task_manager_handle.receiver_high().await;
+        let mut low_task_receiver =
+            self.task_manager_handle.receiver_low().await;
         let mut input_stream = crossterm::event::EventStream::new();
 
         'reader: loop {
@@ -170,7 +173,19 @@ impl Reader {
                        }
                     }
                 },
-                system_task = task_receiver.recv() => {
+                system_task = high_task_receiver.recv() => {
+                    if let Ok(system_task) = system_task {
+                        if self
+                            .handle_system_tasks(system_task, terminal)
+                            .await
+                            .is_err()
+                        {
+                            self.cancel_token.cancel();
+                            break 'reader Ok(());
+                        }
+                    }
+                },
+                system_task = low_task_receiver.recv() => {
                     if let Ok(system_task) = system_task {
                         if self
                             .handle_system_tasks(system_task, terminal)
@@ -753,26 +768,6 @@ impl Reader {
                     .update_tags(entry.db_id, tags)
                     .await;
             }
-            command_mode::Command::Command { command } => {
-                let command = self.config.get_custom_command(&command);
-                match &command {
-                    Some(custom_command) => {
-                        if custom_command.save {
-                            self.entries[self.interaction_state.selection]
-                                .add_result(
-                                    command::CommandResultContext::running(
-                                        custom_command.clone(),
-                                    ),
-                                );
-                        }
-                    }
-                    None => {
-                        tracing::warn!(
-                            "Command mode commands do not support command: {command:?}."
-                        );
-                    }
-                }
-            }
             command_mode::Command::PageForwards => {
                 let offset = if let Some(entry) = self.entries.last() {
                     OffsetCursor::Before(entry.date().clone())
@@ -798,6 +793,27 @@ impl Reader {
                     false,
                 )
                 .await;
+            }
+            command_mode::Command::Command { command } => {
+                let command = self.config.get_custom_command(&command);
+                match &command {
+                    Some(custom_command) => {
+                        if let (true, Some(entry)) =
+                            (custom_command.save, self.get_selected_entry_mut())
+                        {
+                            entry.add_result(
+                                command::CommandResultContext::running(
+                                    custom_command.clone(),
+                                ),
+                            );
+                        }
+                    }
+                    None => {
+                        tracing::warn!(
+                            "Command mode commands do not support command: {command:?}."
+                        );
+                    }
+                }
             }
         };
 

@@ -5,23 +5,40 @@ use super::*;
 pub struct TaskManagerHandle {
     /// System configuration.
     pub(super) config: Arc<Config>,
-    /// Handle's sender.
-    pub(super) to_updater_blocking_sender: Sender<BlockingTask>,
-    /// Handle's sender.
-    pub(super) to_updater_nonblocking_sender: broadcast::Sender<BackgroundTask>,
+    /// Handle's blocking sender.
+    pub(super) blocking_sender: Sender<BlockingTask>,
+    /// Handle's background sender (high prio).
+    pub(super) background_sender_high: broadcast::Sender<BackgroundTask>,
+    /// Handle's background sender (low prio).
+    pub(super) background_sender_low: broadcast::Sender<BackgroundTask>,
 }
 
 impl TaskManagerHandle {
-    /// Create a receiver to handle system tasks.
+    /// Create a receiver to handle high-priority system tasks.
     /// Once created, until dropped, the reciever is required to wait on these
     /// tasks.
-    pub async fn receiver(&self) -> broadcast::Receiver<BackgroundTask> {
-        self.to_updater_nonblocking_sender.subscribe()
+    pub async fn receiver_high(&self) -> broadcast::Receiver<BackgroundTask> {
+        self.background_sender_high.subscribe()
     }
 
-    /// Internal method to send a nonblocking task to the task manager.
-    async fn send_system(&self, task: BackgroundTask) {
-        let res = self.to_updater_nonblocking_sender.send(task);
+    /// Create a receiver to handle low-priority system tasks.
+    /// Once created, until dropped, the reciever is required to wait on these
+    /// tasks.
+    pub async fn receiver_low(&self) -> broadcast::Receiver<BackgroundTask> {
+        self.background_sender_low.subscribe()
+    }
+
+    /// Internal method to send a high-priority nonblocking task to the task manager.
+    async fn send_background_high(&self, task: BackgroundTask) {
+        let res = self.background_sender_high.send(task);
+        if let Err(e) = res {
+            tracing::error!("Failed to send system: {}", e);
+        }
+    }
+
+    /// Internal method to send a low-priority nonblocking task to the task manager.
+    async fn send_background_low(&self, task: BackgroundTask) {
+        let res = self.background_sender_low.send(task);
         if let Err(e) = res {
             tracing::error!("Failed to send system: {}", e);
         }
@@ -29,7 +46,7 @@ impl TaskManagerHandle {
 
     /// Internal method to send a blocking task to the task manager.
     async fn send_blocking(&self, task: BlockingTask) {
-        let res = self.to_updater_blocking_sender.send(task).await;
+        let res = self.blocking_sender.send(task).await;
         if let Err(e) = res {
             tracing::error!("Failed to send blocking: {}", e);
         }
@@ -242,7 +259,7 @@ impl TaskManagerHandle {
         entry_id: EntryDbId,
         tags: Vec<slipfeed::Tag>,
     ) {
-        self.send_system(
+        self.send_background_high(
             BackgroundTaskUpdate::EntryTagUpdate {
                 ctx: tasks::Context::with_entry_id(entry_id),
                 tags,
@@ -265,7 +282,7 @@ impl TaskManagerHandle {
                 commandish = Commandish::CustomCommandFull(expanded);
             }
         }
-        self.send_system(
+        self.send_background_high(
             BackgroundTaskExecute::Command { ctx, commandish }.into(),
         )
         .await;
@@ -277,7 +294,7 @@ impl TaskManagerHandle {
         ctx: tasks::Context,
         result: CustomCommandResult,
     ) {
-        self.send_system(
+        self.send_background_high(
             BackgroundTaskUpdate::CommandUpdate { ctx, result }.into(),
         )
         .await;
@@ -285,7 +302,20 @@ impl TaskManagerHandle {
 
     /// Save a command's result.
     pub async fn hook(&self, ctx: tasks::Context, hook: Hook) {
-        self.send_system(BackgroundTaskExecute::Hook { ctx, hook }.into())
-            .await;
+        // Do not evaluate hook if there are no hooks present.
+        match self.config.hooks.get(&hook) {
+            None => return,
+            Some(hooks) => {
+                if hooks.is_empty() {
+                    return;
+                }
+            }
+        }
+
+        // Hooks are evaluated as a low-priority background task.
+        self.send_background_low(
+            BackgroundTaskExecute::Hook { ctx, hook }.into(),
+        )
+        .await;
     }
 }

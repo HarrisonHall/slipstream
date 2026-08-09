@@ -15,11 +15,9 @@ async fn standard_syndications() {
             freq: None,
             step: 1,
             tags: std::collections::HashSet::from([Tag::new("rss")]),
-            filters: vec![],
-            transforms: vec![],
             keep_empty: false,
             apply_tags: true,
-            headers: BTreeMap::new(),
+            ..Default::default()
         },
     );
     assert!(hn_id.0 == 1);
@@ -35,11 +33,9 @@ async fn standard_syndications() {
             freq: None,
             step: 1,
             tags: std::collections::HashSet::from([Tag::new("atom")]),
-            filters: vec![],
-            transforms: vec![],
             keep_empty: false,
             apply_tags: true,
-            headers: BTreeMap::new(),
+            ..Default::default()
         },
     );
     assert!(newsboat_id.0 == 1);
@@ -103,11 +99,9 @@ async fn parsing() {
             freq: None,
             step: 1,
             tags: std::collections::HashSet::from([Tag::new("rss")]),
-            filters: vec![],
-            transforms: vec![],
             keep_empty: false,
             apply_tags: true,
-            headers: BTreeMap::new(),
+            ..Default::default()
         },
     );
 
