@@ -11,15 +11,14 @@ pub struct TransformsConfig {
     /// Derivations add tags based on the match.
     /// E.g., "hacking" = ["rust", "zig", "python"]
     /// will add the "hacking" tag to a feed with the "zig" tag.
-    #[serde(default, alias = "tag-derivations")]
+    #[serde(alias = "tag-derivations")]
     pub tag_derivations: Option<BTreeMap<Tag, HashSet<Tag>>>,
     /// Aliases swap the tag based on the match.
     /// E.g., "hacking" = ["rust", "zig", "python"]
     /// will transform the tag "zig" into "hacking".
-    #[serde(default, alias = "tag-aliases")]
+    #[serde(alias = "tag-aliases")]
     pub tag_aliases: Option<BTreeMap<Tag, HashSet<Tag>>>,
     /// Overwrite entry author according to template.
-    #[serde(default)]
     pub author: Option<String>,
 }
 

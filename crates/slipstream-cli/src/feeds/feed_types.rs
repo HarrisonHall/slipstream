@@ -4,15 +4,16 @@ use super::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FeedDefinition {
+    // #[serde(flatten, default = "deserialize_default_from_empty_object")]
     #[serde(flatten)]
     feed: RawFeed,
     #[serde(default)]
     tags: Option<Vec<String>>,
-    #[serde(default, flatten)]
+    #[serde(flatten)]
     filters: FiltersConfig,
-    #[serde(default)]
+    #[serde(flatten)]
     transforms: TransformsConfig,
-    #[serde(default, flatten)]
+    #[serde(flatten)]
     options: FeedOptions,
 }
 

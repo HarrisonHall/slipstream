@@ -212,17 +212,46 @@ impl Updater {
 
                         async move {
                             let mut feed = feed.write().await;
-                            if tokio::time::timeout(
-                                feed_info.attr.timeout.to_tokio(),
-                                feed.update(&ctx, &feed_info.attr),
-                            )
-                            .await
-                            .is_err()
-                            {
-                                tracing::warn!(
-                                    "Update timed out for {:?}",
-                                    feed
-                                );
+
+                            let mut attempt: usize = 0;
+
+                            while attempt <= feed_info.attr.retry_count {
+                                if attempt > 0 {
+                                    tracing::debug!(
+                                        "Retrying feed {} (count={})",
+                                        &feed_info.attr.display_name,
+                                        attempt
+                                    );
+                                }
+                                attempt += 1;
+
+                                let fut = feed.update(&ctx, &feed_info.attr);
+                                match tokio::time::timeout(
+                                    feed_info.attr.timeout.to_tokio(),
+                                    fut,
+                                )
+                                .await
+                                {
+                                    Ok(res) => {
+                                        if res.is_err() {
+                                            tokio::time::sleep(
+                                                feed_info
+                                                    .attr
+                                                    .timeout
+                                                    .to_tokio(),
+                                            )
+                                            .await;
+                                            continue;
+                                        }
+                                        break;
+                                    }
+                                    Err(_) => {
+                                        tracing::warn!(
+                                            "Update timed out for {:?}",
+                                            feed
+                                        );
+                                    }
+                                }
                             }
                         }
                     })

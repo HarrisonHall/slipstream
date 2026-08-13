@@ -22,7 +22,7 @@ impl StandardSyndication {
         ctx: &UpdaterContext,
         attr: &FeedAttributes,
         tx: UnboundedSender<Entry>,
-    ) {
+    ) -> Result<(), UpdateError> {
         let mut parse_error = String::new();
 
         // Try to parse as atom.
@@ -42,7 +42,7 @@ impl StandardSyndication {
                     }
                     tx.send(entry).ok();
                 }
-                return;
+                return Ok(());
             }
             Err(e) => {
                 parse_error.push_str(&format!("\n{}", e));
@@ -66,7 +66,7 @@ impl StandardSyndication {
                     }
                     tx.send(entry).ok();
                 }
-                return;
+                return Ok(());
             }
             Err(e) => {
                 parse_error.push_str(&format!("\n{}", e));
@@ -79,6 +79,7 @@ impl StandardSyndication {
             body,
             &parse_error
         );
+        Err(UpdateError::InvalidResponse)
     }
 
     /// Parse an atom entry.
@@ -202,14 +203,18 @@ impl Hash for StandardSyndication {
 
 #[feed_trait]
 impl Feed for StandardSyndication {
-    async fn update(&mut self, ctx: &UpdaterContext, attr: &FeedAttributes) {
+    async fn update(
+        &mut self,
+        ctx: &UpdaterContext,
+        attr: &FeedAttributes,
+    ) -> Result<(), UpdateError> {
         let (tx, mut rx) = unbounded_channel();
         if self.url.starts_with("file://") {
             let filename = &self.url["file://".len()..];
             match tokio::fs::read(filename).await {
                 Ok(buf) => {
                     if let Ok(body) = str::from_utf8(buf.as_slice()) {
-                        self.parse(body, ctx, attr, tx);
+                        self.parse(body, ctx, attr, tx)?;
                     } else {
                         tracing::warn!(
                             "Unable to read binary file `{filename}`."
@@ -265,7 +270,7 @@ impl Feed for StandardSyndication {
                 Ok(client) => client,
                 Err(e) => {
                     tracing::warn!("Unable to build client: {e}");
-                    return;
+                    return Err(UpdateError::InitializationFailure);
                 }
             };
             let mut request_builder = client.get(&self.url);
@@ -279,7 +284,7 @@ impl Feed for StandardSyndication {
                 Ok(request) => request,
                 Err(e) => {
                     tracing::warn!("Unable to build request: {e}");
-                    return;
+                    return Err(UpdateError::InitializationFailure);
                 }
             };
 
@@ -287,7 +292,7 @@ impl Feed for StandardSyndication {
             match client.execute(request).await {
                 Ok(req_result) => match req_result.text().await {
                     Ok(body) => {
-                        self.parse(body.as_str(), ctx, attr, tx);
+                        self.parse(body.as_str(), ctx, attr, tx)?;
                     }
                     Err(e) => {
                         tracing::error!("Failed to get body from response: {e}")
@@ -315,6 +320,8 @@ impl Feed for StandardSyndication {
                 ))
                 .ok();
         }
+
+        Ok(())
     }
 }
 

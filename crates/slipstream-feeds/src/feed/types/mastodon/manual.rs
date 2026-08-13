@@ -242,7 +242,11 @@ impl Hash for MastodonFeed {
 
 #[feed_trait]
 impl Feed for MastodonFeed {
-    async fn update(&mut self, ctx: &UpdaterContext, attr: &FeedAttributes) {
+    async fn update(
+        &mut self,
+        ctx: &UpdaterContext,
+        attr: &FeedAttributes,
+    ) -> Result<(), UpdateError> {
         // Generate request.
         let mut client_builder = reqwest::ClientBuilder::new();
 
@@ -268,7 +272,7 @@ impl Feed for MastodonFeed {
             Ok(client) => client,
             Err(e) => {
                 tracing::warn!("Unable to build client: {e}");
-                return;
+                return Err(UpdateError::FetchFailure);
             }
         };
 
@@ -302,7 +306,7 @@ impl Feed for MastodonFeed {
                     None => {
                         match self.get_account_id(&mut client, user).await {
                             Some(id) => id,
-                            None => return,
+                            None => return Err(UpdateError::ApiError),
                         }
                     }
                 };
@@ -338,6 +342,8 @@ impl Feed for MastodonFeed {
                 ))
                 .ok();
         }
+
+        Ok(())
     }
 }
 

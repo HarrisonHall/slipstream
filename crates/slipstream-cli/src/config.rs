@@ -88,6 +88,8 @@ impl Config {
                 attr.headers = options.headers().clone();
                 attr.keep_empty = options.keep_empty();
                 attr.apply_tags = options.apply_tags();
+                attr.retry_count = options.retry_count();
+                attr.retry_after = options.retry_after();
                 feed_def
                     .tags()
                     .clone()

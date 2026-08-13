@@ -9,7 +9,13 @@ use downcast_rs::{DowncastSync, impl_downcast};
 pub trait Feed: std::fmt::Debug + Send + Sync + DowncastSync + 'static {
     /// Fetch items from the feed.
     #[allow(unused_variables)]
-    async fn update(&mut self, ctx: &UpdaterContext, attr: &FeedAttributes) {}
+    async fn update(
+        &mut self,
+        ctx: &UpdaterContext,
+        attr: &FeedAttributes,
+    ) -> Result<(), UpdateError> {
+        Ok(())
+    }
 
     /// Tag fetched entry. This serves as a method for other feeds to edit and claim
     /// ownership of other entries.
@@ -29,3 +35,11 @@ pub trait Feed: std::fmt::Debug + Send + Sync + DowncastSync + 'static {
 }
 
 impl_downcast!(sync Feed);
+
+pub enum UpdateError {
+    InitializationFailure,
+    FetchFailure,
+    TimedOut,
+    InvalidResponse,
+    ApiError,
+}

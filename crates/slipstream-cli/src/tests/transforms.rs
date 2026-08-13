@@ -51,7 +51,7 @@ impl slipfeed::Feed for FakeFeed {
         &mut self,
         ctx: &slipfeed::UpdaterContext,
         attr: &slipfeed::FeedAttributes,
-    ) {
+    ) -> Result<(), slipfeed::UpdateError> {
         for entry in &self.entries {
             match ctx.sender.send((
                 entry.clone(),
@@ -64,6 +64,8 @@ impl slipfeed::Feed for FakeFeed {
                 Err(e) => tracing::error!("Failed to send entry: {e}"),
             }
         }
+
+        Ok(())
     }
 }
 

@@ -3,9 +3,12 @@
 use super::*;
 
 /// Limits for feeds.
+// NOTE: If adding fields, update the `merge` method to ensure the cli uses the
+// parsed values.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FeedOptions {
     /// Maximum iterable entries from feed.
+    #[serde(default)]
     max: Option<usize>,
     /// Update frequency. Defaults to 2 hours.
     #[serde(default, with = "humantime_serde::option")]
@@ -24,7 +27,10 @@ pub struct FeedOptions {
     headers: BTreeMap<String, String>,
     /// Feed update step (lower updates first).
     #[serde(default)]
-    step: Option<usize>,
+    step: Option<u8>,
+    /// Retry count.
+    #[serde(default, alias = "retry-count")]
+    retry_count: Option<u32>,
 }
 
 impl FeedOptions {
@@ -51,7 +57,15 @@ impl FeedOptions {
     }
 
     pub fn step(&self, default: u8) -> u8 {
-        self.step.unwrap_or(default as usize) as u8
+        self.step.unwrap_or(default as u8) as u8
+    }
+
+    pub fn retry_count(&self) -> usize {
+        self.retry_count.unwrap_or(0) as usize
+    }
+
+    pub fn retry_after(&self) -> slipfeed::Duration {
+        slipfeed::Duration::from_seconds(30)
     }
 
     pub fn keep_empty(&self) -> bool {
@@ -96,13 +110,16 @@ impl FeedOptions {
         if let Some(oldest) = &other.oldest {
             self.oldest = Some(*oldest);
         }
-        if let Some(step) = &other.step {
-            self.step = Some(*step);
-        }
         self.keep_empty = other.keep_empty;
         self.apply_tags = other.apply_tags;
         for (header, value) in &other.headers {
             self.headers.insert(header.clone(), value.clone());
+        }
+        if let Some(step) = &other.step {
+            self.step = Some(*step);
+        }
+        if let Some(retry_count) = &other.retry_count {
+            self.retry_count = Some(*retry_count);
         }
     }
 }
@@ -117,6 +134,7 @@ impl Default for FeedOptions {
             keep_empty: Self::default_keep_empty(),
             apply_tags: Self::default_apply_tags(),
             headers: BTreeMap::new(),
+            retry_count: None,
         }
     }
 }

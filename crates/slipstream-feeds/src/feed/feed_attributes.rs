@@ -28,6 +28,10 @@ pub struct FeedAttributes {
     pub keep_empty: bool,
     /// Whether to apply tags from the source.
     pub apply_tags: bool,
+    /// How long to wait between retries.
+    pub retry_after: Duration,
+    /// How many times to retry.
+    pub retry_count: usize,
 }
 
 impl FeedAttributes {
@@ -83,6 +87,8 @@ impl Default for FeedAttributes {
             transforms: Vec::new(),
             keep_empty: false,
             apply_tags: true,
+            retry_after: Duration::from_seconds(30),
+            retry_count: 0,
         }
     }
 }

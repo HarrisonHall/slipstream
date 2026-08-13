@@ -3,8 +3,7 @@
 use super::*;
 
 /// Filter configuration.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct FiltersConfig {
     /// Exclude from all fields.
     #[serde(alias = "exclude", alias = "exclude-substrings")]
@@ -110,7 +109,6 @@ impl FiltersConfig {
         filters
     }
 }
-
 
 fn exclude_any_generic(
     items: Vec<String>,
