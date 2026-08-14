@@ -60,12 +60,14 @@ pub enum RawFeed {
         feeds: Vec<String>,
     },
     AggregateTag {
+        #[serde(alias = "tag-allowlist")]
         tag_allowlist: Vec<String>,
+        #[serde(alias = "tag-blocklist")]
         tag_blocklist: Vec<String>,
     },
     MastodonStatuses {
         mastodon: String,
-        #[serde(alias = "type")]
+        #[serde(alias = "type", alias = "feed-type")]
         feed_type: MastodonFeedType,
         token: Option<String>,
     },
@@ -312,6 +314,10 @@ impl slipfeed::Feed for AggregateTagFeed {
         feed_id: slipfeed::FeedId,
         attr: &slipfeed::FeedAttributes,
     ) {
+        if entry.has_tag_fuzzy("fun") && self.allowlist.contains(&"fun".into())
+        {
+            tracing::info!("HERE {}", entry.title());
+        }
         if self.matches(entry) && attr.passes_filters(self, entry) {
             for tag in attr.get_tags() {
                 entry.add_tag(tag);
@@ -320,6 +326,7 @@ impl slipfeed::Feed for AggregateTagFeed {
                 id: feed_id,
                 name: attr.display_name.clone(),
             });
+            tracing::info!("ADDED");
         }
     }
 }

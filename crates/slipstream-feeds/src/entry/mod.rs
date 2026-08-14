@@ -124,6 +124,9 @@ impl Entry {
         if self.primary_feed.is_none() {
             self.primary_feed = Some(feed.clone());
         }
+        if self.is_from_feed(feed.id) {
+            return;
+        }
         self.feeds.insert(feed);
     }
 

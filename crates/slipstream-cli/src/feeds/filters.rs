@@ -17,7 +17,7 @@ pub struct FiltersConfig {
     /// Must include from any fields (regex).
     #[serde(alias = "include-re")]
     pub include_re: Option<Vec<String>>,
-    // / Exclude from all fields, if all present.
+    /// Exclude from all fields, if all present.
     #[serde(alias = "exclude-all")]
     pub exclude_all: Option<Vec<String>>,
     /// Must include from any fields, all must be present.

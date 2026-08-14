@@ -194,7 +194,7 @@ impl Updater {
             let mut stepped = SteppedFeeds::default();
             stepped.parse_feeds(feeds);
 
-            for (step, feeds) in stepped.stepped {
+            for (step, feeds) in stepped.stepped.clone() {
                 tracing::debug!("Updating feeds: step={step}");
 
                 // Push updates to workers.
@@ -286,10 +286,12 @@ impl Updater {
                     entry.add_feed(feed_ref.clone());
 
                     // Tag.
-                    for feed_info in self.feeds.values_mut() {
-                        let mut feed = feed_info.feed.write().await;
-                        feed.tag(&mut entry, feed_info.id, &feed_info.attr)
-                            .await;
+                    for (_step, feeds) in &stepped.stepped {
+                        for (_feed_id, feed_info) in feeds {
+                            let mut feed = feed_info.feed.write().await;
+                            feed.tag(&mut entry, feed_info.id, &feed_info.attr)
+                                .await;
+                        }
                     }
 
                     // Run global transforms.

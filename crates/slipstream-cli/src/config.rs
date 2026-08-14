@@ -142,6 +142,7 @@ impl Config {
                             .iter()
                             .map(|t| slipfeed::Tag::from(t.as_str()))
                             .collect();
+                        tracing::info!("TAG: {:?} (attr={:?})", feed, attr);
                         let mut inner_updater =
                             task_manager.updater.write().await;
                         let id = inner_updater.add_feed(feed, attr);
