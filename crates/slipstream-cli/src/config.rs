@@ -473,14 +473,22 @@ impl TimeZone {
     }
 }
 
+/// System hooks.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Hook {
+    /// Hook on insert of new entry.
     #[serde(alias = "on-insert")]
     OnInsert,
+    /// Hook on update of existing entry.
     #[serde(alias = "on-update")]
     OnUpdate,
+    /// Hook on read of entry (from read mode).
     #[serde(alias = "on-read")]
     OnRead,
+    /// Hook on tag of entry (from read mode).
     #[serde(alias = "on-tag")]
     OnTag,
+    /// Hook on fetch of feed.
+    #[serde(alias = "on-fetch")]
+    OnFetch,
 }

@@ -22,21 +22,24 @@ pub async fn manage_tasks(
     mut task_manager: TaskManager,
     cancel_token: CancellationToken,
 ) -> Result<()> {
+    let handle = task_manager.handle()?;
+
     // We can't cancel the task managers's updater update future as it is not cancel-safe.
     // We convert this loop into a task and only cancel on quit.
     let updater_task: tokio::task::JoinHandle<()> = {
+        let handle = handle.clone();
         let entry_db = task_manager.entry_db.clone();
         let updater = task_manager.updater.clone();
         let cancel_token = cancel_token.clone();
         tokio::task::spawn(run_slipfeed_updater(
             updater,
+            handle,
             entry_db,
             cancel_token,
         ))
     };
 
     // Spawn an infinite task so that command_futures will only wait for valid tasks.
-    let handle = task_manager.handle()?;
     {
         let cancel_token = cancel_token.clone();
         task_manager.command_futures.spawn(async move {
@@ -89,17 +92,30 @@ pub async fn manage_tasks(
 /// Standalone task for the slipfeed updater.
 async fn run_slipfeed_updater(
     internal_updater: Arc<RwLock<slipfeed::Updater>>,
+    handle: TaskManagerHandle,
     entry_db: Option<Arc<Database>>,
     cancel_token: CancellationToken,
 ) {
-    while !cancel_token.is_cancelled() {
-        let entries = {
-            let mut slipfeed_updater = internal_updater.write().await;
-            slipfeed_updater.update_blocking().await
-        };
-        for entry in entries.as_slice() {
-            if let Some(entry_db) = &entry_db {
-                entry_db.upsert_slipfeed_entry(entry).await;
+    loop {
+        let mut slipfeed_updater = internal_updater.write().await;
+        tokio::select! {
+            _ = cancel_token.cancelled() => break,
+            entries = slipfeed_updater.update_blocking() => {
+                // Keep track of the primary feeds fetched.
+                let mut feeds = HashSet::new();
+
+                // Insert each entry into db.
+                for entry in entries.as_slice() {
+                    feeds.insert(entry.primary_feed());
+                    if let Some(entry_db) = &entry_db {
+                        entry_db.upsert_slipfeed_entry(entry).await;
+                    }
+                }
+
+                // Emit hook for on-fetch.
+                for feed_ref in feeds {
+                    handle.hook(Context::with_feed_ref(feed_ref), Hook::OnFetch).await;
+                }
             }
         }
     }

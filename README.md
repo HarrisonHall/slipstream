@@ -148,6 +148,7 @@ are essentially complete as-is.
 
 - `slipstream` (api)
   - [ ] Allow syncing tags & command results from client to server
+  - [ ] Cache and serve source feeds
 
 ### Beyond
 
