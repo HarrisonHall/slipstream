@@ -3,7 +3,7 @@ use super::*;
 /// Context required to run a custom command.
 pub struct CustomCommandContext {
     /// ID of entry in db.
-    pub entry_id: EntryDbId,
+    pub task_ctx: Context,
     /// (width, height).
     pub terminal_size: (u16, u16),
 }
@@ -11,7 +11,7 @@ pub struct CustomCommandContext {
 impl Default for CustomCommandContext {
     fn default() -> Self {
         Self {
-            entry_id: 0,
+            task_ctx: Context::default(),
             terminal_size: (80, 60),
         }
     }
@@ -21,7 +21,7 @@ impl Default for CustomCommandContext {
 #[derive(Debug, Clone)]
 pub struct CustomCommandResult {
     /// Entry db id.
-    pub entry_id: EntryDbId,
+    pub entry_id: Option<EntryDbId>,
     /// Custom command name.
     pub command: CustomCommand,
     /// stdout output from command.
@@ -33,7 +33,7 @@ pub struct CustomCommandResult {
 impl CustomCommandResult {
     pub(super) fn empty() -> Self {
         Self {
-            entry_id: 0,
+            entry_id: None,
             command: CustomCommand {
                 name: "".to_string().into(),
                 command: Arc::new(Vec::new()),
@@ -51,24 +51,10 @@ impl CustomCommandResult {
 pub async fn run_custom_command(
     task_manager_handle: TaskManagerHandle,
     custom_command: CustomCommand,
-    entry_id: EntryDbId,
+    task_ctx: Context,
 ) -> CustomCommandResult {
-    // Get entry.
-    let entry = match task_manager_handle.get_entry(entry_id).await {
-        Ok(entry) => entry,
-        Err(e) => {
-            tracing::error!("Could not run command: {e}");
-            return CustomCommandResult {
-                entry_id,
-                output: format!("{e}"),
-                exit_code: 1,
-                command: custom_command,
-            };
-        }
-    };
-
     let ctx = CustomCommandContext {
-        entry_id: entry.db_id,
+        task_ctx: task_ctx.clone(),
         // terminal_size: (width, 60),
         terminal_size: (80, 60),
     };
@@ -76,62 +62,98 @@ pub async fn run_custom_command(
     // Build command.
     let mut shell_command: Vec<String> = (*custom_command.command).clone();
 
+    // Get entry.
+    let entry = match &ctx.task_ctx.entry_id {
+        Some(entry_id) => {
+            match task_manager_handle.get_entry(*entry_id).await {
+                Ok(entry) => Some(entry),
+                Err(e) => {
+                    tracing::error!("Could not run command: {e}");
+                    return CustomCommandResult {
+                        entry_id: Some(*entry_id),
+                        output: format!("{e}"),
+                        exit_code: 1,
+                        command: custom_command,
+                    };
+                }
+            }
+        }
+        None => None,
+    };
+
     for argument in shell_command.iter_mut() {
-        // Add links.
-        *argument = argument.replace("{{link.url}}", &entry.source().url);
-        let mut link_count: usize = 0;
-        if !entry.source().url.is_empty() {
-            link_count += 1;
-            *argument = argument.replace(
-                &format!("{{{{link.url{}}}}}", link_count),
-                &entry.source().url,
-            );
-        }
-        if !entry.comments().url.is_empty() {
-            link_count += 1;
-            *argument = argument.replace(
-                &format!("{{{{link.url{}}}}}", link_count),
-                &entry.comments().url,
-            );
-        }
-        for i in 0..entry.other_links().len() {
-            link_count += 1;
-            *argument = argument.replace(
-                &format!("{{{{link.url{}}}}}", link_count),
-                &entry.other_links()[i].url,
-            );
+        if let Some(feed) = &task_ctx.feed_ref {
+            *argument = argument.replace("{{feed}}", &feed.name);
+            *argument = argument.replace("{{feed.name}}", &feed.name);
+            *argument = argument
+                .replace("{{feed.id}}", &format!("{}", usize::from(feed.id)));
         }
 
-        // Add link name.
-        if argument.contains("{{link.name}}")
-            || argument.contains("{{link.name_}}")
-        {
-            let link_name = entry
-                .title()
-                .clone()
-                .replace(&['(', ')', ',', '\"', '.', ';', ':', '\''][..], "")
-                .replace(" ", "_")
-                .to_lowercase();
-            *argument = argument.replace("{{link.name}}", &link_name);
-            *argument = argument.replace("{{link.name_}}", &link_name);
-        }
-        if argument.contains("{{link.name-}}") {
-            let link_name = entry
-                .title()
-                .clone()
-                .replace(&['(', ')', ',', '\"', '.', ';', ':', '\''][..], "")
-                .replace(" ", "-")
-                .to_lowercase();
-            *argument = argument.replace("{{link.name-}}", &link_name);
-        }
+        if let Some(entry) = &entry {
+            // Add links.
+            *argument = argument.replace("{{link.url}}", &entry.source().url);
+            let mut link_count: usize = 0;
+            if !entry.source().url.is_empty() {
+                link_count += 1;
+                *argument = argument.replace(
+                    &format!("{{{{link.url{}}}}}", link_count),
+                    &entry.source().url,
+                );
+            }
+            if !entry.comments().url.is_empty() {
+                link_count += 1;
+                *argument = argument.replace(
+                    &format!("{{{{link.url{}}}}}", link_count),
+                    &entry.comments().url,
+                );
+            }
+            for i in 0..entry.other_links().len() {
+                link_count += 1;
+                *argument = argument.replace(
+                    &format!("{{{{link.url{}}}}}", link_count),
+                    &entry.other_links()[i].url,
+                );
+            }
 
-        // Add feed information.
-        *argument =
-            argument.replace("{{feed}}", &entry.entry.primary_feed().name);
+            // Add link name.
+            if argument.contains("{{link.name}}")
+                || argument.contains("{{link.name_}}")
+            {
+                let link_name = entry
+                    .title()
+                    .clone()
+                    .replace(
+                        &['(', ')', ',', '\"', '.', ';', ':', '\''][..],
+                        "",
+                    )
+                    .replace(" ", "_")
+                    .to_lowercase();
+                *argument = argument.replace("{{link.name}}", &link_name);
+                *argument = argument.replace("{{link.name_}}", &link_name);
+            }
+            if argument.contains("{{link.name-}}") {
+                let link_name = entry
+                    .title()
+                    .clone()
+                    .replace(
+                        &['(', ')', ',', '\"', '.', ';', ':', '\''][..],
+                        "",
+                    )
+                    .replace(" ", "-")
+                    .to_lowercase();
+                *argument = argument.replace("{{link.name-}}", &link_name);
+            }
 
-        // Add terminal settings.
-        *argument = argument
-            .replace("{{terminal.width}}", &format!("{}", ctx.terminal_size.0));
+            // Add feed information.
+            *argument =
+                argument.replace("{{feed}}", &entry.entry.primary_feed().name);
+
+            // Add terminal settings.
+            *argument = argument.replace(
+                "{{terminal.width}}",
+                &format!("{}", ctx.terminal_size.0),
+            );
+        }
     }
 
     // Log final command.
@@ -155,22 +177,19 @@ pub async fn run_custom_command(
             tracing::info!("Command:\n{:?}", &custom_command.command);
             tracing::info!("Output:\n{}", output);
             CustomCommandResult {
+                entry_id: entry.map(|e| e.db_id),
                 output,
                 exit_code,
-                entry_id: entry.db_id,
                 command: custom_command,
             }
         }
         Err(e) => CustomCommandResult {
+            entry_id: entry.map(|e| e.db_id),
             output: format!("Failed to run command: {}", e),
             exit_code: 1,
-            entry_id: entry.db_id,
             command: custom_command,
         },
     };
-
-    // Store result.
-    // task_manager_handle.save_command(result.clone()).await;
 
     result
 }

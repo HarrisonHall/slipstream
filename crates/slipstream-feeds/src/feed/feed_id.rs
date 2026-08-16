@@ -23,3 +23,9 @@ impl FeedId {
         Self(id)
     }
 }
+
+impl From<FeedId> for usize {
+    fn from(value: FeedId) -> Self {
+        value.0
+    }
+}

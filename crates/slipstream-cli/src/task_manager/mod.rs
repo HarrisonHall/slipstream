@@ -357,10 +357,12 @@ impl TaskManager {
                     }
                 }
                 BackgroundTaskUpdate::CommandUpdate { ctx: _, result } => {
-                    if let Some(entry_db) = &self.entry_db {
+                    if let (Some(entry_id), Some(entry_db)) =
+                        (&result.entry_id, &self.entry_db)
+                    {
                         entry_db
                             .store_command_result(
-                                result.entry_id,
+                                *entry_id,
                                 (*result.command.name).clone(),
                                 result.output,
                                 result.exit_code == 0,
@@ -378,13 +380,11 @@ impl TaskManager {
                             );
                         }
                         Commandish::CustomCommandFull(custom_command) => {
-                            if let (Some(entry_id), Ok(handle)) =
-                                (ctx.entry_id, self.handle())
-                            {
+                            if let Ok(handle) = self.handle() {
                                 self.command_futures.spawn(run_custom_command(
                                     handle,
                                     custom_command,
-                                    entry_id,
+                                    ctx,
                                 ));
                             }
                         }
