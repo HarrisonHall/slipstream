@@ -20,6 +20,8 @@ pub struct TransformsConfig {
     pub tag_aliases: Option<BTreeMap<Tag, HashSet<Tag>>>,
     /// Overwrite entry author according to template.
     pub author: Option<String>,
+    /// Substitute content with regex.
+    pub substitutions: Option<BTreeMap<String, String>>,
 }
 
 impl TransformsConfig {
@@ -34,6 +36,9 @@ impl TransformsConfig {
             transforms.push(transform);
         }
         if let Some(transform) = author(&self.author) {
+            transforms.push(transform);
+        }
+        if let Some(transform) = substitute(&self.substitutions) {
             transforms.push(transform);
         }
 
@@ -111,4 +116,35 @@ fn author(template: &Option<String>) -> Option<slipfeed::Transform> {
         }));
     }
     None
+}
+
+fn substitute(
+    substitutions: &Option<BTreeMap<String, String>>,
+) -> Option<slipfeed::Transform> {
+    match &substitutions {
+        Some(substitutions) => {
+            let substitutions = substitutions.clone();
+            Some(Arc::new(move |entry| {
+                for (pattern, replacement) in substitutions.iter() {
+                    let pattern = match regex::Regex::new(pattern) {
+                        Ok(re) => re,
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to compile regex ({pattern}): {e}"
+                            );
+                            continue;
+                        }
+                    };
+
+                    let title = entry.title().clone();
+                    entry.set_title(pattern.replace_all(&title, replacement));
+                    let content = entry.content().clone();
+                    entry.set_content(
+                        pattern.replace_all(&content, replacement),
+                    );
+                }
+            }))
+        }
+        None => None,
+    }
 }

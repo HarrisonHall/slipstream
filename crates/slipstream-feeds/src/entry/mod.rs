@@ -50,6 +50,11 @@ impl Entry {
         &self.title
     }
 
+    /// Set entry title.
+    pub fn set_title(&mut self, title: impl Into<String>) {
+        self.title = title.into();
+    }
+
     /// Get entry date.
     pub fn date(&self) -> &DateTime {
         match &self.date {
@@ -71,6 +76,11 @@ impl Entry {
     /// Get entry content.
     pub fn content(&self) -> &String {
         &self.content
+    }
+
+    /// Set entry content.
+    pub fn set_content(&mut self, content: impl Into<String>) {
+        self.content = content.into();
     }
 
     /// Get source link.

@@ -68,6 +68,16 @@ url = "https://www3.nhk.or.jp/rss/news/cat0.xml"
 tags = ["news", "japanese"]
 max = 5
 
+[feeds.bubbles]
+step = 2
+url = "https://bubbles.town/feed/cat/food"
+tags = ["news"]
+max = 5
+[feeds.bubbles.substitutions]
+# "🫧 Open on Bubbles" = ""
+"\\[🫧 Open on Bubbles\\]\\(.*\\)" = ""
+
+
 # [feeds.mastodon-bevy]
 # mastodon = "https://mastodon.social"
 # user = "Bevy"
