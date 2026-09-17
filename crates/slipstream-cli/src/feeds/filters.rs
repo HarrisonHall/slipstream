@@ -29,6 +29,12 @@ pub struct FiltersConfig {
     /// Must include from title.
     #[serde(alias = "include-titles")]
     pub include_titles: Option<Vec<String>>,
+    /// Exclude authors.
+    #[serde(alias = "exclude-authors")]
+    pub exclude_authors: Option<Vec<String>>,
+    /// Must include authors.
+    #[serde(alias = "include-authors")]
+    pub include_authors: Option<Vec<String>>,
     /// Exclude from contents.
     #[serde(alias = "exclude-contents", alias = "exclude-content-words")]
     pub exclude_contents: Option<Vec<String>>,
@@ -80,6 +86,12 @@ impl FiltersConfig {
             filters.push(filter);
         }
         if let Some(filter) = include_titles(&self.include_titles) {
+            filters.push(filter);
+        }
+        if let Some(filter) = exclude_authors(&self.exclude_authors) {
+            filters.push(filter);
+        }
+        if let Some(filter) = include_authors(&self.include_authors) {
             filters.push(filter);
         }
         if let Some(filter) = exclude_contents(&self.exclude_contents) {
@@ -270,6 +282,32 @@ fn include_titles(items: &Option<Vec<String>>) -> Option<slipfeed::Filter> {
                 items.clone().iter().map(|e| e.to_lowercase()).collect();
             include_any_generic(items, |item, entry| {
                 entry.title().to_lowercase().contains(item)
+            })
+        }
+        None => None,
+    }
+}
+
+fn exclude_authors(items: &Option<Vec<String>>) -> Option<slipfeed::Filter> {
+    match &items {
+        Some(items) => {
+            let items: Vec<String> =
+                items.clone().iter().map(|e| e.to_lowercase()).collect();
+            exclude_any_generic(items, |item, entry| {
+                entry.author().to_lowercase().contains(item)
+            })
+        }
+        None => None,
+    }
+}
+
+fn include_authors(items: &Option<Vec<String>>) -> Option<slipfeed::Filter> {
+    match &items {
+        Some(items) => {
+            let items: Vec<String> =
+                items.clone().iter().map(|e| e.to_lowercase()).collect();
+            include_any_generic(items, |item, entry| {
+                entry.author().to_lowercase().contains(item)
             })
         }
         None => None,

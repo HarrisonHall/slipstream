@@ -74,7 +74,6 @@ url = "https://bubbles.town/feed/cat/food"
 tags = ["news"]
 max = 5
 [feeds.bubbles.substitutions]
-# "🫧 Open on Bubbles" = ""
 "\\[🫧 Open on Bubbles\\]\\(.*\\)" = ""
 
 
