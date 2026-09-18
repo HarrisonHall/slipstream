@@ -24,6 +24,7 @@ color-eyre = "0.6"
 crossterm = { version="0.29", features=["serde", "event-stream"] }
 directories = "6.0"
 humantime-serde = "1.1"
+linkify = "0.11.0"
 minijinja = "2.21.0"
 opml = "1.1"
 pulldown-cmark = "0.13"

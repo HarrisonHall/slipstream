@@ -98,6 +98,25 @@ impl Entry {
         &self.other_links
     }
 
+    /// Add link.
+    pub fn add_link<T>(&mut self, link: T, title: Option<T>)
+    where
+        T: Into<String>,
+    {
+        if self.source.url.is_empty() {
+            self.source = Link::new("Source".to_string(), link.into());
+        } else {
+            let link = link.into();
+            self.other_links.push(Link::new(
+                link.clone(),
+                match title {
+                    Some(title) => title.into(),
+                    None => link,
+                },
+            ));
+        }
+    }
+
     /// Get icon link.
     pub fn icon(&self) -> Option<&Link> {
         self.icon.as_ref()
