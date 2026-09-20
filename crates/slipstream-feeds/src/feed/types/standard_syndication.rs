@@ -76,7 +76,7 @@ impl StandardSyndication {
         tracing::warn!(
             "Unable to parse feed `{:?}` as atom or rss:\n\t{}\nReasons:{}",
             self,
-            body,
+            Self::minimized_body(body),
             &parse_error
         );
         Err(UpdateError::InvalidResponse)
@@ -192,6 +192,25 @@ impl StandardSyndication {
             }
         }
         entry
+    }
+
+    /// Minimize body for displaying errors.
+    fn minimized_body(body: impl AsRef<str>) -> String {
+        let body = body.as_ref();
+        let context = 3;
+        let line_count = body.chars().filter(|c| *c == '\n').count();
+        let mut lines: Vec<String> = body
+            .split("\n")
+            .enumerate()
+            .filter(|(i, _)| *i < context || *i > line_count - context)
+            .map(|(_, line)| line.chars().take(80).collect::<String>())
+            .collect();
+
+        if lines.len() > context * 2 {
+            lines.insert(context, "...".into());
+        }
+
+        lines.join("\n")
     }
 }
 
