@@ -16,6 +16,7 @@ rust-version.workspace = true
 chrono = { workspace = true }
 htmd = { workspace = true }
 futures = { workspace = true }
+rand = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }

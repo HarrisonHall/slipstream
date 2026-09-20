@@ -1,5 +1,7 @@
 //! Feed update handling.
 
+use rand::seq::SliceRandom;
+
 use super::*;
 
 pub type BoxedFeed = Arc<RwLock<Box<dyn Feed>>>;
@@ -193,6 +195,7 @@ impl Updater {
             // order.
             let mut stepped = SteppedFeeds::default();
             stepped.parse_feeds(feeds);
+            stepped.shuffle();
 
             for (step, feeds) in stepped.stepped.clone() {
                 tracing::debug!("Updating feeds: step={step}");
@@ -378,20 +381,36 @@ impl Default for Updater {
     }
 }
 
+/// Map of feeds by step.
 #[derive(Default)]
 struct SteppedFeeds {
     stepped: BTreeMap<u8, Vec<(FeedId, FeedInfo)>>,
 }
 
 impl SteppedFeeds {
+    /// Parse feed list into stepped.
     fn parse_feeds(&mut self, feeds: Vec<(FeedId, FeedInfo)>) {
+        // Group all feeds by step.
         for (id, info) in feeds {
             if let Some(step) = self.stepped.get_mut(&info.attr.step) {
                 step.push((id, info));
             } else {
-                // self.steps.insert(info.attr.step);
                 self.stepped.insert(info.attr.step, vec![(id, info)]);
             }
         }
+    }
+
+    /// Shuffle feeds within each step.
+    fn shuffle(&mut self) {
+        let mut rng = rand::rng();
+        for feeds in self.stepped.values_mut() {
+            feeds.shuffle(&mut rng);
+        }
+    }
+
+    /// Get steps.
+    #[allow(unused)]
+    fn steps(&self) -> Vec<u8> {
+        self.stepped.keys().map(|k| k.clone()).collect()
     }
 }
